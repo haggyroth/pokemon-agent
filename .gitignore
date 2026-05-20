@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Environment variables (contains local paths and config)
+.env
+
+# Personal game data — gitignored, directory preserved via .gitkeep
+logs/*.json
+logs/*.jsonl
+
+# Save states (binary, machine-specific)
+saves/*
+!saves/.gitkeep
+
+# Screenshots captured during agent runs
+*.png
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# IDE
+.vscode/
+.idea/
+
+# Internal dev notes
+BUILD_PLAN.md
+
+# Windows
+Thumbs.db
+Desktop.ini

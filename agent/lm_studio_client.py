@@ -1,0 +1,240 @@
+import base64
+import json
+import re
+import time
+from pathlib import Path
+from openai import OpenAI
+from agent.tools import TOOLS
+from game.memory_reader import LeafGreenReader
+from game.mgba_client import MGBAClient
+from memory.long_term import LongTermMemory
+from knowledge.leafgreen_data import MILESTONES
+from knowledge.navigation import get_map_image_path, MAP_NAMES
+from config import LM_STUDIO_BASE, MODEL_NAME, TEMPERATURE, MAX_TOKENS, ENABLE_THINKING, SCREENSHOT_PATH
+from rich.console import Console
+
+console = Console()
+
+
+class AgentClient:
+    def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
+        self.llm    = OpenAI(base_url=LM_STUDIO_BASE, api_key="lm-studio")
+        self.mgba   = mgba
+        self.reader = reader
+        self.ltm    = ltm
+        self.messages: list[dict] = []
+        self._current_opponent: str = ""  # set by set_opponent tool call
+
+    MAX_HISTORY = 20  # keep last ~10 user/assistant turns (text only for old turns)
+
+    def set_system(self, prompt: str):
+        if self.messages and self.messages[0]["role"] == "system":
+            self.messages[0] = {"role": "system", "content": prompt}
+        else:
+            self.messages = [{"role": "system", "content": prompt}]
+        if len(self.messages) > self.MAX_HISTORY + 1:
+            self.messages = self.messages[:1] + self.messages[-(self.MAX_HISTORY):]
+
+    @staticmethod
+    def _strip_images(content) -> str:
+        """Extract only text from a (possibly multipart) message content.
+        Images in older history turns are removed to keep the context window lean —
+        the model only needs the current screenshot, not a history of game frames."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            texts = [part["text"] for part in content
+                     if isinstance(part, dict) and part.get("type") == "text"]
+            return " ".join(texts)
+        return str(content)
+
+    def _trim_image_history(self):
+        """Strip image_url parts from all user messages except the most recent one.
+        Called just before sending to the API. Each screenshot is ~8K tokens;
+        keeping only the latest one makes the context ~10x smaller."""
+        latest_user_idx = None
+        for i in range(len(self.messages) - 1, -1, -1):
+            if self.messages[i]["role"] == "user":
+                latest_user_idx = i
+                break
+        for i, msg in enumerate(self.messages):
+            if msg["role"] != "user":
+                continue
+            if i == latest_user_idx:
+                continue  # keep images in the most recent user turn
+            if isinstance(msg.get("content"), list):
+                # Replace multipart content with text-only string
+                self.messages[i] = {**msg,
+                                     "content": self._strip_images(msg["content"])}
+
+    def capture_screenshot(self) -> str | None:
+        """Take a screenshot via mGBA and return base64-encoded PNG, or None on error."""
+        try:
+            self.mgba.screenshot(SCREENSHOT_PATH)
+            time.sleep(0.05)
+            with open(SCREENSHOT_PATH, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        except Exception:
+            return None
+
+    _map_b64_cache: dict[Path, str] = {}
+
+    @classmethod
+    def load_area_map(cls, bank: int, id: int) -> tuple[str | None, str]:
+        """Return (base64 PNG | None, human map name). Caches per file path."""
+        path = get_map_image_path(bank, id)
+        name = MAP_NAMES.get((bank, id), f"bank={bank},id={id}")
+        if path is None:
+            return None, name
+        cached = cls._map_b64_cache.get(path)
+        if cached is None:
+            with open(path, "rb") as f:
+                cached = base64.b64encode(f.read()).decode()
+            cls._map_b64_cache[path] = cached
+        return cached, name
+
+    # Matches a Qwen3-style <think>...</think> block (possibly multi-line)
+    _THINK_RE = re.compile(r"<think>(.*?)</think>\s*", re.DOTALL)
+
+    def _extract_response(self, msg) -> tuple[str, str]:
+        """Parse a model reply into (reasoning_for_display, content_for_history).
+
+        Qwen3 thinking models embed reasoning inside <think>...</think> tags
+        in msg.content.  Storing those tags in history and replaying them to
+        the API on the next turn causes a parse error (the garbage characters
+        seen in the 400 error).  This method always strips the think block from
+        the stored content.
+
+        Returns
+        -------
+        reasoning : str
+            The thinking text (for console display).  Empty string for
+            non-thinking models or when no think block is present.
+        clean_content : str
+            msg.content with all <think>…</think> blocks removed — safe to
+            store in message history and replay to the API.
+        """
+        raw = msg.content or ""
+
+        if ENABLE_THINKING:
+            m = self._THINK_RE.search(raw)
+            if m:
+                thinking    = m.group(1).strip()
+                clean       = self._THINK_RE.sub("", raw).strip()
+                return thinking, clean
+            # No inline tags — some LM Studio builds surface reasoning_content
+            # as a separate field instead.
+            extra = getattr(msg, "model_extra", {}) or {}
+            reasoning = (extra.get("reasoning_content") or "").strip()
+            if reasoning:
+                return reasoning, raw   # raw has no tags to strip here
+
+        return "", raw
+
+    def step(self, observation: str, screenshot_b64: str | None = None,
+             area_map_b64: str | None = None, area_map_name: str = "") -> tuple[str, list[str]]:
+        """Run one decision step. Returns (reasoning_text, actions).
+
+        If `area_map_b64` is provided, attaches it as an additional reference image
+        (overhead map of the current area). Use only on area entry — re-injecting
+        every tick wastes context."""
+        if screenshot_b64 or area_map_b64:
+            user_content: list[dict] = []
+            if area_map_b64:
+                label = (f"Overhead reference map of {area_map_name} (you just entered this area). "
+                         f"Use it to plan your route — exits, paths, key buildings. "
+                         f"Your current position is shown in the live screenshot below.")
+                user_content.append({"type": "text", "text": label})
+                user_content.append({"type": "image_url",
+                                     "image_url": {"url": f"data:image/png;base64,{area_map_b64}"}})
+            user_content.append({"type": "text", "text": observation})
+            if screenshot_b64:
+                user_content.append({"type": "image_url",
+                                     "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}})
+        else:
+            user_content = observation
+
+        self.messages.append({"role": "user", "content": user_content})
+        self._trim_image_history()
+        actions: list[str] = []
+
+        while True:
+            resp = self.llm.chat.completions.create(
+                model=MODEL_NAME, messages=self.messages,
+                tools=TOOLS, tool_choice="auto",
+                temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+            )
+            msg = resp.choices[0].message
+
+            # Split thinking from the actual response BEFORE storing in history.
+            # <think>...</think> blocks must never be replayed to the API —
+            # LM Studio rejects them with a 400 parse error on subsequent turns.
+            reasoning, clean_content = self._extract_response(msg)
+
+            history_entry: dict = {"role": "assistant", "content": clean_content}
+            if msg.tool_calls:
+                history_entry["tool_calls"] = [tc.model_dump() for tc in msg.tool_calls]
+            self.messages.append(history_entry)
+
+            if not msg.tool_calls:
+                # Return thinking text for console display; fall back to response
+                # text if there was no separate thinking block.
+                return reasoning or clean_content, actions
+
+            for tc in msg.tool_calls:
+                result = self._execute(tc.function.name, tc.function.arguments)
+                console.log(f"[cyan]{tc.function.name}[/] → {str(result)[:80]}")
+                self.messages.append({
+                    "role": "tool", "tool_call_id": tc.id, "content": str(result)
+                })
+                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                if tc.function.name == "press_button":
+                    actions.append(f"press:{args.get('button', '?')}")
+                else:
+                    actions.append(tc.function.name)
+
+    def _execute(self, name: str, args_json: str) -> str:
+        args = json.loads(args_json) if args_json else {}
+        match name:
+            case "press_button":
+                for _ in range(args.get("times", 1)):
+                    self.mgba.tap(args["button"])
+                return f"Pressed {args['button']} × {args.get('times', 1)}"
+            case "read_game_state":
+                s = self.reader.read_state()
+                party_summary = [
+                    {"slot": p.slot, "species": p.species_name or f"#{p.species_id}",
+                     "level": p.level, "hp": f"{p.current_hp}/{p.max_hp}",
+                     "status": p.status, "moves": [m for m in p.move_names if m]}
+                    for p in s.party
+                ]
+                return json.dumps({
+                    "context": s.context.name, "badges": s.badges,
+                    "party": party_summary, "map": [s.map_bank, s.map_id],
+                    "pos": [s.player_x, s.player_y],
+                })
+            case "save_state":
+                self.mgba.save_state(args.get("slot", 0))
+                return "State saved."
+            case "load_state":
+                self.mgba.load_state(args.get("slot", 0))
+                return "State loaded."
+            case "wait_frames":
+                time.sleep(args.get("frames", 30) / 60.0)
+                return f"Waited {args.get('frames', 30)} frames."
+            case "set_opponent":
+                species = args.get("species", "").upper().strip()
+                self._current_opponent = species
+                from knowledge.leafgreen_data import POKEMON_TYPES
+                known = species in POKEMON_TYPES
+                return (f"Opponent set to {species}. "
+                        + (f"Types: {POKEMON_TYPES[species]}" if known
+                           else "Species not in database — effectiveness unknown."))
+            case "record_milestone":
+                ms_name = args.get("name", "")
+                if ms_name not in MILESTONES:
+                    return f"Invalid milestone '{ms_name}'. Valid: {', '.join(MILESTONES)}"
+                added = self.ltm.add_milestone(ms_name, args.get("note", ""))
+                return f"Milestone '{ms_name}' {'recorded' if added else 'already recorded'}."
+            case _:
+                return f"Unknown tool: {name}"
