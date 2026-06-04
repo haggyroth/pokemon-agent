@@ -1,6 +1,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import tempfile
 
 load_dotenv()
 
@@ -41,4 +42,5 @@ HP_HEAL_THRESHOLD = float(os.getenv("HP_HEAL_THRESHOLD", "0.30"))
 SAVE_DIR          = PROJECT_ROOT / "saves"
 JOURNAL_PATH      = PROJECT_ROOT / "logs" / "battles.jsonl"
 PROGRESS_PATH     = PROJECT_ROOT / "logs" / "progress.json"
-SCREENSHOT_PATH   = os.getenv("SCREENSHOT_PATH", r"C:\mgba\agent_frame.png")
+SCREENSHOT_PATH   = os.getenv("SCREENSHOT_PATH",
+                               str(Path(tempfile.gettempdir()) / "mgba_agent_frame.png"))

@@ -30,9 +30,9 @@ The LLM uses tool calling to press buttons, read game state, and save/load emula
 
 ## Requirements
 
-- Windows (paths use Windows conventions; easily adapted)
-- [mGBA](https://mgba.io/) emulator
-- [mGBA-http 0.8.2](https://github.com/nikouu/mGBA-http) — REST API for mGBA
+- Windows, macOS, or Linux
+- [mGBA](https://mgba.io/) emulator (available on all three platforms)
+- [mGBA-http 0.8.2](https://github.com/nikouu/mGBA-http) — REST API for mGBA (.NET, cross-platform)
 - [LM Studio](https://lmstudio.ai/) with a tool-capable model (Qwen2.5-14B-Instruct recommended)
 - Pokemon LeafGreen ROM (`.gba`, US version, game code `AGB-BPGE`)
 - Python 3.12+
@@ -41,17 +41,24 @@ The LLM uses tool calling to press buttons, read game state, and save/load emula
 
 ### 1. Install dependencies
 
+**Windows (PowerShell):**
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+**macOS / Linux:**
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ### 2. Configure
 
-```powershell
-copy .env.example .env
-```
+**Windows:** `copy .env.example .env`  
+**macOS / Linux:** `cp .env.example .env`
 
 Edit `.env` and set `MODEL_NAME` to match the model loaded in LM Studio. Everything else works with defaults if you use the standard ports.
 
@@ -62,14 +69,19 @@ Edit `.env` and set `MODEL_NAME` to match the model loaded in LM Studio. Everyth
 3. **mGBA-http** binary — run it, leave the window open (listens on port 5000)
 4. **LM Studio** — load your model, enable the local server on port 1234, enable tool use
 5. **Agent**:
-   ```powershell
-   .venv\Scripts\activate
-   python main.py
+   ```sh
+   # Windows
+   .venv\Scripts\activate && python main.py
+   # macOS / Linux
+   source .venv/bin/activate && python main.py
    ```
 
 ### 4. Verify the connection
 
-```powershell
+```sh
+# macOS / Linux
+curl http://localhost:5000/core/getgamecode
+# Windows (PowerShell)
 Invoke-RestMethod -Uri "http://localhost:5000/core/getgamecode"
 # Expected: AGB-BPGE
 ```
@@ -83,7 +95,7 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 | `MODEL_NAME` | `qwen/qwen2.5-14b-instruct` | Must match LM Studio model name exactly |
 | `ENABLE_THINKING` | `false` | Set `true` for Qwen3 thinking models |
 | `TEMPERATURE` | `0.6` | LLM sampling temperature |
-| `SCREENSHOT_PATH` | `C:\mgba\agent_frame.png` | Where mGBA saves the agent's screenshot |
+| `SCREENSHOT_PATH` | OS temp dir | Where mGBA saves the agent's screenshot (auto-detected) |
 | `BUTTON_TAP_DELAY` | `0.10` | Seconds to pause after each button press |
 
 ## Project structure
