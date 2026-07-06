@@ -40,6 +40,12 @@ python -m game._mgba_build            # compiles game/_mgba_native*.so
 The binding reads/writes memory with the **same absolute GBA bus addresses** as the
 HTTP API, so `game/constants.py` and `memory_reader.py` are backend-agnostic.
 
+**Booting from a save.** `NativeMGBAClient.load_save(path)` loads a battery `.sav`
+into cartridge memory; call it before `reset()` so the title screen offers
+"Continue":  `m.load_save("game.sav"); m.reset()`. (This is the cartridge save, not
+an mGBA save state — the binding does not read mGBA's compressed `.ss*`/`.svs`
+state files.)
+
 **Watching it play (live window).** The native backend is headless by default. Set
 `SHOW_WINDOW=true` (needs `pip install pygame`) to open a window that renders
 libmgba's framebuffer each frame (`game/viewer.py`). It's smooth during actions and
