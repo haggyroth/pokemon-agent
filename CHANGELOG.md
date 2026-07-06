@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.2.2] — 2026-07-06
+
+### Fixed
+- fix: startup no longer overwrites game RAM with LTM's badge belief; RAM is the
+  source of truth and LTM reconciles from it monotonically (#3)
+- fix: `LongTermMemory._load` deep-copies defaults, fixing a latent aliasing bug
+  where instances shared the same `gyms_beaten`/`milestones` lists
+
 ## [0.2.1] — 2026-07-06
 
 ### Fixed
@@ -27,5 +35,6 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.2.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.2.2
 [0.2.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.2.1
 [0.2.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.2.0
