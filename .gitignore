@@ -8,6 +8,11 @@ __pycache__/
 *.pyd
 *.egg-info/
 
+# Compiled libmgba binding (built locally via: python -m game._mgba_build)
+game/_mgba_native.c
+game/_mgba_native*.o
+game/_mgba_native*.so
+
 # Environment variables (contains local paths and config)
 .env
 
@@ -35,3 +40,6 @@ BUILD_PLAN.md
 # Windows
 Thumbs.db
 Desktop.ini
+
+# macOS
+.DS_Store

@@ -38,6 +38,12 @@ class MGBAClient:
         self.session.post(f"{self.base}/mgba-http/button/hold",
                           params={"button": button, "duration": duration_frames})
 
+    def tick(self, frames: int = 9) -> None:
+        """Let game time pass. The mGBA-http emulator runs in real time on its
+        own, so this just sleeps ~frames/60s; the native backend steps frames.
+        Kept for a backend-agnostic main loop."""
+        time.sleep(frames / 60.0)
+
     # ── Memory reads (full absolute GBA bus addresses) ────────────────────────
     # Use these. They take 0x02024284-style addresses directly.
     # No domain name, no offset calculation needed.

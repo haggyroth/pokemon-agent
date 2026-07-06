@@ -7,7 +7,21 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).parent
 
-# ── Network ───────────────────────────────────────────────────────────────────
+# ── Emulator backend ──────────────────────────────────────────────────────────
+# "native": drive libmgba in-process (no GUI/Lua/mGBA-http). Requires the
+#           compiled binding (python -m game._mgba_build) and `brew install mgba`.
+# "http":   legacy mGBA-http transport (mGBA GUI + Lua socket + .NET server).
+MGBA_BACKEND      = os.getenv("MGBA_BACKEND",      "native")
+ROM_PATH          = os.path.expanduser(
+                        os.getenv("ROM_PATH", "~/mgba-http/Pokemon_LeafGreen.gba"))
+
+# ── Live viewer (native backend only) ─────────────────────────────────────────
+# Show a window rendering the game as the agent plays. Requires pygame.
+SHOW_WINDOW       = os.getenv("SHOW_WINDOW",  "false").lower() == "true"
+VIEWER_SCALE      = int(os.getenv("VIEWER_SCALE", "3"))    # 240x160 -> 720x480
+VIEWER_FPS        = int(os.getenv("VIEWER_FPS",   "60"))   # 0 = uncapped
+
+# ── Network (http backend only) ───────────────────────────────────────────────
 MGBA_HTTP_BASE    = os.getenv("MGBA_HTTP_BASE",    "http://localhost:5000")
 LM_STUDIO_BASE    = os.getenv("LM_STUDIO_BASE",    "http://localhost:1234/v1")
 

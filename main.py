@@ -1,5 +1,5 @@
 from datetime import datetime
-from game.mgba_client import MGBAClient
+from config import MGBA_BACKEND
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext
 from game.tilemap_reader import TilemapReader
@@ -21,12 +21,17 @@ console = Console()
 
 def main():
     console.rule("[bold green]Pokemon LeafGreen LLM Agent")
-    mgba = MGBAClient()
+    if MGBA_BACKEND == "native":
+        from game.mgba_core import NativeMGBAClient
+        mgba = NativeMGBAClient()
+    else:
+        from game.mgba_client import MGBAClient
+        mgba = MGBAClient()
     if not mgba.verify_connection():
-        console.print("[red]ERROR: mGBA-http not connected or wrong ROM loaded.")
-        console.print("Expected AGB-BPGE (Pokemon LeafGreen). Check startup order.")
+        console.print(f"[red]ERROR: emulator not ready or wrong ROM (backend={MGBA_BACKEND}).")
+        console.print("Expected AGB-BPGE (Pokemon LeafGreen). Check ROM_PATH / startup order.")
         sys.exit(1)
-    console.print(f"[green]Connected: {mgba.get_game_title()} ({mgba.get_game_code()})")
+    console.print(f"[green]Connected ({MGBA_BACKEND}): {mgba.get_game_title()} ({mgba.get_game_code()})")
 
     reader  = LeafGreenReader(mgba, decrypt=True)
     tilemap = TilemapReader(mgba)
@@ -133,7 +138,7 @@ def main():
                 if transitioning_steps >= 5:
                     mgba.tap("A")
                     console.print("[dim]transition: tap A[/]")
-                    time.sleep(0.15)
+                    mgba.tick()
                     continue
             else:
                 transitioning_steps = 0
@@ -261,7 +266,7 @@ def main():
                 reward.reward("loss")
                 ltm.save()
                 mgba.load_state(0)
-                time.sleep(1.0)
+                mgba.tick(60)
                 prev_state = None
                 battle_was_active = False
                 continue
@@ -290,7 +295,7 @@ def main():
                 client._current_opponent = ""
 
             prev_state = state
-            time.sleep(0.15)
+            mgba.tick()
 
         except KeyboardInterrupt:
             console.print("\n[red]Stopped.")
