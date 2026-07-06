@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + unit tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+      - name: Ruff (real errors only)
+        run: ruff check .
+      - name: Pytest
+        # Hardware-free suite; native-binding/ROM tests skip automatically.
+        run: python -m pytest
+
+  binding:
+    name: build native libmgba binding (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install libmgba
+        run: brew install mgba
+      - name: Install build + test dependencies
+        run: pip install cffi setuptools -r requirements-test.txt
+      - name: Build the cffi binding
+        # Point the builder at Homebrew's prefix (works on both ARM and Intel runners).
+        run: MGBA_PREFIX="$(brew --prefix)" python -m game._mgba_build
+      - name: Pytest (binding symbol checks; ROM tests skip)
+        # ROM is copyrighted and never present in CI, so load/framebuffer tests
+        # skip; the symbol test confirms the binding compiled and imports.
+        run: python -m pytest tests/test_binding.py -v
