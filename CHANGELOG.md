@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.2.1] — 2026-07-06
+
+### Fixed
+- fix: `detect_context` no longer swallows read errors in broad `except` blocks,
+  so a backend failure surfaces instead of being mislabeled as OVERWORLD/TRANSITIONING (#4)
+
 ## [0.2.0] — 2026-07-06
 
 ### Added
@@ -21,4 +27,5 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.2.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.2.1
 [0.2.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.2.0
