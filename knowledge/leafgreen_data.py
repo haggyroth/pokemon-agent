@@ -197,8 +197,8 @@ MOVE_TYPE: dict[str, str] = {
     "Twineedle": "BUG", "Fury Attack": "NOR",  # Fury Attack is Normal
     "Fury Swipes": "NOR",
     "Signal Beam": "BUG", "Silver Wind": "BUG",
-    # Ghost
-    "Lick": "GHO", "Night Shade": "GHO", "Confuse Ray": "GHO",
+    # Ghost  (Lick is defined once above in the Normal-move block)
+    "Night Shade": "GHO", "Confuse Ray": "GHO",
     "Shadow Ball": "GHO", "Astonish": "GHO", "Grudge": "GHO",
     "Destiny Bond": "GHO", "Curse": "GHO",
     # Steel
