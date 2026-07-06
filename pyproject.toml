@@ -1,0 +1,20 @@
+[project]
+name = "pokemon-agent"
+version = "0.1.0"
+description = "Autonomous LLM agent that plays Pokemon LeafGreen via in-process libmgba"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+# Lint the source, not the build/venv artifacts.
+extend-exclude = [".venv", "game/_mgba_native.c", "tools"]
+line-length = 120
+
+[tool.ruff.lint]
+# Gate on real problems (pyflakes + syntax), not stylistic bikeshedding, so CI
+# stays meaningful against the existing code style.
+select = ["F", "E9"]
