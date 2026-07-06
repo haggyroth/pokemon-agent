@@ -104,6 +104,17 @@ BADGE_BIT_MILESTONE: dict[int, str] = {
     4: "beat_koga",     5: "beat_sabrina", 6: "beat_blaine", 7: "beat_giovanni",
 }
 
+
+def badges_in_bitmask(badge_bits: int) -> list[tuple[int, str | None, str | None]]:
+    """Decode a BADGES bitmask into (bit, gym_leader, milestone_name) for each
+    set bit. leader/milestone are None if a bit is unmapped. Pure — no I/O."""
+    out = []
+    for bit in range(8):
+        if badge_bits & (1 << bit):
+            gym = next((g for g in GYMS if g["badge_bit"] == bit), None)
+            out.append((bit, gym["leader"] if gym else None, BADGE_BIT_MILESTONE.get(bit)))
+    return out
+
 # ── Key Items ─────────────────────────────────────────────────────────────────
 
 KEY_ITEMS: list[dict] = [

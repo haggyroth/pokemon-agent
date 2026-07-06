@@ -45,24 +45,16 @@ def main():
     console.print(f"Session #{ltm.data['session_count']} | Badges: {ltm.data['badges_earned']}/8 | "
                   f"Milestones: {len(ltm.data['milestones'])}")
 
-    # ── Startup badge sync ───────────────────────────────────────────────────
-    # Compute the badge bitmask LTM believes is correct (from gyms_beaten list).
-    # Write it to game memory so the live RAM matches — prevents stale badge data
-    # from previous sessions (e.g. a save state that still had Brock's badge set)
-    # from polluting context detection and auto-milestone diff logic.
-    _expected_bits = 0
-    for _bit, _ms in BADGE_BIT_MILESTONE.items():
-        _gym = next((g for g in GYMS if g["badge_bit"] == _bit), None)
-        if _gym and _gym["leader"] in ltm.data.get("gyms_beaten", []):
-            _expected_bits |= (1 << _bit)
-    _actual_bits = mgba.read8(Addr.BADGES)
-    if _actual_bits != _expected_bits:
-        console.print(
-            f"[yellow]Badge sync: game RAM has {bin(_actual_bits)} "
-            f"but LTM expects {bin(_expected_bits)} — correcting game memory[/]"
-        )
-        mgba.write8(Addr.BADGES, _expected_bits)
-    del _expected_bits, _actual_bits  # tidy up temps
+    # ── Startup badge reconciliation ─────────────────────────────────────────
+    # Game RAM is the source of truth for badges — it IS the actual save state.
+    # We never write it. Instead we fold any badges RAM shows into LTM, which is
+    # a monotonic record for reward/milestone tracking. RAM can legitimately
+    # regress when the agent load_state()s to retry a gym, so we must not un-earn
+    # milestones or (worse) fabricate badges by writing LTM's belief back to RAM.
+    _adopted = ltm.reconcile_badges_from_ram(mgba.read8(Addr.BADGES))
+    if _adopted:
+        console.print(f"[yellow]Adopted badges from game save into LTM: {', '.join(_adopted)}[/]")
+    del _adopted
 
     prev_state           = None
     battle_was_active    = False
