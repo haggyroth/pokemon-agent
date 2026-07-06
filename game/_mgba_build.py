@@ -39,6 +39,8 @@ ffi.cdef("""
     int      pycore_screenshot(void* h, const char* path);
     void     pycore_video_dims(void* h, uint32_t* w, uint32_t* ht);
     void*    pycore_video_ptr(void* h);
+    int      pycore_load_save(void* h, const char* path);
+    void     pycore_reset(void* h);
 """)
 
 ffi.set_source(
@@ -137,6 +139,11 @@ ffi.set_source(
         PyCore* pc = (PyCore*)h; *w = pc->vw; *ht = pc->vh;
     }
     void* pycore_video_ptr(void* h) { PyCore* pc = (PyCore*)h; return pc->video; }
+    int pycore_load_save(void* h, const char* path) {
+        PyCore* pc = (PyCore*)h;
+        return mCoreLoadSaveFile(pc->core, path, 0);
+    }
+    void pycore_reset(void* h) { PyCore* pc = (PyCore*)h; pc->core->reset(pc->core); }
     """,
     include_dirs=[INCLUDE],
     library_dirs=[LIBDIR],

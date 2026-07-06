@@ -85,6 +85,19 @@ class NativeMGBAClient:
         lib.pycore_set_keys(self._h, 0)
         self.run_frames(frames)
 
+    def reset(self) -> None:
+        """Reboot the core (as if power-cycled). Battery save data persists."""
+        lib.pycore_reset(self._h)
+
+    def load_save(self, path: str) -> bool:
+        """Load a battery save file (.sav) into the cartridge's save memory.
+
+        Call before reset() so the title screen offers "Continue":
+            m.load_save("game.sav"); m.reset()
+        Returns True on success. This is the cartridge save, not a save state.
+        """
+        return bool(lib.pycore_load_save(self._h, str(path).encode()))
+
     # ── Buttons ──────────────────────────────────────────────────────────────
 
     def _press(self, mask: int) -> None:

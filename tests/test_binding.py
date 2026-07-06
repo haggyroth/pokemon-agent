@@ -24,7 +24,8 @@ rom = pytest.mark.skipif(not os.path.isfile(ROM_PATH), reason=f"ROM not present 
 def test_binding_exposes_expected_symbols():
     from game._mgba_native import lib
     for name in ("pycore_load", "pycore_read8", "pycore_set_keys",
-                 "pycore_run_frame", "pycore_screenshot", "pycore_video_ptr"):
+                 "pycore_run_frame", "pycore_screenshot", "pycore_video_ptr",
+                 "pycore_load_save", "pycore_reset"):
         assert hasattr(lib, name), f"missing binding symbol {name}"
 
 
@@ -45,3 +46,28 @@ def test_framebuffer_size_matches_gba():
     m = NativeMGBAClient(show_window=False)
     m.tick(2)
     assert len(m.framebuffer()) == 240 * 160 * 4
+
+
+@binding
+@rom
+def test_reset_reboots_without_crashing():
+    from game.mgba_core import NativeMGBAClient
+    m = NativeMGBAClient(show_window=False)
+    m.tick(120)                 # advance into the boot sequence
+    m.reset()                   # power-cycle
+    m.tick(2)
+    # ROM header is still readable after a reset (core is alive and re-booting).
+    assert m.get_game_code() == "AGB-BPGE"
+
+
+@binding
+@rom
+def test_load_save_returns_bool(tmp_path):
+    from game.mgba_core import NativeMGBAClient
+    m = NativeMGBAClient(show_window=False)
+    # mGBA opens the cartridge save (creating it if absent) and reports success.
+    result = m.load_save(str(tmp_path / "fresh.sav"))
+    assert result is True
+    m.reset()  # load-then-reset is the intended "Continue" sequence; must not crash
+    m.tick(2)
+    assert m.get_game_code() == "AGB-BPGE"
