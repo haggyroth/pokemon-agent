@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "Autonomous LLM agent that plays Pokemon LeafGreen via in-process libmgba"
 requires-python = ">=3.11"
 
+# This is an application, not a pip-installable package. Disable setuptools'
+# automatic package discovery so building the cffi extension (game/_mgba_build.py)
+# doesn't choke on the flat multi-package layout.
+[tool.setuptools]
+py-modules = []
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
