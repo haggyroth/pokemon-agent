@@ -1,0 +1,7 @@
+# Test/CI dependencies — the minimal set needed to run the hardware-free suite.
+# (No openai/pygame/cffi: those pull in the LLM client, viewer, and native
+# binding, none of which the pure unit tests import.)
+pytest>=8
+ruff>=0.6
+requests>=2.32
+python-dotenv>=1.0

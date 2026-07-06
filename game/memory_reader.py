@@ -1,7 +1,6 @@
-import time
 from game.mgba_client import MGBAClient
 from game.state import GameState, PokemonStatus, StateDiff, GameContext
-from game.constants import Addr, decode_gen3_string, SPECIES_NAMES, MOVE_NAMES
+from game.constants import Addr, SPECIES_NAMES, MOVE_NAMES
 
 # ── Gen III XOR Decryption (Tier 2) ─────────────────────────────────────────
 
