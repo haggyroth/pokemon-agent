@@ -1,28 +1,63 @@
 # CLAUDE.md — Pokemon LeafGreen LLM Agent
-**Project root:** `D:\Current Projects\pokemon-agent`
-**Platform:** Enterprise-E (Windows 11, RTX 4070 Super 12GB VRAM)
-**Python:** 3.14 — all required packages compatible
+**Project root:** `/Users/kylec/Projects/pokemon-agent`
+**Platform:** macOS (Apple Silicon, arm64)
+**Python:** 3.14 (project `.venv`) — all required packages compatible
+
+> The code is cross-platform (paths use `pathlib`/`tempfile`); only the environment
+> locations and shell commands below are host-specific. This file documents the macOS host.
 
 > **For AI coding assistants:** This is the authoritative project reference. Read fully before writing any code. All API endpoints are verified against the actual swagger.json from mGBA-http 0.8.2.
 
 ---
 
-## Environment Layout
+## Emulator Backend
+
+Two backends, selected by `MGBA_BACKEND` in `.env`:
+
+- **`native` (default)** — drives libmgba **in-process** via a cffi binding. No mGBA
+  GUI, no Lua, no mGBA-http, no HTTP. The agent owns the emulator and steps frames
+  directly (~50× real-time, deterministic). This is the recommended path.
+- **`http` (legacy)** — the old mGBA GUI + Lua socket + mGBA-http .NET transport.
+  Kept as a fallback; see the legacy notes at the bottom of this section.
+
+### Native backend
 
 | Component | Location | Notes |
 |-----------|----------|-------|
-| mGBA emulator | `C:\mgba\mGBA.exe` | GBA emulator — `.gba` ROMs only |
-| LeafGreen ROM | `C:\mgba\Pokemon_LeafGreen.gba` | |
-| mGBA-http binary | `C:\mgba-http\mGBA-http-0.8.2-win-x64-self-contained.exe` | .NET app, run directly |
-| Lua socket script | `C:\mgba-http\mGBASocketServer.lua` | Load inside mGBA scripting console |
-| LM Studio model | Qwen2.5-14B-Instruct | 8192 ctx, tool use enabled, port 1234 |
-| Project root | `D:\Current Projects\pokemon-agent` | **Path has a space — always quote in PowerShell** |
+| libmgba | Homebrew (`brew install mgba`) — `/opt/homebrew/lib/libmgba.dylib` | Provides the core + headers the binding builds against |
+| Binding source | `game/_mgba_build.py` | cffi builder → `game/_mgba_native*.so` (gitignored) |
+| Native client | `game/mgba_core.py` (`NativeMGBAClient`) | Drop-in for `MGBAClient` |
+| LeafGreen ROM | `~/mgba-http/Pokemon_LeafGreen.gba` (override with `ROM_PATH`) | US v1.0, 16 MB |
+| LM Studio model | see `MODEL_NAME` in `.env` (currently `google/gemma-4-12b-qat`) | tool use enabled, port 1234 |
+| Project root | `/Users/kylec/Projects/pokemon-agent` | |
 
-```powershell
-# Always quote the path
-cd "D:\Current Projects\pokemon-agent"
-.venv\Scripts\activate
+Build the binding once (or after upgrading libmgba):
+```fish
+cd /Users/kylec/Projects/pokemon-agent
+source .venv/bin/activate.fish        # bash/zsh: source .venv/bin/activate
+python -m game._mgba_build            # compiles game/_mgba_native*.so
 ```
+The binding reads/writes memory with the **same absolute GBA bus addresses** as the
+HTTP API, so `game/constants.py` and `memory_reader.py` are backend-agnostic.
+
+**Watching it play (live window).** The native backend is headless by default. Set
+`SHOW_WINDOW=true` (needs `pip install pygame`) to open a window that renders
+libmgba's framebuffer each frame (`game/viewer.py`). It's smooth during actions and
+holds the last frame still while the LLM thinks (the game only advances when the
+agent runs frames). Tunables: `VIEWER_SCALE` (window size), `VIEWER_FPS` (playback
+cap; 0 = full emulator speed). Close the window or press Esc to stop cleanly.
+The framebuffer is 32-bit color, laid out `[R,G,B,pad]` (RGBX) per pixel.
+
+### Legacy `http` backend (fallback, `MGBA_BACKEND=http`)
+
+| Component | Location |
+|-----------|----------|
+| mGBA emulator | `/Applications/mGBA.app` |
+| mGBA-http binary | `~/mgba-http/mGBA-http-0.8.2-osx-arm64-self-contained` (self-contained Mach-O) |
+| Lua socket script | `~/mgba-http/mGBASocketServer.lua` (load in mGBA scripting console) |
+
+First-run note for that binary: it's a downloaded, unsigned Mach-O — if Gatekeeper
+blocks it, run `chmod +x` and `xattr -d com.apple.quarantine <binary>` once.
 
 ---
 
@@ -31,15 +66,16 @@ cd "D:\Current Projects\pokemon-agent"
 ```
 Pokemon_LeafGreen.gba
         │
-   mGBA  (C:\mgba\mGBA.exe)
-        │  Lua TCP socket → port 5000
-   mGBASocketServer.lua
-        │
-   mGBA-http 0.8.2 (.NET binary)
-        │  REST API → http://localhost:5000
+   ┌────────────────── native (default) ──────────────────┐
+   │  libmgba (Homebrew)  ──cffi──►  game/_mgba_native.so  │   in-process,
+   │                                 game/mgba_core.py     │   ~50× realtime
+   └───────────────────────────────────────────────────────┘
+        │                     (or, legacy http backend:)
+        │            mGBA GUI → Lua socket → mGBA-http → REST :5000 → game/mgba_client.py
         │
    Python Agent
-   ├── game/mgba_client.py      Verified REST wrapper
+   ├── game/mgba_core.py        NativeMGBAClient — in-process libmgba (default)
+   ├── game/mgba_client.py      MGBAClient — legacy REST wrapper (http backend)
    ├── game/memory_reader.py    WRAM decoder — XOR decryption + state machine
    ├── game/state.py            GameState, PokemonStatus, StateDiff dataclasses
    ├── game/constants.py        Memory addresses, lookup tables, charset
@@ -117,8 +153,8 @@ Use these if you need domain-relative addressing. Domain names for GBA: `wram`, 
 |--------|--------|----------|--------|
 | Save to slot | POST | `/core/savestateslot` | `slot=0` |
 | Load from slot | POST | `/core/loadstateslot` | `slot=0` |
-| Save to file | POST | `/core/savestatefile` | `path=D:\saves\pre_gym.ss1` |
-| Load from file | POST | `/core/loadstatefile` | `path=D:\saves\pre_gym.ss1` |
+| Save to file | POST | `/core/savestatefile` | `path=/Users/kylec/Projects/pokemon-agent/saves/pre_gym.ss1` |
+| Load from file | POST | `/core/loadstatefile` | `path=/Users/kylec/Projects/pokemon-agent/saves/pre_gym.ss1` |
 | Save to buffer | POST | `/core/savestatebuffer` | → hex csv string |
 | Load from buffer | POST | `/core/loadstatebuffer` | body: `[d3,00,ea,...]` |
 
@@ -131,7 +167,7 @@ Use these if you need domain-relative addressing. Domain names for GBA: `wram`, 
 | Get game title | GET | `/core/getgametitle` | `"POKEMON LEAF"` |
 | Get game code | GET | `/core/getgamecode` | `"AGB-BPGE"` (LeafGreen US) |
 | Get platform | GET | `/core/platform` | `"0"` (GBA=0, GB=1) |
-| Save screenshot | POST | `/core/screenshot` | `path=C:\screenshot.png` |
+| Save screenshot | POST | `/core/screenshot` | `path=/tmp/screenshot.png` |
 | Read CPU register | GET | `/core/readregister` | `regName=pc` → decimal |
 | Load ROM | POST | `/core/loadfile` | `path=...` |
 
@@ -252,7 +288,7 @@ class MGBAClient:
         return self.session.get(f"{self.base}/core/getgamecode").text.strip()
 
     def screenshot(self, path: str) -> None:
-        """Save a PNG screenshot to the given Windows path."""
+        """Save a PNG screenshot to the given filesystem path."""
         self.session.post(f"{self.base}/core/screenshot", params={"path": path})
 
     def log(self, message: str) -> None:
@@ -627,7 +663,7 @@ Call `reward.anneal_to_sparse()` after the 4th badge.
 ### Errors to Never Repeat
 
 - mGBA is a **GBA** emulator. ROM must be `.gba`. Never `.nds`.
-- mGBA-http is a **.NET binary**. Never run with Python.
+- mGBA-http is a **self-contained binary** (bundles its own .NET runtime). Never run with Python. Run it directly.
 - Correct repo: `nikouu/mGBA-http`. Not `mgba-emu/mgbahttp`.
 - Memory reads: `/core/read8|16|32|readrange` with **full absolute GBA addresses**.
 - **No** `/core/memory/domain` endpoint — it doesn't exist.
@@ -635,38 +671,44 @@ Call `reward.anneal_to_sparse()` after the 4th badge.
 - **No** `/core/frame/forward` — doesn't exist.
 - Response from `/core/read8`: `"255"` (plain text decimal). Parse with `int(r.text.strip())`.
 - Response from `/core/readrange`: `"d3,00,ea,66"` (comma-sep hex). Parse: `bytes(int(h,16) for h in r.text.strip().split(","))`.
-- Always quote project path in PowerShell: `"D:\Current Projects\pokemon-agent"`
 - `slot` param for savestateslot/loadstateslot is a **string**, not integer: `params={"slot": "0"}`
 
 ### Startup Order (Every Session)
 
+**Native backend (default) — two steps:**
 ```
-1. C:\mgba\mGBA.exe → File → Load ROM → C:\mgba\Pokemon_LeafGreen.gba
-2. mGBA: Tools → Scripting → File → Load Script → C:\mgba-http\mGBASocketServer.lua
-3. PowerShell: C:\mgba-http\mGBA-http-0.8.2-win-x64-self-contained.exe (leave open)
-4. LM Studio: load Qwen2.5-14B-Instruct, server port 1234, tools enabled
-5. PowerShell: cd "D:\Current Projects\pokemon-agent" → .venv\Scripts\activate → python main.py
+1. LM Studio: load the model named in .env (MODEL_NAME), server port 1234, tools enabled
+2. Terminal (fish): cd /Users/kylec/Projects/pokemon-agent → source .venv/bin/activate.fish → python main.py
+```
+main.py loads the ROM (`ROM_PATH`) in-process. No GUI, no Lua, no mGBA-http.
+First time only: `python -m game._mgba_build` to compile the binding.
+
+**Legacy http backend (`MGBA_BACKEND=http`):**
+```
+1. Open /Applications/mGBA.app → File → Load ROM → ~/mgba-http/Pokemon_LeafGreen.gba
+2. mGBA: Tools → Scripting → File → Load Script → ~/mgba-http/mGBASocketServer.lua
+3. Terminal: ~/mgba-http/mGBA-http-0.8.2-osx-arm64-self-contained  (leave running)
+4. LM Studio: load the model, server port 1234, tools enabled
+5. Terminal (fish): cd .../pokemon-agent → source .venv/bin/activate.fish → python main.py
 ```
 
 ### Verification Commands
 
-```powershell
-# Verify mGBA-http and ROM are connected
-Invoke-RestMethod -Uri "http://localhost:5000/core/getgametitle"
-# Expected: "POKEMON LEAF"
+```fish
+# Native backend: verify the binding loads the ROM in-process
+cd /Users/kylec/Projects/pokemon-agent
+source .venv/bin/activate.fish
+python -c "from game.mgba_core import NativeMGBAClient as C; m=C(); print(m.get_game_title(), m.get_game_code(), m.verify_connection())"
+# Expected: POKEMON LEAF AGB-BPGE True
 
-Invoke-RestMethod -Uri "http://localhost:5000/core/getgamecode"
-# Expected: "AGB-BPGE"
+# Legacy http backend (only if MGBA_BACKEND=http and the server is running):
+#   curl http://localhost:5000/core/getgametitle      -> "POKEMON LEAF"
+#   curl http://localhost:5000/core/getgamecode        -> "AGB-BPGE"
+#   curl "http://localhost:5000/core/read32?address=0x02024284"  -> 0-6
+#   curl -X POST "http://localhost:5000/mgba-http/button/tap?button=A"
 
-# Verify memory reads work (party count — returns 0 at title screen)
-Invoke-RestMethod -Uri "http://localhost:5000/core/read32?address=0x02024284"
-# Expected: some number 0-6
-
-# Test button
-Invoke-RestMethod -Uri "http://localhost:5000/mgba-http/button/tap?button=A" -Method Post
-
-# Test Python imports
-cd "D:\Current Projects\pokemon-agent"
-.venv\Scripts\activate
+# Test Python imports  (fish shell)
+cd /Users/kylec/Projects/pokemon-agent
+source .venv/bin/activate.fish
 python -c "import requests, openai, rich; print('OK')"
 ```
