@@ -60,16 +60,24 @@ def test_detect_context_dialog():
 
 def test_detect_context_battle():
     fc = FakeClient()
-    fc.set32(Addr.OVERWORLD_FLAG, 0)   # not on overworld
-    fc.set32(Addr.BATTLE_FLAGS, 0x04)  # battle type flags present
+    fc.set32(Addr.GMAIN_CALLBACK2, Addr.CB2_BATTLE)  # battle dispatcher active
     assert make_reader(fc).detect_context() == GameContext.IN_BATTLE
 
 
-def test_battle_flags_ignored_while_on_overworld():
-    # BATTLE_FLAGS persists after battles; OVERWORLD_FLAG must take precedence.
+def test_unknown_callback_is_transitioning():
+    # Menus, warps, battle intro/outro use other callback2 values → TRANSITIONING.
+    fc = FakeClient()
+    fc.set32(Addr.GMAIN_CALLBACK2, 0x08000000)  # some other screen callback
+    assert make_reader(fc).detect_context() == GameContext.TRANSITIONING
+
+
+def test_post_battle_overworld_is_overworld():
+    # Regression for the old bug: once the battle ends, callback2 returns to the
+    # field value, so we must read OVERWORLD even though the old gBattleTypeFlags
+    # address would still be non-zero (stale).
     fc = FakeClient()
     stage_overworld(fc)
-    fc.set32(Addr.BATTLE_FLAGS, 0x04)  # stale
+    fc.set32(Addr.BATTLE_FLAGS, 0x04)  # stale leftover — must be ignored now
     assert make_reader(fc).detect_context() == GameContext.OVERWORLD
 
 

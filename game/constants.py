@@ -9,36 +9,40 @@ class Addr:
     # Bit order: bit 0=Brock, 1=Misty, 2=Surge, 3=Erika,
     #            4=Koga, 5=Sabrina, 6=Blaine, 7=Giovanni
 
-    # Context detection — three-signal system (empirically verified via diagnostic):
+    # Context detection — verified live via in-process libmgba (fix/detect-context).
     #
-    #   OVERWORLD_FLAG (0x0202287C) u32:
-    #     Non-zero (0x00410000) on overworld, 0 in battle and transition.
-    #     Primary gate: if != 0 we are on the overworld.
+    #   gMain.callback2 (0x030030F4) u32 — the game's live "current screen"
+    #   dispatcher, and the authoritative context gate:
+    #     == CB2_OVERWORLD (0x080565B5) while the field system runs (free-roam,
+    #        on-map dialog/scripts, field fades). Returns to this value when a
+    #        battle ends — unlike the old flags, which persist after battle.
+    #     == CB2_BATTLE    (0x08011101) for essentially the whole battle.
+    #   SCREEN_FADE (0x03000F9C) u8: 1 during a screen fade.
+    #   SCRIPT_RAM  (0x03000EB0): script-engine block; byte[0] != 0 while a map
+    #     script runs (NPC dialog, signs, cutscenes), 0 in free-roam.
     #
-    #   SCREEN_FADE (0x03000F9C) u8:
-    #     1 during BOTH screen-fade transitions AND active battle.
-    #     Cannot be used alone to detect "transitioning" — only meaningful when
-    #     OVERWORLD_FLAG is also non-zero (overworld fade).
+    # detect_context():
+    #   callback2 == CB2_BATTLE                        -> IN_BATTLE
+    #   callback2 == CB2_OVERWORLD:
+    #       SCREEN_FADE == 1                           -> TRANSITIONING (field fade)
+    #       SCRIPT_RAM[0] != 0                         -> DIALOG_OPEN
+    #       else                                       -> OVERWORLD
+    #   otherwise (menus, warps, battle intro/outro)   -> TRANSITIONING
     #
-    #   SCRIPT_RAM byte[2] (0x03000EB2) u8:
-    #     0x01 ONLY when it is the player's move-select turn — 0 during HP
-    #     animations, move text, damage rolls, etc. NOT reliable for battle
-    #     detection; only non-zero for a fraction of each battle turn.
-    #
-    # Detection logic in detect_context():
-    #   OVERWORLD_FLAG != 0 → OVERWORLD (or TRANSITIONING if also fading)
-    #   OVERWORLD_FLAG == 0, BATTLE_FLAGS != 0 → IN_BATTLE (stays set all battle)
-    #   OVERWORLD_FLAG == 0, BATTLE_FLAGS == 0 → TRANSITIONING
-    #
-    # ⚠ IMPORTANT: BATTLE_FLAGS (gBattleTypeFlags) is NOT zeroed when a battle
-    # ends and the player returns to the overworld.  It retains the last battle's
-    # flags indefinitely.  Never check BATTLE_FLAGS without first confirming
-    # OVERWORLD_FLAG == 0.  Checking BATTLE_FLAGS alone will give false positives
-    # on every overworld frame after the first battle.
-    OVERWORLD_FLAG = 0x0202287C   # u32: non-zero = on overworld; 0 in battle/transition
-    BATTLE_FLAGS   = 0x02022880   # u32: gBattleTypeFlags — non-zero during battle, persists after
-    SCREEN_FADE    = 0x03000F9C   # u8: 1 during fade AND during battle
-    SCRIPT_RAM     = 0x03000EB0   # 74 bytes; byte[2] at 0x03000EB2 = 0x01 in battle
+    # ROM-version note: the CB2_* target addresses are specific to this LeafGreen
+    # build (as are all addresses here); re-derive if OVERWORLD is misdetected.
+    GMAIN_CALLBACK2 = 0x030030F4   # u32: gMain.callback2 — live screen dispatcher
+    CB2_OVERWORLD   = 0x080565B5   # callback2 value while the field system is active
+    CB2_BATTLE      = 0x08011101   # callback2 value during battle
+    SCREEN_FADE     = 0x03000F9C   # u8: 1 during a screen fade
+    SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
+
+    # DEPRECATED — empirically WRONG for context detection; kept only for the
+    # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
+    # (its logic was inverted); BATTLE_FLAGS is transient during a battle and
+    # stale afterward. Do not use these in detect_context.
+    OVERWORLD_FLAG = 0x0202287C
+    BATTLE_FLAGS   = 0x02022880
 
     # Map header — DataCrystal: "Current Map Header 0x02036DFC"
     # The struct MapHeader sits directly at this address (not a pointer to it).
