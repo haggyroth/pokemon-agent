@@ -91,7 +91,7 @@ def build_party_mon(pid: int, ot_id: int, *, level: int, cur_hp: int, max_hp: in
 def stage_overworld(fc: FakeClient, *, x: int = 5, y: int = 7,
                     map_bank: int = 3, map_id: int = 0) -> None:
     """Put the FakeClient into a plausible OVERWORLD state."""
-    fc.set32(Addr.OVERWORLD_FLAG, 1)
+    fc.set32(Addr.GMAIN_CALLBACK2, Addr.CB2_OVERWORLD)  # field system active
     fc.set8(Addr.SCREEN_FADE, 0)
     fc.set8(Addr.SCRIPT_RAM, 0)
     fc.set8(Addr.MAP_BANK, map_bank)

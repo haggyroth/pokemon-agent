@@ -60,29 +60,22 @@ class LeafGreenReader:
         return bin(raw).count("1"), raw
 
     def detect_context(self) -> GameContext:
-        # Three-signal detection.  OVERWORLD_FLAG is the authoritative primary gate.
-        #
-        # gBattleTypeFlags (BATTLE_FLAGS 0x02022880) is NOT zeroed when a battle
-        # ends and the player returns to the overworld — it keeps the last battle's
-        # type flags indefinitely.  It therefore CANNOT be used as a standalone
-        # battle check and must only be consulted when OVERWORLD_FLAG == 0 already
-        # confirms we are not on the overworld.
-        #
-        #   OVERWORLD_FLAG != 0                      → OVERWORLD (or overworld fade)
-        #   OVERWORLD_FLAG == 0, BATTLE_FLAGS != 0   → IN_BATTLE
-        #   OVERWORLD_FLAG == 0, BATTLE_FLAGS == 0   → TRANSITIONING
-        if self.client.read32(Addr.OVERWORLD_FLAG) != 0:
+        # gMain.callback2 is the game's live "current screen" dispatcher and the
+        # authoritative gate (verified live via libmgba). The old OVERWORLD_FLAG /
+        # BATTLE_FLAGS addresses were wrong: OVERWORLD_FLAG reads 0 during
+        # free-roam (inverted), and BATTLE_FLAGS is transient/persists. See the
+        # constants.py notes for the full signal table.
+        cb2 = self.client.read32(Addr.GMAIN_CALLBACK2)
+        if cb2 == Addr.CB2_BATTLE:
+            return GameContext.IN_BATTLE
+        if cb2 == Addr.CB2_OVERWORLD:
             if self.client.read8(Addr.SCREEN_FADE) == 0x01:
                 return GameContext.TRANSITIONING
-            # These are reads of fixed, always-valid addresses. A failure here
-            # means a real backend problem, not a game state — let it propagate
-            # to the main loop's handler rather than silently mislabeling the
-            # context as OVERWORLD/TRANSITIONING.
+            # SCRIPT_RAM[0] != 0 while a map script runs (NPC dialog, signs, ...).
             if self.client.read8(Addr.SCRIPT_RAM) != 0:
                 return GameContext.DIALOG_OPEN
             return GameContext.OVERWORLD
-        if self.client.read32(Addr.BATTLE_FLAGS) != 0:
-            return GameContext.IN_BATTLE
+        # Menus, map warps/loads, battle intro/outro, and other screens.
         return GameContext.TRANSITIONING
 
     def read_party(self) -> list[PokemonStatus]:
