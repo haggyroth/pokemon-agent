@@ -74,17 +74,15 @@ class LeafGreenReader:
         if self.client.read32(Addr.OVERWORLD_FLAG) != 0:
             if self.client.read8(Addr.SCREEN_FADE) == 0x01:
                 return GameContext.TRANSITIONING
-            try:
-                if self.client.read8(Addr.SCRIPT_RAM) != 0:
-                    return GameContext.DIALOG_OPEN
-            except Exception:
-                pass
+            # These are reads of fixed, always-valid addresses. A failure here
+            # means a real backend problem, not a game state — let it propagate
+            # to the main loop's handler rather than silently mislabeling the
+            # context as OVERWORLD/TRANSITIONING.
+            if self.client.read8(Addr.SCRIPT_RAM) != 0:
+                return GameContext.DIALOG_OPEN
             return GameContext.OVERWORLD
-        try:
-            if self.client.read32(Addr.BATTLE_FLAGS) != 0:
-                return GameContext.IN_BATTLE
-        except Exception:
-            pass
+        if self.client.read32(Addr.BATTLE_FLAGS) != 0:
+            return GameContext.IN_BATTLE
         return GameContext.TRANSITIONING
 
     def read_party(self) -> list[PokemonStatus]:
