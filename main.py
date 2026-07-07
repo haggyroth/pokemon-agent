@@ -1,7 +1,7 @@
 from datetime import datetime
 from config import MGBA_BACKEND
 from game.memory_reader import LeafGreenReader
-from game.state import GameContext, active_party_member
+from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
 from agent.lm_studio_client import AgentClient
 from agent.reward import RewardTracker
@@ -170,6 +170,8 @@ def main():
                 # trigger badges_changed without state.badges > prev_state.badges.
                 if prev_state is not None and state.badges > prev_state.badges:
                     reward.reward("new_badge")
+                    # A badge increase means a gym leader was just defeated.
+                    reward.reward("gym_leader_win")
                     # Use raw bitmask diff — state.badges is a popcount (0-8), not
                     # a bitmask, so "state.badges & ~prev_state.badges" was WRONG.
                     newly_set = state.badge_bits & (~prev_state.badge_bits & 0xFF)
@@ -187,6 +189,11 @@ def main():
 
             for _ in diff.level_changed:
                 reward.reward("level_up")
+
+            # Penalise each of our Pokémon fainting (once per faint).
+            if prev_state is not None:
+                for _slot in newly_fainted_slots(prev_state.party, state.party):
+                    reward.reward("party_faint")
 
             if prev_state is not None and state.party_count > prev_state.party_count:
                 reward.reward("caught_new")
@@ -275,7 +282,8 @@ def main():
                 continue
 
             # ── LLM decision step ────────────────────────────────────────────
-            client.set_system(build_system_prompt(ltm, journal, state))
+            client.set_system(build_system_prompt(ltm, journal, state,
+                                                   current_enemy=current_enemy))
             screenshot = client.capture_screenshot()
             reasoning, actions = client.step(obs, screenshot,
                                              area_map_b64=pending_map_b64,

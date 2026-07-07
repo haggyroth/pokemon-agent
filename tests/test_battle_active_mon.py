@@ -1,5 +1,5 @@
 """Battle-end logging records the fighting mon, not always the lead (#2)."""
-from game.state import PokemonStatus, active_party_member
+from game.state import PokemonStatus, active_party_member, newly_fainted_slots
 
 
 def mon(slot, species, hp, max_hp=30):
@@ -34,3 +34,23 @@ def test_empty_party_is_none():
 def test_fainted_active_mon_reports_zero_hp():
     # Loss case: the last-active mon fainted -> 0% logged, not the lead's HP.
     assert active_party_member(PARTY, 2).hp_percent == 0.0
+
+
+# ── newly_fainted_slots (party_faint reward, #14) ─────────────────────────────
+
+def test_newly_fainted_detects_alive_to_zero():
+    before = [mon(0, "Bulbasaur", 10), mon(1, "Pidgey", 5)]
+    after = [mon(0, "Bulbasaur", 0), mon(1, "Pidgey", 5)]
+    assert newly_fainted_slots(before, after) == [0]
+
+
+def test_newly_fainted_ignores_already_fainted():
+    before = [mon(0, "Bulbasaur", 0)]
+    after = [mon(0, "Bulbasaur", 0)]
+    assert newly_fainted_slots(before, after) == []
+
+
+def test_newly_fainted_multiple():
+    before = [mon(0, "A", 3), mon(1, "B", 3)]
+    after = [mon(0, "A", 0), mon(1, "B", 0)]
+    assert newly_fainted_slots(before, after) == [0, 1]
