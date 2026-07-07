@@ -1,7 +1,7 @@
 from datetime import datetime
 from config import MGBA_BACKEND
 from game.memory_reader import LeafGreenReader
-from game.state import GameContext
+from game.state import GameContext, active_party_member
 from game.tilemap_reader import TilemapReader
 from agent.lm_studio_client import AgentClient
 from agent.reward import RewardTracker
@@ -60,6 +60,7 @@ def main():
     battle_was_active    = False
     battle_start_lead    = ""   # species name of our lead when battle began
     current_enemy        = ""   # last known opponent species name (set by LLM via tool or detected)
+    battle_active_slot   = 0    # party slot of the Pokémon actually fighting (see below)
     prev_map_key         = None
     transitioning_steps  = 0
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
@@ -78,12 +79,22 @@ def main():
                 stm.reset_for_new_battle()
                 ltm.data["total_battles"] += 1
                 battle_start_lead = state.party[0].species_name if state.party else ""
+                battle_active_slot = 0
                 current_enemy = ""
                 client._current_opponent = ""
 
+            # Track which of our Pokémon is actually fighting. In single battles
+            # only the active mon's HP changes, so the last slot to take damage
+            # is the one that's out — remembered so battle-end logging records the
+            # fighting mon, not always the lead (#2).
+            if in_battle and diff.hp_changed:
+                battle_active_slot = diff.hp_changed[-1]
+
             # ── Battle end detection ────────────────────────────────────────
             if battle_was_active and not in_battle:
-                lead_hp_pct = state.party[0].hp_percent if state.party else 0.0
+                active_mon = active_party_member(state.party, battle_active_slot)
+                lead_hp_pct = active_mon.hp_percent if active_mon else 0.0
+                active_species = active_mon.species_name if active_mon else battle_start_lead
                 all_fainted = bool(state.party) and all(p.current_hp == 0 for p in state.party)
                 outcome = "loss" if all_fainted else "win"
                 # Pass enemy name for journal + system prompt loss-lessons
@@ -100,7 +111,7 @@ def main():
                     location=location,
                     enemy_name=current_enemy_snap or "unknown",
                     enemy_level=0,
-                    player_lead=battle_start_lead,
+                    player_lead=active_species,
                     outcome=outcome,
                     turns=0,
                     moves_used=[],
@@ -108,7 +119,7 @@ def main():
                     reward=0.0,
                     notes="",
                 ))
-                console.print(f"[magenta]Battle {outcome}[/] | lead={battle_start_lead} hp={lead_hp_pct:.0%}")
+                console.print(f"[magenta]Battle {outcome}[/] | active={active_species} hp={lead_hp_pct:.0%}")
                 ltm.save()
             # Save the pre-update value so the auto-tap guard below can see
             # whether we were in battle on the PREVIOUS tick (battle_was_active
