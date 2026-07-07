@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from openai import OpenAI
 from agent.tools import TOOLS
+from agent.history import trim_messages
 from game.memory_reader import LeafGreenReader
 from game.mgba_client import MGBAClient
 from memory.long_term import LongTermMemory
@@ -32,8 +33,9 @@ class AgentClient:
             self.messages[0] = {"role": "system", "content": prompt}
         else:
             self.messages = [{"role": "system", "content": prompt}]
-        if len(self.messages) > self.MAX_HISTORY + 1:
-            self.messages = self.messages[:1] + self.messages[-(self.MAX_HISTORY):]
+        # Trim only at user-turn boundaries so a tool_calls/tool-response group
+        # is never split (which the API rejects with a 400).
+        self.messages = trim_messages(self.messages, self.MAX_HISTORY)
 
     @staticmethod
     def _strip_images(content) -> str:
@@ -220,8 +222,13 @@ class AgentClient:
                 self.mgba.load_state(args.get("slot", 0))
                 return "State loaded."
             case "wait_frames":
-                time.sleep(args.get("frames", 30) / 60.0)
-                return f"Waited {args.get('frames', 30)} frames."
+                # Advance the emulator. The native backend only progresses when
+                # frames are stepped, so a real-time sleep would leave the game
+                # frozen; tick() advances both backends (native steps frames, the
+                # HTTP backend sleeps while its emulator runs on its own).
+                frames = int(args.get("frames", 30))
+                self.mgba.tick(frames)
+                return f"Waited {frames} frames."
             case "set_opponent":
                 species = args.get("species", "").upper().strip()
                 self._current_opponent = species

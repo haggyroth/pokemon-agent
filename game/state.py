@@ -70,6 +70,17 @@ class StateDiff:
         ])
 
 
+def newly_fainted_slots(before: list[PokemonStatus],
+                        after: list[PokemonStatus]) -> list[int]:
+    """Party slots that transitioned from alive (HP > 0) to fainted (HP == 0)
+    between two states. Used to fire the party_faint reward once per faint."""
+    out = []
+    for i in range(min(len(before), len(after))):
+        if before[i].current_hp > 0 and after[i].current_hp == 0:
+            out.append(i)
+    return out
+
+
 def active_party_member(party: list[PokemonStatus], slot: int) -> PokemonStatus | None:
     """Return the party member at `slot`, clamped to a valid entry.
 
