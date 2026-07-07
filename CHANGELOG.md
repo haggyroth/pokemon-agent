@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.3.4] — 2026-07-06
+
+### Fixed
+- fix: removed unreachable Center/Mart/Gym building-guide dead code (#17)
+- fix: capped `press_button` repeats and stopped treating map position (0,0) as
+  "unknown" in stuck detection (#20)
+- fix: battle "Best move" now excludes non-damaging status moves and applies STAB
+  (partial #19; base-power ranking still pending)
+
 ## [0.3.3] — 2026-07-06
 
 ### Fixed
@@ -67,6 +76,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.3.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.4
 [0.3.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.3
 [0.3.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.2
 [0.3.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.1
