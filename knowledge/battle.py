@@ -3,7 +3,7 @@
 # and the TYPE_CHART.
 from __future__ import annotations
 from knowledge.type_chart import get_effectiveness
-from knowledge.leafgreen_data import POKEMON_TYPES, MOVE_TYPE, GEN3_CATEGORY
+from knowledge.leafgreen_data import POKEMON_TYPES, MOVE_TYPE, GEN3_CATEGORY, STATUS_MOVES
 
 
 def _type_label(t: str) -> str:
@@ -77,8 +77,13 @@ def annotate_moves(move_names: list[str],
 def battle_summary(move_names: list[str],
                    opponent_name: str,
                    player_hp_pct: float,
-                   pp_list: list[int] | None = None) -> str:
-    """Full battle analysis block injected into the obs string during IN_BATTLE."""
+                   pp_list: list[int] | None = None,
+                   attacker_types: tuple[str, ...] = ()) -> str:
+    """Full battle analysis block injected into the obs string during IN_BATTLE.
+
+    `attacker_types` (the acting Pokémon's types) enables a STAB bonus when
+    ranking the best move.
+    """
     lines: list[str] = []
 
     opp_types = POKEMON_TYPES.get(opponent_name.upper().strip())
@@ -91,25 +96,29 @@ def battle_summary(move_names: list[str],
     lines.append(f"Your moves: {annotate_moves(move_names, opponent_name, pp_list)}")
 
     if opp_types:
-        # Suggest the best move (skip moves with 0 PP)
+        # Suggest the best *damaging* move. Rank by type effectiveness with a
+        # STAB bonus; skip 0-PP moves and known status (non-damaging) moves so
+        # e.g. Growl is never proposed as the best attack.
         scored = []
         for idx, name in enumerate(move_names):
-            if not name:
+            if not name or name in STATUS_MOVES:
                 continue
             if pp_list and idx < len(pp_list) and pp_list[idx] == 0:
                 continue  # can't use — no PP
             mt = MOVE_TYPE.get(name)
             if mt:
-                scored.append((effectiveness_vs(mt, opp_types), name))
+                eff = effectiveness_vs(mt, opp_types)
+                stab = 1.5 if mt in attacker_types else 1.0
+                scored.append((eff * stab, eff, name))
         if scored:
             scored.sort(reverse=True)
-            best_eff, best_move = scored[0]
+            _score, best_eff, best_move = scored[0]
             if best_eff >= 2:
                 lines.append(f"Best move: {best_move} (×{best_eff:.0f} super effective)")
             elif best_eff == 1:
                 lines.append(f"Best move: {best_move} (no super effective option)")
             elif best_eff == 0:
-                lines.append("WARNING: all moves immune to opponent — consider switching")
+                lines.append("WARNING: all damaging moves immune to opponent — consider switching")
         elif pp_list and all(p == 0 for p in pp_list if p is not None):
             lines.append("WARNING: all moves have 0 PP — Struggle will be used automatically")
 

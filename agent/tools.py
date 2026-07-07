@@ -5,7 +5,7 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "button": {"type": "string",
                        "enum": ["A","B","Start","Select","Up","Down","Left","Right","L","R"]},
-            "times": {"type": "integer", "default": 1},
+            "times": {"type": "integer", "default": 1, "minimum": 1, "maximum": 10},
         }, "required": ["button"]},
     }},
     {"type": "function", "function": {

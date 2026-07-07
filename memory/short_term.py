@@ -12,24 +12,27 @@ class ShortTermMemory:
     battle_turn:             int = 0
     consecutive_same_action: int = 0
     steps_without_movement:  int = 0
-    last_x:                  int = 0
-    last_y:                  int = 0
+    last_x:                  int | None = None
+    last_y:                  int | None = None
     # Tracks how many times the agent has been at each (x, y) on the current map.
     # Reset when map changes. Used to detect looping/revisiting.
     _pos_visits:             dict = field(default_factory=lambda: defaultdict(int))
 
-    def record_action(self, action: str, x: int = 0, y: int = 0):
-        pos_changed = (x, y) != (self.last_x, self.last_y) and (x != 0 or y != 0)
+    def record_action(self, action: str, x: int | None = None, y: int | None = None):
+        # None means "position unknown"; (0, 0) is a valid map coordinate and
+        # must be tracked like any other (it isn't a sentinel).
+        has_pos = x is not None and y is not None
+        pos_changed = has_pos and (x, y) != (self.last_x, self.last_y)
         if action == self.last_action and not pos_changed:
             self.consecutive_same_action += 1
         else:
             self.consecutive_same_action = 1
-        if not pos_changed and (x or y):
+        if has_pos and not pos_changed:
             self.steps_without_movement += 1
-        else:
+        elif has_pos:
             self.steps_without_movement = 0
         self.last_action = action
-        if x or y:
+        if has_pos:
             self.last_x, self.last_y = x, y
             self._pos_visits[(x, y)] += 1
         self.action_history.append(action)

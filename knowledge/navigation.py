@@ -305,11 +305,12 @@ def get_route_guidance(state: GameState, milestones: list[str]) -> str:
 # ── Building-interior knowledge ──────────────────────────────────────────────
 # Generic per-building-type advice for when the agent is indoors.
 
+# Only "interior" is reachable: infer_building_type() cannot distinguish
+# Center/Mart/Gym from the (bank, id) alone, and building interiors aren't in
+# MAP_NAMES. Center/Mart/Gym visual identification is covered by the system
+# prompt's screenshot guidance instead. (Per-map overrides live in BUILDING_DETAIL.)
 BUILDING_TYPE_GUIDE: dict[str, str] = {
-    "interior":       "You're INDOORS. To exit, walk to the DOORMAT (usually on the SOUTH wall) and step down off it onto the outdoor tile.",
-    "pokemon_center": "Pokemon Center: Nurse is at the NORTH counter. Walk UP to her and press A to heal. The PC (storage) is to her right. Exit is the SOUTH doormat.",
-    "pokemart":       "Pokemart: Clerk is behind the NORTH counter. Walk UP, press A, choose BUY to purchase items (Potions, Antidotes, Pokeballs). Exit is the SOUTH doormat.",
-    "gym":            "Gym: Trainers stand between you and the leader. Defeat each in turn to reach the leader at the far end. Exit is the SOUTH doormat.",
+    "interior": "You're INDOORS. To exit, walk to the DOORMAT (usually on the SOUTH wall) and step down off it onto the outdoor tile.",
 }
 
 # Story-critical interior overrides. Keyed on (map_bank, map_id).

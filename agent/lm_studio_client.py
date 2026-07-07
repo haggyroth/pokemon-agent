@@ -199,9 +199,11 @@ class AgentClient:
         args = json.loads(args_json) if args_json else {}
         match name:
             case "press_button":
-                for _ in range(args.get("times", 1)):
+                # Clamp defensively — a model can ignore the schema's maximum.
+                times = max(1, min(int(args.get("times", 1)), 10))
+                for _ in range(times):
                     self.mgba.tap(args["button"])
-                return f"Pressed {args['button']} × {args.get('times', 1)}"
+                return f"Pressed {args['button']} × {times}"
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

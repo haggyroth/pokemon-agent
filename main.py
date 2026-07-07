@@ -10,7 +10,7 @@ from memory.long_term import LongTermMemory
 from memory.battle_journal import BattleJournal, BattleRecord
 from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES
-from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS
+from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
 from game.constants import Addr
 from knowledge.battle import battle_summary
 from rich.console import Console
@@ -229,8 +229,10 @@ def main():
                 )
                 if in_battle:
                     move_names = [m for m in lead.move_names if m]
+                    lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
                     bsummary = battle_summary(move_names, current_enemy,
-                                              lead.hp_percent, lead.pp)
+                                              lead.hp_percent, lead.pp,
+                                              attacker_types=lead_types)
                     obs_parts.append(bsummary)
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
