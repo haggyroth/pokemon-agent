@@ -154,6 +154,32 @@ GEN3_CATEGORY: dict[str, str] = {
     "ICE": "Special",  "PSY": "Special",  "DRG": "Special",  "DRK": "Special",
 }
 
+# Non-damaging status moves — deliberately conservative (every entry is
+# certainly a status move, so the only risk of an incomplete list is a rare
+# status move slipping through, never excluding a damaging move). Used to keep
+# the battle "Best move" suggestion to moves that actually deal damage.
+STATUS_MOVES: frozenset[str] = frozenset({
+    "Growl", "Leer", "Tail Whip", "Roar", "Whirlwind", "Sing", "Supersonic",
+    "Screech", "Metal Sound", "Sand-Attack", "Smokescreen", "Flash", "Kinesis",
+    "Sweet Scent", "Growth", "Swords Dance", "Meditate", "Sharpen", "Harden",
+    "Withdraw", "Defense Curl", "Barrier", "Acid Armor", "Iron Defense",
+    "Amnesia", "Cotton Spore", "Agility", "Double Team", "Minimize",
+    "Focus Energy", "Charge", "Stockpile", "Recover", "Soft-Boiled",
+    "Milk Drink", "Rest", "Moonlight", "Morning Sun", "Synthesis", "Wish",
+    "Ingrain", "Aromatherapy", "Heal Bell", "Light Screen", "Reflect",
+    "Safeguard", "Mist", "Haze", "Substitute", "Belly Drum", "Endure",
+    "Protect", "Detect", "Sleep Powder", "Poison Powder", "Stun Spore",
+    "Spore", "Hypnosis", "Lovely Kiss", "Grass Whistle", "Thunder Wave",
+    "Glare", "Poison Gas", "Toxic", "Will-O-Wisp", "Confuse Ray", "Sweet Kiss",
+    "Swagger", "Flatter", "Attract", "Taunt", "Torment", "Disable", "Encore",
+    "Spite", "Mean Look", "Spider Web", "Block", "Teleport", "Baton Pass",
+    "Perish Song", "Destiny Bond", "Grudge", "Nightmare", "Scary Face",
+    "Rain Dance", "Sunny Day", "Sandstorm", "Hail", "Charm", "FeatherDance",
+    "Tickle", "Cosmic Power", "Bulk Up", "Calm Mind", "Dragon Dance",
+    "Follow Me", "Helping Hand", "Yawn", "Odor Sleuth", "Foresight",
+    "Psych Up", "Splash", "String Shot", "Poison Powder", "Sand Attack",
+})
+
 # ── Move name → type code ─────────────────────────────────────────────────────
 # Covers moves commonly seen in LeafGreen playthroughs.
 
