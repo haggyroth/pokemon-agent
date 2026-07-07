@@ -68,3 +68,17 @@ class StateDiff:
             self.moves_changed, self.party_size_changed,
             self.battle_started, self.battle_ended, self.context_changed,
         ])
+
+
+def active_party_member(party: list[PokemonStatus], slot: int) -> PokemonStatus | None:
+    """Return the party member at `slot`, clamped to a valid entry.
+
+    Used at battle end to record the Pokémon that was actually fighting (tracked
+    as the last slot to take damage) rather than always the lead. Falls back to
+    the lead if `slot` is out of range, or None for an empty party.
+    """
+    if not party:
+        return None
+    if 0 <= slot < len(party):
+        return party[slot]
+    return party[0]
