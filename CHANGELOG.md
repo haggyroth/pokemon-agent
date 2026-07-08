@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.5.3]
+
+### Fixed
+- fix: `press_button` accepts compass synonyms (North/South/East/West, N/S/E/W)
+  and maps them to Up/Down/Left/Right — the observation labels tiles N/S/E/W, so
+  the model kept calling invalid button names and wasting steps (#37)
+- fix: frame each turn as a directive — a "How this works" loop-contract section
+  in the system prompt plus an explicit call-to-action on every observation, so
+  the model acts (calls a tool) instead of replying "there's no task" (#37)
+
 ## [0.5.2]
 
 ### Fixed
@@ -152,6 +162,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.5.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.3
 [0.5.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.2
 [0.5.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.1
 [0.5.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.0
