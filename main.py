@@ -19,6 +19,68 @@ import time, sys
 console = Console()
 
 
+def _frame_chroma(mgba) -> float:
+    """Mean chroma (max−min channel) over a coarse grid of the framebuffer.
+
+    The FRLG quest-log recap renders the whole screen in a heavily *desaturated*
+    palette (chroma ≈ 8–15), while normal gameplay is full color (chroma ≈ 60+).
+    That gap is what lets us tell the recap apart from real play. Native backend
+    only; returns a high value if no framebuffer is available so callers treat it
+    as "not a recap".
+    """
+    fb_fn = getattr(mgba, "framebuffer", None)
+    if fb_fn is None:
+        return 999.0
+    fb = fb_fn()
+    W, H = 240, 160
+    total = count = 0
+    for y in range(0, H, 9):
+        for x in range(0, W, 9):
+            i = (y * W + x) * 4
+            total += max(fb[i], fb[i + 1], fb[i + 2]) - min(fb[i], fb[i + 1], fb[i + 2])
+            count += 1
+    return total / count
+
+
+# Above this mean chroma the screen is full-color gameplay; below it we're still
+# in the desaturated quest-log recap. The two regimes are ~8 vs ~60, so the exact
+# cutoff is not sensitive.
+_RECAP_CHROMA_CUTOFF = 40.0
+
+
+def drive_into_gameplay(mgba, reader) -> bool:
+    """Boot from the loaded battery save through the pre-gameplay gates into real
+    player control. Returns True once normal gameplay is reached.
+
+    Two gates, each with its own tell:
+
+      1. **Title screen / Continue menu** — not in the game world yet (map bank
+         reads 0). Press A until a map loads (this taps through "PRESS START" and
+         selects Continue).
+      2. **Quest recap** ("Previously on your quest…") — the trap. It auto-plays a
+         desaturated replay of recent events and *masquerades as OVERWORLD*
+         (field callback, no fade, no menu), so detect_context() and position
+         both lie: the recap even auto-animates the player. Neither A-mashing nor
+         waiting escapes it — **B skips it**, and the palette snaps back to full
+         color when it clears. So we press B until the frame is no longer
+         desaturated (see _frame_chroma).
+    """
+    mgba.reset()
+    mgba.run_frames(200)                      # boot logos
+
+    for _ in range(80):                       # gate 1: title + Continue → game world
+        if mgba.read8(Addr.MAP_BANK) != 0:
+            break
+        mgba.tap("A")
+
+    for _ in range(80):                       # gate 2: skip the recap with B
+        if _frame_chroma(mgba) > _RECAP_CHROMA_CUTOFF:
+            mgba.tick(10)                     # let the last transition settle
+            return True                       # full color → normal gameplay
+        mgba.tap("B")
+    return False                              # budget exhausted; hand off anyway
+
+
 def main():
     console.rule("[bold green]Pokemon LeafGreen LLM Agent")
     if MGBA_BACKEND == "native":
@@ -39,14 +101,13 @@ def main():
     # starts in real gameplay instead of the new-game intro (native only).
     if START_FROM_SAVE and MGBA_BACKEND == "native":
         if mgba.load_save(START_FROM_SAVE):
-            mgba.reset()
-            mgba.run_frames(200)  # boot logos
-            for _ in range(80):   # mash A/Start through title → Continue → field
-                if reader.detect_context() == GameContext.OVERWORLD:
-                    break
-                mgba.tap("A")
-            console.print(f"[green]Continued from save: {START_FROM_SAVE} "
-                          f"(map {mgba.read8(Addr.MAP_BANK)}/{mgba.read8(Addr.MAP_ID)})[/]")
+            got_control = drive_into_gameplay(mgba, reader)
+            where = f"map {mgba.read8(Addr.MAP_BANK)}/{mgba.read8(Addr.MAP_ID)}"
+            if got_control:
+                console.print(f"[green]Continued from save: {START_FROM_SAVE} ({where})[/]")
+            else:
+                console.print(f"[yellow]Continued from save but could not confirm player "
+                              f"control ({where}) — may still be in the quest recap[/]")
         else:
             console.print(f"[red]Could not load save: {START_FROM_SAVE}[/]")
 
