@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.3.8] — 2026-07-07
+
+### Fixed
+- fix: the `trainer_win` reward now fires, via the real `gBattleTypeFlags`
+  (`0x02022B4C`, TRAINER bit `0x08`) captured at battle start (partial #22;
+  elite_four_win/champion_win/key_item still pending)
+
 ## [0.3.7] — 2026-07-06
 
 ### Fixed
@@ -98,6 +105,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.3.8]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.8
 [0.3.7]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.7
 [0.3.6]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.6
 [0.3.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.5
