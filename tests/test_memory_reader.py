@@ -106,6 +106,22 @@ def test_post_battle_overworld_is_overworld():
     assert make_reader(fc).detect_context() == GameContext.OVERWORLD
 
 
+def test_read_key_item_count():
+    fc = FakeClient()
+    sb = 0x02025544
+    fc.set32(Addr.SAVEBLOCK1_PTR, sb)
+    fc.set16(sb + Addr.KEY_ITEMS_OFFSET + 0, 366)  # occupied slot
+    fc.set16(sb + Addr.KEY_ITEMS_OFFSET + 4, 361)  # occupied slot (Town Map)
+    # remaining slots default to id 0 (empty)
+    assert make_reader(fc).read_key_item_count() == 2
+
+
+def test_key_item_count_zero_when_pointer_invalid():
+    fc = FakeClient()
+    fc.set32(Addr.SAVEBLOCK1_PTR, 0)  # not a valid EWRAM pointer
+    assert make_reader(fc).read_key_item_count() == 0
+
+
 def test_read_state_and_player_pos():
     fc = FakeClient()
     stage_overworld(fc, x=9, y=14, map_bank=3, map_id=2)

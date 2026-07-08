@@ -49,6 +49,14 @@ class Addr:
     BATTLE_TYPE_FLAGS   = 0x02022B4C
     BATTLE_TYPE_TRAINER = 0x08   # gBattleTypeFlags & this != 0 → a trainer battle
 
+    # Bag key-items pocket, inside gSaveBlock1 (deref SAVEBLOCK1_PTR — the block
+    # is DMA-relocated, so always re-read the pointer). 30 slots × 4 bytes
+    # (u16 item id + u16 encrypted qty); item IDs are cleartext, id 0 = empty.
+    # Verified live: receiving the Town Map (id 361) filled a new slot here.
+    SAVEBLOCK1_PTR   = 0x03005008
+    KEY_ITEMS_OFFSET = 0x03B8
+    KEY_ITEMS_SLOTS  = 30
+
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
     # (its logic was inverted); BATTLE_FLAGS is transient during a battle and
