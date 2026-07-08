@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from openai import OpenAI
 from agent.tools import TOOLS
-from agent.history import trim_messages
+from agent.history import trim_messages, strip_control_tokens
 from game.memory_reader import LeafGreenReader
 from game.mgba_client import MGBAClient
 from memory.long_term import LongTermMemory
@@ -27,6 +27,7 @@ class AgentClient:
         self._current_opponent: str = ""  # set by set_opponent tool call
 
     MAX_HISTORY = 20  # keep last ~10 user/assistant turns (text only for old turns)
+    MAX_TOOL_ROUNDS = 6  # cap model tool-call rounds per decision step, then re-observe
 
     def set_system(self, prompt: str):
         if self.messages and self.messages[0]["role"] == "system":
@@ -116,7 +117,7 @@ class AgentClient:
             msg.content with all <think>…</think> blocks removed — safe to
             store in message history and replay to the API.
         """
-        raw = msg.content or ""
+        raw = strip_control_tokens(msg.content or "")
 
         if ENABLE_THINKING:
             m = self._THINK_RE.search(raw)
@@ -159,8 +160,13 @@ class AgentClient:
         self.messages.append({"role": "user", "content": user_content})
         self._trim_image_history()
         actions: list[str] = []
+        last_reasoning = ""
 
-        while True:
+        # Bounded tool-call loop: a model can otherwise keep calling tools forever
+        # within a single decision (making MAX_STEPS meaningless and acting on a
+        # stale screenshot). After MAX_TOOL_ROUNDS we return control so the main
+        # loop re-observes (fresh screenshot + observation).
+        for _round in range(self.MAX_TOOL_ROUNDS):
             resp = self.llm.chat.completions.create(
                 model=MODEL_NAME, messages=self.messages,
                 tools=TOOLS, tool_choice="auto",
@@ -172,6 +178,7 @@ class AgentClient:
             # <think>...</think> blocks must never be replayed to the API —
             # LM Studio rejects them with a 400 parse error on subsequent turns.
             reasoning, clean_content = self._extract_response(msg)
+            last_reasoning = reasoning or clean_content
 
             history_entry: dict = {"role": "assistant", "content": clean_content}
             if msg.tool_calls:
@@ -179,9 +186,7 @@ class AgentClient:
             self.messages.append(history_entry)
 
             if not msg.tool_calls:
-                # Return thinking text for console display; fall back to response
-                # text if there was no separate thinking block.
-                return reasoning or clean_content, actions
+                return last_reasoning, actions
 
             for tc in msg.tool_calls:
                 result = self._execute(tc.function.name, tc.function.arguments)
@@ -194,6 +199,8 @@ class AgentClient:
                     actions.append(f"press:{args.get('button', '?')}")
                 else:
                     actions.append(tc.function.name)
+
+        return last_reasoning, actions
 
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
