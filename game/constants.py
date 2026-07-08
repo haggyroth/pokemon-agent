@@ -34,14 +34,14 @@ class Addr:
     GMAIN_CALLBACK2 = 0x030030F4   # u32: gMain.callback2 — live screen dispatcher
     CB2_OVERWORLD   = 0x080565B5   # callback2 value while the field system is active
     CB2_BATTLE      = 0x08011101   # callback2 value during battle
-    SCREEN_FADE     = 0x03000F9C   # u8: 1 during a screen fade AND while the Start menu is open (check START_MENU_CB first)
+    SCREEN_FADE     = 0x03000F9C   # u8: 1 during a screen fade AND while a menu is open (check MENU_OPEN first)
     SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
-    # Start-menu overlay callback: a ROM pointer (0x08xxxxxx) while the Start
-    # menu is open on the field, 0 otherwise. Verified live: 0 in free-roam and
-    # battle, ROM ptr in the Start menu (the quest-log state holds a non-pointer
-    # value, so require a ROM pointer, not merely non-zero). Full-screen submenus
-    # (Bag/Party/…) instead swap gMain.callback2 and read as TRANSITIONING.
-    START_MENU_CB   = 0x0300512C
+    # Field-menu-open flag. Verified live to be non-zero for EVERY field menu
+    # (Start, Bag, Party, Trainer Card, Option, and the save prompt) and 0 in
+    # every non-menu state: free-roam, battle (intro & menu), overworld dialog,
+    # screen transitions, and the quest-log recap. A single general signal, so it
+    # also covers menus not yet reachable in early game (Pokédex, Town Map, …).
+    MENU_OPEN       = 0x03002415
 
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld

@@ -68,20 +68,20 @@ class LeafGreenReader:
         cb2 = self.client.read32(Addr.GMAIN_CALLBACK2)
         if cb2 == Addr.CB2_BATTLE:
             return GameContext.IN_BATTLE
+        # Any field menu sets MENU_OPEN — whether it keeps the field callback2
+        # (Start menu) or swaps to its own (Bag/Party/Card/Option/Pokédex). It's
+        # 0 in free-roam, battle, dialog, and transitions, so this cleanly
+        # separates menus from every other context (verified live).
+        if self.client.read8(Addr.MENU_OPEN) != 0:
+            return GameContext.IN_MENU
         if cb2 == Addr.CB2_OVERWORLD:
-            # Start menu overlay: its callback is a ROM pointer while open.
-            # Check before SCREEN_FADE, which is ALSO 1 the whole time the Start
-            # menu is open (verified live) — otherwise the menu would be
-            # misclassified as TRANSITIONING and could get spurious auto-A taps.
-            if 0x08000000 <= self.client.read32(Addr.START_MENU_CB) <= 0x08FFFFFF:
-                return GameContext.IN_MENU
             if self.client.read8(Addr.SCREEN_FADE) == 0x01:
                 return GameContext.TRANSITIONING
             # SCRIPT_RAM[0] != 0 while a map script runs (NPC dialog, signs, ...).
             if self.client.read8(Addr.SCRIPT_RAM) != 0:
                 return GameContext.DIALOG_OPEN
             return GameContext.OVERWORLD
-        # Menus, map warps/loads, battle intro/outro, and other screens.
+        # Map warps/loads, battle intro/outro, and other non-menu screens.
         return GameContext.TRANSITIONING
 
     def read_party(self) -> list[PokemonStatus]:
