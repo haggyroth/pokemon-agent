@@ -22,6 +22,10 @@ ROM_PATH          = os.path.expanduser(
 #   bounded smoke/eval runs.
 START_FROM_SAVE   = os.path.expanduser(os.getenv("START_FROM_SAVE", ""))
 MAX_STEPS         = int(os.getenv("MAX_STEPS", "0"))
+# USE_VISION: attach the live screenshot (and overhead area maps) to the model.
+# Set false for text-only models, or models whose vision is unstable/blows the
+# context window — the observation string carries the key state either way.
+USE_VISION        = os.getenv("USE_VISION", "true").lower() == "true"
 
 # ── Live viewer (native backend only) ─────────────────────────────────────────
 # Show a window rendering the game as the agent plays. Requires pygame.

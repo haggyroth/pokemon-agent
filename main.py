@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import MGBA_BACKEND, START_FROM_SAVE, MAX_STEPS
+from config import MGBA_BACKEND, START_FROM_SAVE, MAX_STEPS, USE_VISION
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -188,9 +188,10 @@ def main():
                         reward.reward("new_town")
                         console.print(f"[cyan]New town: {town_name}[/]")
                 # Load overhead reference map (attach to next decision step)
-                pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
-                if pending_map_b64:
-                    console.print(f"[blue]Area map loaded: {pending_map_name}[/]")
+                if USE_VISION:
+                    pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
+                    if pending_map_b64:
+                        console.print(f"[blue]Area map loaded: {pending_map_name}[/]")
                 prev_map_key = map_key
 
             # ── Auto-reward + auto-milestone from state diff ────────────────
@@ -305,7 +306,7 @@ def main():
                 else:
                     obs_parts.append("STUCK: position unchanged after repeated input — wall or obstacle ahead, try a different direction or press B to cancel any open menu")
                     # Re-inject the area map when stuck on the overworld so the agent can re-orient
-                    if pending_map_b64 is None:
+                    if USE_VISION and pending_map_b64 is None:
                         pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
 
             obs = " | ".join(obs_parts)
@@ -325,7 +326,7 @@ def main():
             # ── LLM decision step ────────────────────────────────────────────
             client.set_system(build_system_prompt(ltm, journal, state,
                                                    current_enemy=current_enemy))
-            screenshot = client.capture_screenshot()
+            screenshot = client.capture_screenshot() if USE_VISION else None
             reasoning, actions = client.step(obs, screenshot,
                                              area_map_b64=pending_map_b64,
                                              area_map_name=pending_map_name)
