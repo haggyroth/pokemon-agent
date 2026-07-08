@@ -58,6 +58,21 @@ def test_detect_context_dialog():
     assert make_reader(fc).detect_context() == GameContext.DIALOG_OPEN
 
 
+def test_detect_context_start_menu():
+    fc = FakeClient()
+    stage_overworld(fc)
+    fc.set32(Addr.START_MENU_CB, 0x0806F1F1)  # ROM pointer → Start menu open
+    assert make_reader(fc).detect_context() == GameContext.IN_MENU
+
+
+def test_non_pointer_menu_value_is_not_menu():
+    # The quest-log state leaves a non-pointer value here; must NOT read IN_MENU.
+    fc = FakeClient()
+    stage_overworld(fc)
+    fc.set32(Addr.START_MENU_CB, 0x0019000E)
+    assert make_reader(fc).detect_context() == GameContext.OVERWORLD
+
+
 def test_detect_context_battle():
     fc = FakeClient()
     fc.set32(Addr.GMAIN_CALLBACK2, Addr.CB2_BATTLE)  # battle dispatcher active

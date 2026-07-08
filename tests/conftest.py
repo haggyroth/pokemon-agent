@@ -94,6 +94,7 @@ def stage_overworld(fc: FakeClient, *, x: int = 5, y: int = 7,
     fc.set32(Addr.GMAIN_CALLBACK2, Addr.CB2_OVERWORLD)  # field system active
     fc.set8(Addr.SCREEN_FADE, 0)
     fc.set8(Addr.SCRIPT_RAM, 0)
+    fc.set32(Addr.START_MENU_CB, 0)   # no Start menu open
     fc.set8(Addr.MAP_BANK, map_bank)
     fc.set8(Addr.MAP_ID, map_id)
     ptr = 0x03005100
