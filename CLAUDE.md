@@ -28,7 +28,7 @@ Two backends, selected by `MGBA_BACKEND` in `.env`:
 | Binding source | `game/_mgba_build.py` | cffi builder → `game/_mgba_native*.so` (gitignored) |
 | Native client | `game/mgba_core.py` (`NativeMGBAClient`) | Drop-in for `MGBAClient` |
 | LeafGreen ROM | `~/mgba-http/Pokemon_LeafGreen.gba` (override with `ROM_PATH`) | US v1.0, 16 MB |
-| LM Studio model | see `MODEL_NAME` in `.env` (currently `google/gemma-4-12b-qat`) | tool use enabled, port 1234 |
+| LM Studio model | `MODEL_NAME` in `.env` — a tool-capable model, port 1234 | text-only models: set `USE_VISION=false`; ensure `MAX_TOKENS` fits the model's loaded context |
 | Project root | `/Users/kylec/Projects/pokemon-agent` | |
 
 Build the binding once (or after upgrading libmgba):
@@ -79,28 +79,33 @@ Pokemon_LeafGreen.gba
         │                     (or, legacy http backend:)
         │            mGBA GUI → Lua socket → mGBA-http → REST :5000 → game/mgba_client.py
         │
+   main.py                      Main decision loop + run controls (START_FROM_SAVE, MAX_STEPS)
    Python Agent
    ├── game/mgba_core.py        NativeMGBAClient — in-process libmgba (default)
    ├── game/mgba_client.py      MGBAClient — legacy REST wrapper (http backend)
-   ├── game/memory_reader.py    WRAM decoder — XOR decryption + state machine
-   ├── game/state.py            GameState, PokemonStatus, StateDiff dataclasses
-   ├── game/constants.py        Memory addresses, lookup tables, charset
-   ├── agent/agent_loop.py      Main decision loop
-   ├── agent/lm_studio_client.py OpenAI-compat client, tool calling
+   ├── game/memory_reader.py    WRAM decoder — XOR decryption + detect_context
+   ├── game/state.py            GameState, PokemonStatus, StateDiff, helpers
+   ├── game/constants.py        Memory addresses (authoritative), lookup tables, charset
+   ├── game/tilemap_reader.py   ROM tile passability for navigation hints
+   ├── game/viewer.py           Optional pygame window (SHOW_WINDOW)
+   ├── agent/lm_studio_client.py OpenAI-compat client, tool calling (capped rounds)
    ├── agent/tools.py           Tool schemas
+   ├── agent/history.py         Message trimming + control-token stripping (dependency-light)
    ├── agent/reward.py          Shaped/sparse reward tracker
    ├── memory/short_term.py     Current context (in-process)
    ├── memory/long_term.py      Persistent progress → logs/progress.json
    ├── memory/battle_journal.py JSONL log + retrieval
    └── knowledge/
-       ├── type_chart.py
-       ├── leafgreen_data.py
-       └── system_prompt.py
+       ├── type_chart.py        Gen III type effectiveness
+       ├── leafgreen_data.py    Gyms, moves (type/power), Pokémon types, milestones
+       ├── navigation.py        Map names, route/building guidance, area maps
+       ├── battle.py            Battle observation builder (best-move ranking)
+       └── system_prompt.py     Dynamic system prompt builder
 ```
 
 **Module boundaries — never cross these:**
-- `game/` talks only to mGBA-http and does memory decoding. No LLM, no reward logic.
-- `agent/` talks only to LM Studio. Interacts with game only through tool execution.
+- `game/` drives the emulator (native binding or legacy mGBA-http) and does memory decoding. No LLM, no reward logic.
+- `agent/` talks only to LM Studio. Interacts with the game only through tool execution.
 - `memory/` reads/writes memory structures only. No network I/O.
 - `knowledge/` is pure data and string construction. Zero I/O.
 
@@ -409,57 +414,49 @@ def decode_status(word: int) -> str:
 
 ---
 
-## Memory Addresses — FireRed/LeafGreen US v1.0/v1.1
+## Memory Addresses & Context Detection
 
-**All addresses are full GBA bus addresses, usable directly with `/core/read8|16|32|readrange`.**
+**`game/constants.py` (the `Addr` class) and `game/memory_reader.py` are the
+authoritative source.** All are full GBA bus addresses (usable directly with the
+native binding's reads, or `/core/read8|16|32|readrange`). Do not hand-copy the
+full map here — several addresses were re-derived empirically during development
+(diffing live save states) and a duplicate list drifts. The notable, hard-won
+ones:
 
-```python
-class Addr:
-    # Party
-    PARTY_COUNT  = 0x02024284   # u32: Pokémon in party (0–6)
-    PARTY_DATA   = 0x02024288   # 600 bytes: 6 × 100-byte party structs
+| What | Address | Notes |
+|------|---------|-------|
+| Party count / data | `0x02024284` / `0x02024288` | 6 × 100-byte structs (Gen III XOR, below) |
+| Badges | `0x02025968` | u8 bitmask; popcount = badge count |
+| Map bank / id | `0x02031DBC` / `0x02031DBD` | |
+| Player X/Y | deref `PLAYER_PTR` `0x03005008` +0/+2 | DMA-protected block; camera = player tile |
+| `gMain.callback2` | `0x030030F4` | live "current screen" dispatcher — the context gate |
+| Menu-open flag | `0x03002415` | non-zero while ANY field menu is open |
+| Script engine | `0x03000EB0` | byte[0] ≠ 0 while a map script/dialog runs |
+| Screen fade | `0x03000F9C` | 1 during fades **and** while a menu is open |
+| `gBattleTypeFlags` | `0x02022B4C` | TRAINER bit `0x08`; set at battle init, read at battle start |
+| Bag key-items pocket | `gSaveBlock1(0x03005008) + 0x3B8` | 30 slots; count non-empty for the `key_item` reward |
 
-    # Progress
-    BADGES       = 0x02025968   # u8 bitmask: popcount = badge count
-    # Bit order: 0=Boulder(Brock), 1=Cascade(Misty), 2=Thunder(Surge),
-    #            3=Rainbow(Erika), 4=Soul(Koga), 5=Marsh(Sabrina),
-    #            6=Volcano(Blaine), 7=Earth(Giovanni)
+### Context Detection (verified live — implemented in `memory_reader.detect_context`)
 
-    # Battle
-    BATTLE_FLAGS = 0x0202402C   # u32: non-zero = in battle
-
-    # Map
-    MAP_BANK     = 0x02036A30   # u8: map bank
-    MAP_ID       = 0x02036A31   # u8: map within bank
-    PLAYER_X     = 0x02036E10   # u16: player tile X coord
-    PLAYER_Y     = 0x02036E14   # u16: player tile Y coord
-
-    # Context (IRAM — also readable via /core/read8 with full address)
-    SCREEN_FADE  = 0x03000F9C   # u8: 0x01 = screen is fading/transitioning
-    SCRIPT_RAM   = 0x03000EB0   # 74 bytes: script engine state
-```
-
-### Context Detection
+⚠ The old `OVERWORLD_FLAG` / `BATTLE_FLAGS` approach was **wrong** and is
+deprecated: `OVERWORLD_FLAG` (`0x0202287C`) reads 0 during free-roam, and
+`BATTLE_FLAGS` (`0x02022880`) is transient during battle and stale afterward. The
+correct gate is `gMain.callback2`:
 
 ```python
-from enum import Enum, auto
-
-class GameContext(Enum):
-    TRANSITIONING = auto()   # Screen fading — wait, don't act
-    IN_BATTLE     = auto()   # Battle UI active
-    DIALOG_OPEN   = auto()   # Message box — press A to advance
-    IN_MENU       = auto()   # Start menu or bag open
-    OVERWORLD     = auto()   # Map exploration
-    UNKNOWN       = auto()
-
-def detect_context(client: MGBAClient) -> GameContext:
-    if client.read8(Addr.SCREEN_FADE) == 0x01:
-        return GameContext.TRANSITIONING
-    if client.read32(Addr.BATTLE_FLAGS) != 0:
-        return GameContext.IN_BATTLE
-    # Dialog/menu detection — calibrate during Phase 11
-    return GameContext.OVERWORLD
+cb2 = read32(GMAIN_CALLBACK2)             # 0x030030F4
+if cb2 == CB2_BATTLE:                      # 0x08011101   -> IN_BATTLE
+elif read8(MENU_OPEN) != 0:                # 0x03002415   -> IN_MENU  (any field menu)
+elif cb2 == CB2_OVERWORLD:                 # 0x080565B5
+    if read8(SCREEN_FADE) == 1:            #              -> TRANSITIONING
+    elif read8(SCRIPT_RAM) != 0:           # byte[0]      -> DIALOG_OPEN  (NPC/sign/script)
+    else:                                  #              -> OVERWORLD
+else:                                      #              -> TRANSITIONING  (warps, load screens)
 ```
+
+`GameContext` values: `OVERWORLD`, `IN_BATTLE`, `DIALOG_OPEN`, `IN_MENU`,
+`TRANSITIONING`, `UNKNOWN`. The `CB2_*` and menu addresses are specific to this
+LeafGreen build; re-derive by diffing live states if OVERWORLD is misdetected.
 
 ### Dialog Observation — State Diffing Strategy
 
@@ -472,7 +469,7 @@ The agent doesn't read dialog text character-by-character. It detects **what cha
 | Learned move | Party moves changed (Tier 2) |
 | Caught Pokémon | Party count increased |
 | Earned badge | Badge bitmask changed |
-| Battle ended | `BATTLE_FLAGS` returned to 0 |
+| Battle ended | context left `IN_BATTLE` (`gMain.callback2` no longer the battle callback) |
 | Healed | All HP values restored to max |
 
 For dialog that just needs advancing (NPC text, item fanfares): press A until context changes. The **stuck detector** in `ShortTermMemory` fires when the same action repeats 5+ times with no state change, switching the agent to dialog-advance mode automatically.
@@ -627,11 +624,13 @@ Pallet → Viridian → Pewter [GYM1] → Cerulean [GYM2]
 
 ```python
 # Defined in agent/tools.py
-press_button(button: str, times: int = 1)
+press_button(button: str, times: int = 1)   # times clamped to 1–10
 read_game_state() -> GameState
 save_state(slot: int = 0)
 load_state(slot: int = 0)
-wait_frames(frames: int)
+wait_frames(frames: int)                     # advances the emulator (native) / waits (http)
+set_opponent(species: str)                   # unlocks type/effectiveness analysis in battle
+record_milestone(name: str, note: str = "")  # persist a story milestone to long-term memory
 ```
 
 ### Battle Decision Priority
@@ -662,6 +661,12 @@ wait_frames(frames: int)
 
 Call `reward.anneal_to_sparse()` after the 4th badge.
 
+All events above are wired in `main.py` **except** `elite_four_win` / `champion_win`
+(the E4/Champion are trainer battles, so they currently fire `trainer_win`;
+distinguishing them needs their trainer IDs — tracked in issue #22). Battle type
+is read from `gBattleTypeFlags` (`0x02022B4C`), key items from the bag key-items
+pocket.
+
 ---
 
 ## Development Reference
@@ -688,6 +693,12 @@ Call `reward.anneal_to_sparse()` after the 4th badge.
 ```
 main.py loads the ROM (`ROM_PATH`) in-process. No GUI, no Lua, no mGBA-http.
 First time only: `python -m game._mgba_build` to compile the binding.
+
+Run controls (env vars, native backend): `START_FROM_SAVE=<path.sav>` boots from a
+battery save and drives to "Continue" (real gameplay instead of the new-game
+intro); `MAX_STEPS=<n>` bounds a run for smoke/eval; `USE_VISION=false` runs
+text-only (for text models or unstable vision). Example bounded text-only run:
+`USE_VISION=false MAX_STEPS=20 START_FROM_SAVE=~/mgba-http/Pokemon_LeafGreen.sav python main.py`
 
 **Legacy http backend (`MGBA_BACKEND=http`):**
 ```
