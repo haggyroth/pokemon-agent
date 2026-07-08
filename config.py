@@ -39,19 +39,22 @@ LM_STUDIO_BASE    = os.getenv("LM_STUDIO_BASE",    "http://localhost:1234/v1")
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 # Change MODEL_NAME to match the model loaded in LM Studio exactly.
-# Adjust TEMPERATURE and MAX_TOKENS to suit the model family:
 #
-#   Model family              MODEL_NAME example                TEMPERATURE  MAX_TOKENS
-#   ─────────────────────── ─────────────────────────────────── ─────────── ──────────
-#   Qwen3 (thinking on)      qwen/qwen3-14b                       0.6        8192
-#   Qwen3 (thinking off)     qwen/qwen3.5-9b                      0.2        2048
-#   Qwen2.5 Instruct         qwen/qwen2.5-14b-instruct            0.2        2048
-#   Llama 3.x Instruct       lmstudio-community/llama-3.1-8b      0.4        2048
-#   Mistral / Mixtral        mistralai/mistral-7b-instruct        0.3        2048
-#   Gemma 3                  google/gemma-3-12b-it                0.4        2048
+# MAX_TOKENS is a CAP on the response, not a target — the model stops when it's
+# done, so a bigger value just avoids truncating (important for reasoning models,
+# where the tool call comes AFTER the reasoning). BUT: prompt + MAX_TOKENS must
+# fit the model's *loaded* context window, or every call fails with "Context size
+# exceeded". A model with a small loaded context (some quantized builds default
+# to 4K–8K) needs a small MAX_TOKENS even though its max context is large — check
+# LM Studio's loaded context length, not the model's max.
 #
-# ENABLE_THINKING: set True only for Qwen3 models where LM Studio exposes
-# reasoning_content in the response.  Has no effect on other models.
+#   Model family                 TEMPERATURE  MAX_TOKENS (if context allows)
+#   ────────────────────────────  ──────────   ──────────
+#   Reasoning (thinking on)       0.6          4096–8192   ENABLE_THINKING=true
+#   Instruct / chat (thinking off) 0.2–0.4     2048
+#
+# ENABLE_THINKING: set True only for models where LM Studio exposes
+# reasoning_content (or <think>…</think>). Has no effect on other models.
 MODEL_NAME        = os.getenv("MODEL_NAME",        "qwen/qwen2.5-14b-instruct")
 TEMPERATURE       = float(os.getenv("TEMPERATURE", "0.6"))
 MAX_TOKENS        = int(os.getenv("MAX_TOKENS",    "4096"))
