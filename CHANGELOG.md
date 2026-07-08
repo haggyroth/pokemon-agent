@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-07-07
+
+### Added
+- feat: `USE_VISION` toggle for text-only runs — skip the screenshot / area-map
+  images (for text-only models, or models whose vision is unstable) (#32)
+
+### Fixed
+- fix: `AgentClient.step()` caps tool-call rounds per decision (`MAX_TOOL_ROUNDS`)
+  so one step can't run unbounded generations; and strips leaked control tokens
+  (`<|channel|>`, …) from model output (#31)
+
 ## [0.4.0] — 2026-07-07
 
 ### Added
@@ -126,6 +137,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.5.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.0
 [0.4.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.4.0
 [0.3.10]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.10
 [0.3.9]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.9
