@@ -59,18 +59,28 @@ def test_detect_context_dialog():
 
 
 def test_detect_context_start_menu():
+    # Start menu keeps the field callback2 but sets MENU_OPEN.
     fc = FakeClient()
     stage_overworld(fc)
-    fc.set32(Addr.START_MENU_CB, 0x0806F1F1)  # ROM pointer → Start menu open
+    fc.set8(Addr.MENU_OPEN, 1)
     assert make_reader(fc).detect_context() == GameContext.IN_MENU
 
 
-def test_non_pointer_menu_value_is_not_menu():
-    # The quest-log state leaves a non-pointer value here; must NOT read IN_MENU.
+def test_detect_context_fullscreen_submenu():
+    # Bag/Party/etc. swap callback2 to their own handler AND set MENU_OPEN.
+    fc = FakeClient()
+    fc.set32(Addr.GMAIN_CALLBACK2, 0x08107EB9)  # e.g. the Bag callback
+    fc.set8(Addr.MENU_OPEN, 1)
+    assert make_reader(fc).detect_context() == GameContext.IN_MENU
+
+
+def test_menu_flag_takes_precedence_over_fade():
+    # SCREEN_FADE is set while menus are open; MENU_OPEN must win.
     fc = FakeClient()
     stage_overworld(fc)
-    fc.set32(Addr.START_MENU_CB, 0x0019000E)
-    assert make_reader(fc).detect_context() == GameContext.OVERWORLD
+    fc.set8(Addr.MENU_OPEN, 1)
+    fc.set8(Addr.SCREEN_FADE, 1)
+    assert make_reader(fc).detect_context() == GameContext.IN_MENU
 
 
 def test_detect_context_battle():
