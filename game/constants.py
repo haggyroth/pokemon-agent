@@ -43,6 +43,12 @@ class Addr:
     # also covers menus not yet reachable in early game (Pokédex, Town Map, …).
     MENU_OPEN       = 0x03002415
 
+    # gBattleTypeFlags (real one) — set at battle init, persists after. Verified
+    # live: wild = 0x04 (IS_MASTER), trainer = 0x0C (IS_MASTER | TRAINER). Read at
+    # battle START to classify the battle. Bit values per pokefirered.
+    BATTLE_TYPE_FLAGS   = 0x02022B4C
+    BATTLE_TYPE_TRAINER = 0x08   # gBattleTypeFlags & this != 0 → a trainer battle
+
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
     # (its logic was inverted); BATTLE_FLAGS is transient during a battle and

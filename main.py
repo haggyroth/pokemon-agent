@@ -61,6 +61,7 @@ def main():
     battle_start_lead    = ""   # species name of our lead when battle began
     current_enemy        = ""   # last known opponent species name (set by LLM via tool or detected)
     battle_active_slot   = 0    # party slot of the Pokémon actually fighting (see below)
+    battle_is_trainer    = False  # whether the current battle is vs a trainer (gBattleTypeFlags)
     prev_map_key         = None
     transitioning_steps  = 0
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
@@ -80,6 +81,9 @@ def main():
                 ltm.data["total_battles"] += 1
                 battle_start_lead = state.party[0].species_name if state.party else ""
                 battle_active_slot = 0
+                # Classify the battle from gBattleTypeFlags (set at battle init).
+                battle_is_trainer = bool(mgba.read32(Addr.BATTLE_TYPE_FLAGS)
+                                         & Addr.BATTLE_TYPE_TRAINER)
                 current_enemy = ""
                 client._current_opponent = ""
 
@@ -102,6 +106,11 @@ def main():
                 current_enemy = ""
                 if outcome == "win":
                     ltm.data["battles_won"] += 1
+                    # Reward trainer wins (wild wins aren't in the schedule). Gym
+                    # leaders are trainers too and additionally fire gym_leader_win
+                    # on the subsequent badge — a negligible +1 overlap.
+                    if battle_is_trainer:
+                        reward.reward("trainer_win")
                 else:
                     ltm.data["battles_lost"] += 1
                 location = MAP_NAMES.get((state.map_bank, state.map_id),
