@@ -129,6 +129,16 @@ class LeafGreenReader:
             ))
         return party
 
+    def read_key_item_count(self) -> int:
+        """Number of occupied key-item slots in the bag. Reward key_item when
+        this increases. Item IDs are cleartext; empty slots read id 0."""
+        sb = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not (0x02000000 <= sb < 0x02040000):
+            return 0
+        raw = self.client.read_range(sb + Addr.KEY_ITEMS_OFFSET, Addr.KEY_ITEMS_SLOTS * 4)
+        return sum(1 for i in range(0, len(raw), 4)
+                   if (raw[i] | (raw[i + 1] << 8)) != 0)
+
     def read_player_pos(self) -> tuple[int, int]:
         """
         Read live player tile coordinates via the DMA-protected map block.

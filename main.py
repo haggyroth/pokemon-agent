@@ -62,6 +62,7 @@ def main():
     current_enemy        = ""   # last known opponent species name (set by LLM via tool or detected)
     battle_active_slot   = 0    # party slot of the Pokémon actually fighting (see below)
     battle_is_trainer    = False  # whether the current battle is vs a trainer (gBattleTypeFlags)
+    prev_key_items       = None   # count of bag key items (reward key_item on increase)
     prev_map_key         = None
     transitioning_steps  = 0
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
@@ -203,6 +204,13 @@ def main():
             if prev_state is not None:
                 for _slot in newly_fainted_slots(prev_state.party, state.party):
                     reward.reward("party_faint")
+
+            # Reward obtaining a key item (bag key-items pocket count increased).
+            key_items = reader.read_key_item_count()
+            if prev_key_items is not None and key_items > prev_key_items:
+                reward.reward("key_item")
+                console.print(f"[cyan]Key item obtained (bag key items: {key_items})[/]")
+            prev_key_items = key_items
 
             if prev_state is not None and state.party_count > prev_state.party_count:
                 reward.reward("caught_new")
