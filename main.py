@@ -370,6 +370,10 @@ def main():
                     if USE_VISION and pending_map_b64 is None:
                         pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
 
+            # Close every turn with an explicit call to action — the state dump
+            # alone reads to some models as "no question asked", and they reply
+            # with prose instead of acting. Make the imperative unmissable.
+            obs_parts.append("→ Your turn: decide the best next action and call a tool NOW (do not reply with text only)")
             obs = " | ".join(obs_parts)
             console.print(f"[yellow]OBS:[/] {obs[:140]}")
 

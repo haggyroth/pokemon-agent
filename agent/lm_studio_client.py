@@ -4,7 +4,7 @@ import re
 import time
 from pathlib import Path
 from openai import OpenAI
-from agent.tools import TOOLS
+from agent.tools import TOOLS, normalize_button
 from agent.history import trim_messages, strip_control_tokens
 from game.memory_reader import LeafGreenReader
 from game.mgba_client import MGBAClient
@@ -208,9 +208,11 @@ class AgentClient:
             case "press_button":
                 # Clamp defensively — a model can ignore the schema's maximum.
                 times = max(1, min(int(args.get("times", 1)), 10))
+                # Accept compass synonyms (West→Left, N→Up, …) the model emits.
+                button = normalize_button(args["button"])
                 for _ in range(times):
-                    self.mgba.tap(args["button"])
-                return f"Pressed {args['button']} × {times}"
+                    self.mgba.tap(button)
+                return f"Pressed {button} × {times}"
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

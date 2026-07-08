@@ -1,7 +1,29 @@
+# Canonical GBA buttons plus the synonyms models actually emit. The observation
+# labels tiles by compass (N/S/E/W), so the model routinely asks for "West" or
+# "N" — accept those instead of erroring and wasting a step.
+_BUTTON_ALIASES = {
+    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+    "north": "Up", "south": "Down", "east": "Right", "west": "Left",
+    "n": "Up", "s": "Down", "e": "Right", "w": "Left",
+    "a": "A", "b": "B", "l": "L", "r": "R",
+    "select": "Select", "start": "Start",
+}
+
+
+def normalize_button(name: str) -> str:
+    """Map a button name (incl. compass synonyms like 'West'/'N') to a canonical
+    GBA button. Unknown names pass through unchanged so the backend still raises a
+    clear 'invalid button' error rather than this masking a typo silently."""
+    if not isinstance(name, str):
+        return name
+    return _BUTTON_ALIASES.get(name.strip().lower(), name)
+
+
 TOOLS = [
     {"type": "function", "function": {
         "name": "press_button",
-        "description": "Press a GBA button. Use for menus, battle, and movement.",
+        "description": "Press a GBA button. Use for menus, battle, and movement. "
+                       "For movement, Up/Down/Left/Right map to North/South/West/East.",
         "parameters": {"type": "object", "properties": {
             "button": {"type": "string",
                        "enum": ["A","B","Start","Select","Up","Down","Left","Right","L","R"]},
