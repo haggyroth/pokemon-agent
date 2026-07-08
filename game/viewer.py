@@ -30,15 +30,16 @@ class PygameViewer:
         pygame.init()
         pygame.display.set_caption("Pokemon LeafGreen — LLM Agent")
         self.screen = pygame.display.set_mode((width * scale, height * scale))
-        # Small source surface we blit the raw framebuffer into, then scale up.
-        self.surface = pygame.Surface((width, height))
 
     def render(self, buf) -> None:
         """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present."""
         pg = self._pg
-        # Interpret the raw RGBX bytes as a surface (ignores the pad byte).
-        frame = pg.image.frombuffer(buf, (self.w, self.h), "RGBX")
-        pg.transform.scale(frame, self.screen.get_size(), self.screen)
+        # Interpret the raw RGBX bytes as a surface. .convert() remaps it to the
+        # display's native pixel format — without it, scaling straight into the
+        # display surface reinterprets the channels and colors come out wrong.
+        frame = pg.image.frombuffer(buf, (self.w, self.h), "RGBX").convert()
+        scaled = pg.transform.scale(frame, self.screen.get_size())
+        self.screen.blit(scaled, (0, 0))
         pg.display.flip()
         self._pump()
         self._pace()
