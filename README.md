@@ -83,6 +83,10 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 | `MODEL_NAME` | — | Must match the LM Studio model name exactly |
 | `ENABLE_THINKING` | `false` | Set `true` for reasoning models that expose thinking tokens |
 | `TEMPERATURE` | `0.6` | LLM sampling temperature |
+| `MAX_TOKENS` | `4096` | Response cap. `prompt + MAX_TOKENS` must fit the model's **loaded** context, or calls fail with "Context size exceeded" |
+| `USE_VISION` | `true` | Attach the screenshot to the model. Set `false` for text-only models or unstable vision |
+| `START_FROM_SAVE` | — | Path to a battery `.sav` to load and "Continue" into at startup (native) |
+| `MAX_STEPS` | `0` | Stop after N decision steps (`0` = run until interrupted) |
 | `SHOW_WINDOW` | `false` | Live pygame window (native backend; requires `pygame`) |
 | `VIEWER_SCALE` | `3` | Window scale — 240×160 × scale |
 | `VIEWER_FPS` | `60` | Playback cap; `0` = full emulator speed |
@@ -105,8 +109,9 @@ Tests that need the compiled binding or a ROM skip automatically when those aren
 ├── main.py                   Main agent loop
 ├── config.py                 Settings loaded from .env
 ├── agent/
-│   ├── lm_studio_client.py   LLM client, tool execution, screenshot handling
+│   ├── lm_studio_client.py   LLM client, tool execution, capped tool-call loop
 │   ├── tools.py              Tool schemas (press_button, read_game_state, etc.)
+│   ├── history.py            Message trimming + control-token stripping
 │   └── reward.py             Shaped → sparse reward tracker
 ├── game/
 │   ├── _mgba_build.py        cffi builder for the in-process libmgba binding
@@ -126,11 +131,16 @@ Tests that need the compiled binding or a ROM skip automatically when those aren
 
 All memory reads use full GBA bus addresses, identical between the native binding and the HTTP API, so the decoder is backend-agnostic. Party data at `0x02024288` uses Gen III XOR encryption (PID ^ OT_ID key); HP, level, and status are unencrypted and always reliable.
 
-See [CLAUDE.md](CLAUDE.md) for the full memory map, backend details, and Gen III data structure documentation.
+The authoritative memory map is [`game/constants.py`](game/constants.py); see [CLAUDE.md](CLAUDE.md) for context-detection details, backend notes, and Gen III data structure documentation.
 
 ## Model recommendations
 
-The agent requires a model with **function/tool calling** support — pure chat models won't work. Playing Pokémon well over long horizons is hard for smaller local models; larger tool-capable models reason and navigate more reliably.
+The agent requires a model with **function/tool calling** support — pure chat models won't work. Practical notes from running it:
+
+- **Reasoning models work well** and don't need vision — the observation string carries the key state. A ~9B reasoning model with tool calling reasons and navigates coherently.
+- **Vision is optional and can be flaky.** Some quantized multimodal builds crash or blow their context on the screenshot; set `USE_VISION=false` to run text-only.
+- **Mind the context window.** `prompt + MAX_TOKENS` must fit the model's *loaded* context in LM Studio (not its max) — an oversized `MAX_TOKENS` makes every call fail with "Context size exceeded."
+- On consumer hardware, keep LM Studio to **one concurrent generation**.
 
 ## Logs
 
