@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.3.10] — 2026-07-07
+
+### Fixed
+- fix: align agent guidance with the `IN_MENU` / `DIALOG_OPEN` contexts introduced
+  by the detect_context rebuild — new "Game Contexts" prompt section, corrected
+  decision priorities, and the loop's auto-advance-A now fires on `DIALOG_OPEN`
+  (not in `IN_MENU`)
+
 ## [0.3.9] — 2026-07-07
 
 ### Fixed
@@ -112,6 +120,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.3.10]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.10
 [0.3.9]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.9
 [0.3.8]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.8
 [0.3.7]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.7
