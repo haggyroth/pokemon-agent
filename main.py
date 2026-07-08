@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import MGBA_BACKEND
+from config import MGBA_BACKEND, START_FROM_SAVE, MAX_STEPS
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -34,6 +34,22 @@ def main():
     console.print(f"[green]Connected ({MGBA_BACKEND}): {mgba.get_game_title()} ({mgba.get_game_code()})")
 
     reader  = LeafGreenReader(mgba, decrypt=True)
+
+    # Optionally boot from a battery save and drive to "Continue" so the agent
+    # starts in real gameplay instead of the new-game intro (native only).
+    if START_FROM_SAVE and MGBA_BACKEND == "native":
+        if mgba.load_save(START_FROM_SAVE):
+            mgba.reset()
+            mgba.run_frames(200)  # boot logos
+            for _ in range(80):   # mash A/Start through title → Continue → field
+                if reader.detect_context() == GameContext.OVERWORLD:
+                    break
+                mgba.tap("A")
+            console.print(f"[green]Continued from save: {START_FROM_SAVE} "
+                          f"(map {mgba.read8(Addr.MAP_BANK)}/{mgba.read8(Addr.MAP_ID)})[/]")
+        else:
+            console.print(f"[red]Could not load save: {START_FROM_SAVE}[/]")
+
     tilemap = TilemapReader(mgba)
     ltm     = LongTermMemory()
     client  = AgentClient(mgba, reader, ltm)
@@ -67,6 +83,7 @@ def main():
     transitioning_steps  = 0
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
     pending_map_name     = ""
+    step_count           = 0
 
     while True:
         try:
@@ -331,6 +348,13 @@ def main():
 
             prev_state = state
             mgba.tick()
+
+            step_count += 1
+            if MAX_STEPS and step_count >= MAX_STEPS:
+                console.print(f"[green]Reached MAX_STEPS={MAX_STEPS} — stopping. "
+                              f"Total reward: {reward.total:.1f}[/]")
+                ltm.save()
+                break
 
         except KeyboardInterrupt:
             console.print("\n[red]Stopped.")

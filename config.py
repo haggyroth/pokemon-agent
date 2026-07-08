@@ -15,6 +15,14 @@ MGBA_BACKEND      = os.getenv("MGBA_BACKEND",      "native")
 ROM_PATH          = os.path.expanduser(
                         os.getenv("ROM_PATH", "~/mgba-http/Pokemon_LeafGreen.gba"))
 
+# ── Run control ───────────────────────────────────────────────────────────────
+# START_FROM_SAVE: path to a battery .sav to load and "Continue" into at startup
+#   (native backend) instead of booting a new game. Empty = boot the ROM as-is.
+# MAX_STEPS: stop after N decision steps (0 = run until interrupted). Useful for
+#   bounded smoke/eval runs.
+START_FROM_SAVE   = os.path.expanduser(os.getenv("START_FROM_SAVE", ""))
+MAX_STEPS         = int(os.getenv("MAX_STEPS", "0"))
+
 # ── Live viewer (native backend only) ─────────────────────────────────────────
 # Show a window rendering the game as the agent plays. Requires pygame.
 SHOW_WINDOW       = os.getenv("SHOW_WINDOW",  "false").lower() == "true"
