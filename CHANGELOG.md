@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.3.5] — 2026-07-06
+
+### Fixed
+- fix: the overworld Start menu now reads as `IN_MENU` instead of `TRANSITIONING`
+  (via the overlay callback at `0x0300512C`), suppressing navigation hints and a
+  spurious auto-A tap there. `SCREEN_FADE` was found to stay 1 while the menu is
+  open. Full-screen submenus still pending (partial #18)
+
 ## [0.3.4] — 2026-07-06
 
 ### Fixed
@@ -76,6 +84,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.3.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.5
 [0.3.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.4
 [0.3.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.3
 [0.3.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.2
