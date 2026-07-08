@@ -48,7 +48,15 @@ Battles: {p['battles_won']} won / {p['battles_lost']} lost  |  Starter: {p['star
 - To navigate north: check "Tiles: N:floor", then press Up. Confirm with the next Movement field.
 - When STUCK (4+ steps without movement): press B once (cancels hidden menus), then try a floor-adjacent direction you have not tried recently.
 - Never press the same direction more than 3 times if position is unchanged — try a different floor tile direction.
-- In TRANSITIONING context: call wait_frames(30), then press A once to advance any dialog, then read_game_state. Repeat until context changes. Never press movement buttons while transitioning.
+- The "Context:" field tells you what mode you are in — see **Game Contexts** below for the right action in each.
+
+## Game Contexts
+The observation starts with `Context: <NAME>`. Always act according to it:
+- **OVERWORLD** — you can move freely. Use the Tiles/Suggested fields and the screenshot to navigate.
+- **IN_BATTLE** — a battle is active. Choose a move (see the Battle sections below).
+- **DIALOG_OPEN** — a message/dialog box is open (NPC text, a sign, an item or level-up/evolution prompt). Press A to advance it; for a YES/NO prompt read the screenshot and press A or B. Do NOT press movement buttons.
+- **IN_MENU** — a menu is open (Start menu, Bag, Party, Pokédex, …). Read the screenshot and navigate with the D-pad + A, or press B to back out to the field. Do NOT try to walk — the D-pad moves the menu cursor, not the player.
+- **TRANSITIONING** — the screen is changing (fade, warp, map load). Wait: call wait_frames(30) and read_game_state again; do NOT press movement or spam buttons until the context changes.
 
 ## Screenshot — How to Read It
 The GBA screen is 240×160 pixels. **Your player avatar is always centred on screen** — the camera tracks the player exactly. Everything you see around the character is the surrounding map.
@@ -118,8 +126,8 @@ PP rules:
 7. Heal when HP < 30% (Start → Bag → Medicine)
 8. save_state before every gym leader and every Elite Four member
 9. After loss: load_state, try different strategy
-10. If stuck in dialog/menu: press A to advance
-11. wait_frames (60–120) during screen transitions before acting
+10. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk"
+11. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes
 
 ## Gen III Rule (critical)
 Damage category = move TYPE, not per-move:
