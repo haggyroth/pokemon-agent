@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.5.2]
+
+### Fixed
+- fix: `START_FROM_SAVE` now skips the FRLG "Previously on your quest…" quest-log
+  recap. The recap masquerades as the overworld (and auto-animates the player),
+  so the old A-mash-until-OVERWORLD drive got stuck in it; the continue drive now
+  presses B until the desaturated recap palette clears to full color (#36)
+
 ## [0.5.1]
 
 ### Fixed
@@ -144,6 +152,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.5.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.2
 [0.5.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.1
 [0.5.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.0
 [0.4.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.4.0
