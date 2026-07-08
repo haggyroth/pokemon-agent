@@ -1,5 +1,13 @@
 """History trimming never splits a tool_calls/tool-response group (#16)."""
-from agent.history import trim_messages
+from agent.history import trim_messages, strip_control_tokens
+
+
+def test_strip_control_tokens():
+    assert strip_control_tokens("hello") == "hello"
+    assert strip_control_tokens("<|channel|>analysis<|message|>hi") == "analysishi"
+    assert strip_control_tokens("go <|channel>north") == "go north"  # malformed form
+    assert strip_control_tokens("") == ""
+    assert strip_control_tokens("press <|end|>") == "press "
 
 
 def _roles(msgs):

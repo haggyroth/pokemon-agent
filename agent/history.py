@@ -2,6 +2,17 @@
 
 Kept out of lm_studio_client.py so tests don't need the openai SDK.
 """
+import re
+
+# Harmony/gemma-style control tokens (<|channel|>, <|message|>, <|end|>, …) that
+# some models leak into message content.
+_CONTROL_TOKEN_RE = re.compile(r"<\|[^>]*?\|?>")
+
+
+def strip_control_tokens(text: str) -> str:
+    """Remove leaked harmony/gemma control tokens from model content so they
+    aren't stored in history, replayed to the API, or shown in the console."""
+    return _CONTROL_TOKEN_RE.sub("", text or "")
 
 
 def trim_messages(messages: list[dict], max_history: int) -> list[dict]:
