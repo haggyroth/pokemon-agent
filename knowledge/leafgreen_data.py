@@ -180,6 +180,73 @@ STATUS_MOVES: frozenset[str] = frozenset({
     "Psych Up", "Splash", "String Shot", "Poison Powder", "Sand Attack",
 })
 
+# Gen III base powers for damaging moves (used to rank the "Best move" hint by
+# power × STAB × effectiveness). Status moves are absent (see STATUS_MOVES).
+# Variable/multi-hit/level/fixed-damage moves use a representative effective
+# value; damaging moves not listed fall back to a neutral default in the ranker.
+MOVE_POWER: dict[str, int] = {
+    # Normal
+    "Tackle": 35, "Scratch": 40, "Pound": 40, "Constrict": 10, "Wrap": 15,
+    "Bind": 15, "Quick Attack": 40, "Double-Edge": 120, "Body Slam": 85,
+    "Hyper Beam": 150, "Return": 102, "Frustration": 102, "Slash": 70,
+    "Swift": 60, "Pay Day": 40, "Headbutt": 70, "Skull Bash": 100,
+    "Explosion": 250, "Self-Destruct": 200, "Snore": 40, "Tri Attack": 80,
+    "Stomp": 65, "Cut": 50, "Strength": 80, "Rage": 20, "Fury Attack": 45,
+    "Fury Swipes": 54, "Mega Kick": 120, "Mega Punch": 80,
+    # Fighting
+    "Karate Chop": 50, "Low Kick": 50, "Double Kick": 60, "Jump Kick": 70,
+    "Hi Jump Kick": 85, "Rolling Kick": 60, "Seismic Toss": 60,
+    "Submission": 80, "Superpower": 120, "Mach Punch": 40, "Cross Chop": 100,
+    "Sky Uppercut": 85, "Focus Punch": 150, "Brick Break": 75, "Vital Throw": 70,
+    "Rock Smash": 20,
+    # Flying
+    "Wing Attack": 60, "Fly": 70, "Peck": 35, "Drill Peck": 80,
+    "Sky Attack": 140, "Aerial Ace": 60, "Gust": 40,
+    # Poison
+    "Poison Sting": 15, "Acid": 40, "Smog": 20, "Sludge": 65, "Sludge Bomb": 90,
+    # Ground
+    "Earthquake": 100, "Dig": 60, "Mud-Slap": 20, "Magnitude": 70,
+    "Bone Club": 65, "Bonemerang": 100, "Bone Rush": 75, "Sand Tomb": 15,
+    "Mud Shot": 55,
+    # Rock
+    "Rock Throw": 50, "Rock Slide": 75, "Rock Blast": 75, "Rollout": 30,
+    "Ancient Power": 60,
+    # Bug
+    "Leech Life": 20, "Pin Missile": 40, "X-Scissor": 80, "Twineedle": 50,
+    "Signal Beam": 75, "Silver Wind": 60,
+    # Ghost
+    "Night Shade": 60, "Shadow Ball": 80, "Astonish": 30, "Lick": 20,
+    # Steel
+    "Iron Tail": 100, "Metal Claw": 50, "Steel Wing": 70, "Meteor Mash": 100,
+    "Magnet Bomb": 60,
+    # Fire
+    "Ember": 40, "Flamethrower": 95, "Fire Blast": 120, "Fire Spin": 15,
+    "Fire Punch": 75, "Flame Wheel": 60, "Overheat": 140,
+    # Water
+    "Water Gun": 40, "Bubble": 20, "Bubble Beam": 65, "Surf": 95,
+    "Hydro Pump": 120, "Water Pulse": 60, "Waterfall": 80, "Clamp": 35,
+    "Whirlpool": 15, "Crabhammer": 90, "Brine": 65,
+    # Grass
+    "Vine Whip": 35, "Razor Leaf": 55, "Solar Beam": 120, "Mega Drain": 40,
+    "Absorb": 20, "Giga Drain": 60, "Bullet Seed": 30, "Frenzy Plant": 150,
+    # Electric
+    "Thunderbolt": 95, "Thunder": 120, "Thundershock": 40, "Thunder Punch": 75,
+    "Spark": 65, "Discharge": 80, "Volt Tackle": 120, "Shock Wave": 60,
+    # Ice
+    "Ice Beam": 95, "Blizzard": 120, "Ice Punch": 75, "Powder Snow": 40,
+    "Aurora Beam": 65, "Icy Wind": 55,
+    # Psychic
+    "Psychic": 90, "Psybeam": 65, "Confusion": 50, "Psywave": 60,
+    "Future Sight": 80, "Dream Eater": 100, "Extrasensory": 80,
+    # Dragon
+    "Dragon Rage": 50, "Dragon Breath": 60, "Outrage": 90, "Draco Meteor": 130,
+    "Twister": 40,
+    # Dark
+    "Bite": 60, "Crunch": 80, "Faint Attack": 60, "Knock Off": 20,
+    "Pursuit": 40, "Thief": 40,
+}
+MOVE_POWER_DEFAULT = 50  # neutral estimate for a damaging move with no listed power
+
 # ── Move name → type code ─────────────────────────────────────────────────────
 # Covers moves commonly seen in LeafGreen playthroughs.
 
