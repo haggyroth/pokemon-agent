@@ -69,6 +69,12 @@ class LeafGreenReader:
         if cb2 == Addr.CB2_BATTLE:
             return GameContext.IN_BATTLE
         if cb2 == Addr.CB2_OVERWORLD:
+            # Start menu overlay: its callback is a ROM pointer while open.
+            # Check before SCREEN_FADE, which is ALSO 1 the whole time the Start
+            # menu is open (verified live) — otherwise the menu would be
+            # misclassified as TRANSITIONING and could get spurious auto-A taps.
+            if 0x08000000 <= self.client.read32(Addr.START_MENU_CB) <= 0x08FFFFFF:
+                return GameContext.IN_MENU
             if self.client.read8(Addr.SCREEN_FADE) == 0x01:
                 return GameContext.TRANSITIONING
             # SCRIPT_RAM[0] != 0 while a map script runs (NPC dialog, signs, ...).
