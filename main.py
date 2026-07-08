@@ -137,14 +137,17 @@ def main():
             was_in_battle_prev_tick = battle_was_active
             battle_was_active = in_battle
 
-            # Auto-advance dialog during stuck NPC/item transitions.
+            # Auto-advance a stuck dialog / transition with A. Fires for
+            # DIALOG_OPEN (where NPC/sign/item dialogs live) and TRANSITIONING
+            # (post-warp/fade message boxes). Not IN_MENU — pressing A there would
+            # select a menu item.
             # Guards:
             #   • not in_battle            — don't tap during a battle turn
             #   • not was_in_battle_prev_tick — don't tap on the first tick after
             #                                  leaving IN_BATTLE; context can read
             #                                  TRANSITIONING during post-battle
             #                                  animations and turn-change fades
-            if (state.context == GameContext.TRANSITIONING
+            if (state.context in (GameContext.DIALOG_OPEN, GameContext.TRANSITIONING)
                     and not in_battle
                     and not was_in_battle_prev_tick):
                 transitioning_steps += 1
@@ -280,6 +283,8 @@ def main():
                     obs_parts.append("STUCK: same battle action repeating — try a different move or switch Pokémon")
                 elif ctx == "DIALOG_OPEN" or ctx == "TRANSITIONING":
                     obs_parts.append("STUCK: dialog/transition not advancing — press A")
+                elif ctx == "IN_MENU":
+                    obs_parts.append("STUCK in a menu — press B to close it and return to the field, or navigate with the D-pad and A")
                 else:
                     obs_parts.append("STUCK: position unchanged after repeated input — wall or obstacle ahead, try a different direction or press B to cancel any open menu")
                     # Re-inject the area map when stuck on the overworld so the agent can re-orient
