@@ -24,6 +24,21 @@ def test_stab_breaks_tie_toward_same_type():
     assert "Best move: Ember" in out
 
 
+def test_strong_neutral_beats_weak_super_effective():
+    # Powder Snow (Ice, 40) is 2x on Pidgey (Normal/Flying) -> ~80 expected.
+    # Return (Normal, 102) is neutral -> 102. Power-aware ranking picks Return.
+    out = battle_summary(["Powder Snow", "Return"], "PIDGEY", 1.0, pp_list=[25, 20])
+    assert "Best move: Return" in out
+    assert "no super effective option" in out
+
+
+def test_strong_super_effective_still_wins():
+    # A high-power super-effective move should of course still be picked.
+    out = battle_summary(["Powder Snow", "Blizzard"], "PIDGEY", 1.0, pp_list=[25, 5])
+    assert "Best move: Blizzard" in out
+    assert "super effective" in out
+
+
 def test_all_status_moves_gives_no_best_move():
     out = battle_summary(["Growl", "Tail Whip"], "RATTATA", 1.0, pp_list=[40, 30])
     assert "Best move:" not in out

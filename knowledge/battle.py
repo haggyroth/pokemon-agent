@@ -3,7 +3,10 @@
 # and the TYPE_CHART.
 from __future__ import annotations
 from knowledge.type_chart import get_effectiveness
-from knowledge.leafgreen_data import POKEMON_TYPES, MOVE_TYPE, GEN3_CATEGORY, STATUS_MOVES
+from knowledge.leafgreen_data import (
+    POKEMON_TYPES, MOVE_TYPE, GEN3_CATEGORY, STATUS_MOVES,
+    MOVE_POWER, MOVE_POWER_DEFAULT,
+)
 
 
 def _type_label(t: str) -> str:
@@ -96,9 +99,10 @@ def battle_summary(move_names: list[str],
     lines.append(f"Your moves: {annotate_moves(move_names, opponent_name, pp_list)}")
 
     if opp_types:
-        # Suggest the best *damaging* move. Rank by type effectiveness with a
-        # STAB bonus; skip 0-PP moves and known status (non-damaging) moves so
-        # e.g. Growl is never proposed as the best attack.
+        # Suggest the best *damaging* move, ranked by an approximate expected
+        # damage: base power × STAB × type effectiveness. Skip 0-PP moves and
+        # known status (non-damaging) moves so e.g. Growl is never proposed, and
+        # so a strong neutral move can outrank a weak super-effective one.
         scored = []
         for idx, name in enumerate(move_names):
             if not name or name in STATUS_MOVES:
@@ -109,7 +113,8 @@ def battle_summary(move_names: list[str],
             if mt:
                 eff = effectiveness_vs(mt, opp_types)
                 stab = 1.5 if mt in attacker_types else 1.0
-                scored.append((eff * stab, eff, name))
+                power = MOVE_POWER.get(name, MOVE_POWER_DEFAULT)
+                scored.append((power * stab * eff, eff, name))
         if scored:
             scored.sort(reverse=True)
             _score, best_eff, best_move = scored[0]
