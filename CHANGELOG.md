@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.3.6] — 2026-07-06
+
+### Fixed
+- fix: all field menus (Start, Bag, Party, Trainer Card, Option, …) now read as
+  `IN_MENU` via a general menu-open flag (`0x03002415`), completing the menu
+  detection started in 0.3.5 and preventing spurious auto-A in any menu (#18)
+
 ## [0.3.5] — 2026-07-06
 
 ### Fixed
@@ -84,6 +91,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.3.6]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.6
 [0.3.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.5
 [0.3.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.4
 [0.3.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.3.3
