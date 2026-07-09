@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.6.2]
+
+### Fixed
+- fix: badges are read via the live SaveBlock1 pointer (`deref+0x41C`) instead of
+  the fixed `0x02025968`. gSaveBlock1 is DMA-relocated on map transitions, so the
+  fixed address drifted off the badge byte after a warp and returned garbage —
+  producing phantom badges and false gym/milestone rewards (e.g. a bogus
+  beat_surge). Completes the SaveBlock1-relocation audit (#42)
+
 ## [0.6.1]
 
 ### Added
@@ -195,6 +204,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.6.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.2
 [0.6.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.1
 [0.6.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.0
 [0.5.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.5
