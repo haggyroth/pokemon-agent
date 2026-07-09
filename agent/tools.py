@@ -57,13 +57,16 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "go_to",
-        "description": "Travel to a named map (e.g. 'Pewter City', 'Route 1'), auto-routing "
-                       "across multiple connected maps — it finds the route and crosses "
-                       "each edge for you. Stops if a wild battle/dialog interrupts or the "
-                       "way is blocked (e.g. a cave), so just call it again to resume. Use "
-                       "this to travel between towns/routes; it's the main overworld tool.",
+        "description": "Travel to a named map ('Pewter City', 'Route 1') OR a waypoint "
+                       "('Pokemon Center', 'Mart', 'Gym'), auto-routing across map "
+                       "connections and building/cave doors — it finds the route and "
+                       "walks/crosses each step for you. Waypoints go to the nearest one. "
+                       "Stops if a battle/dialog interrupts or the way is blocked, so just "
+                       "call it again to resume. The main overworld travel tool.",
         "parameters": {"type": "object", "properties": {
-            "destination": {"type": "string", "description": "Map name, e.g. 'Viridian City'."},
+            "destination": {"type": "string",
+                            "description": "Map name (e.g. 'Viridian City') or waypoint "
+                                           "('Pokemon Center', 'Mart', 'Gym')."},
         }, "required": ["destination"]},
     }},
     {"type": "function", "function": {
