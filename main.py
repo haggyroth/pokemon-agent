@@ -3,7 +3,7 @@ from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
                     USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
                     LLM_BASE_URL)
 from game.memory_reader import LeafGreenReader
-from game.state import GameContext, active_party_member, newly_fainted_slots
+from game.state import GameContext, GameState, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
 from agent.lm_studio_client import AgentClient
 from agent.reward import RewardTracker
@@ -17,6 +17,8 @@ from game.constants import Addr
 from game.pathfinding import door_centers
 from knowledge.battle import battle_summary
 from rich.console import Console
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 from pathlib import Path
 import time, sys, traceback
 
@@ -51,6 +53,60 @@ def _run_summary(reward, client, steps: int) -> str:
     return (f"steps={steps}  reward={reward.total:.1f}  "
             f"llm_calls={client.llm_calls}  tokens={client.total_tokens} "
             f"(prompt={client.total_prompt_tokens}, completion={client.total_completion_tokens})")
+
+
+# A goal predicate: given the live state + long-term memory, has the episode's
+# objective been met? Used by the eval harness (run_episode(goal=...)); None for
+# an open-ended real run.
+Goal = Callable[[GameState, LongTermMemory], bool]
+
+
+@dataclass
+class AgentRuntime:
+    """Everything a decision loop needs, built once. Shared by the real run
+    (main) and the eval harness so the two never drive the game differently."""
+    mgba:    object
+    reader:  LeafGreenReader
+    client:  AgentClient
+    ltm:     LongTermMemory
+    stm:     ShortTermMemory
+    journal: BattleJournal
+    reward:  RewardTracker
+    tilemap: TilemapReader
+
+
+@dataclass
+class EpisodeResult:
+    """Outcome of one run_episode() call — the eval scorecard for a scenario."""
+    reason:            str            # goal | max_steps | max_llm_calls | token_budget | interrupted | error_budget
+    passed:            bool           # goal predicate satisfied
+    steps:             int
+    reward:            float
+    llm_calls:         int
+    prompt_tokens:     int
+    completion_tokens: int
+    final_map:         tuple[int, int]
+    final_pos:         tuple[int, int]
+    badges:            int
+    milestones:        list[str] = field(default_factory=list)
+    stuck_ratio:       float = 0.0    # fraction of overworld decision ticks with no movement
+    goal_desc:         str = ""
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+    def summary(self) -> str:
+        flag = "PASS" if self.passed else "----"
+        return (f"[{flag}] {self.reason}  steps={self.steps}  reward={self.reward:.1f}  "
+                f"map={self.final_map} pos={self.final_pos}  badges={self.badges}  "
+                f"stuck={self.stuck_ratio:.0%}  llm_calls={self.llm_calls}  "
+                f"tokens={self.total_tokens}")
+
+    def to_dict(self) -> dict:
+        d = dict(self.__dict__)
+        d["total_tokens"] = self.total_tokens
+        return d
 
 
 def _frame_chroma(mgba) -> float:
@@ -115,82 +171,108 @@ def drive_into_gameplay(mgba, reader) -> bool:
     return False                              # budget exhausted; hand off anyway
 
 
-def main():
-    console.rule("[bold green]Pokemon LeafGreen LLM Agent")
-    if MGBA_BACKEND == "native":
+def build_runtime(*, backend: str = MGBA_BACKEND,
+                  start_save: str = START_FROM_SAVE,
+                  start_state: str = START_FROM_STATE,
+                  ltm_path: Optional[str] = None,
+                  journal_path: Optional[str] = None,
+                  fresh_session: bool = True,
+                  verbose: bool = True) -> Optional[AgentRuntime]:
+    """Connect to the emulator, load the requested start point, and build every
+    component the decision loop needs. Returns None if the emulator isn't ready.
+
+    ltm_path / journal_path isolate persistent state — the eval harness points
+    them at a scratch dir so a scenario never touches the real logs/progress.json.
+    """
+    def say(msg):
+        if verbose:
+            console.print(msg)
+
+    if verbose:
+        console.rule("[bold green]Pokemon LeafGreen LLM Agent")
+    if backend == "native":
         from game.mgba_core import NativeMGBAClient
         mgba = NativeMGBAClient()
     else:
         from game.mgba_client import MGBAClient
         mgba = MGBAClient()
     if not mgba.verify_connection():
-        console.print(f"[red]ERROR: emulator not ready or wrong ROM (backend={MGBA_BACKEND}).")
-        console.print("Expected AGB-BPGE (Pokemon LeafGreen). Check ROM_PATH / startup order.")
-        sys.exit(1)
-    console.print(f"[green]Connected ({MGBA_BACKEND}): {mgba.get_game_title()} ({mgba.get_game_code()})")
+        say(f"[red]ERROR: emulator not ready or wrong ROM (backend={backend}).[/]")
+        say("Expected AGB-BPGE (Pokemon LeafGreen). Check ROM_PATH / startup order.")
+        return None
+    say(f"[green]Connected ({backend}): {mgba.get_game_title()} ({mgba.get_game_code()})")
 
     # Warn on the one config that can run up real money: a non-local LLM endpoint
     # with no stopping condition at all. The run still proceeds (the user may want
     # it), but the cost exposure should be explicit rather than silent.
     _is_local = any(h in LLM_BASE_URL for h in ("localhost", "127.0.0.1", "::1"))
     if not _is_local and not (MAX_STEPS or MAX_LLM_CALLS or TOKEN_BUDGET):
-        console.print(f"[yellow]⚠ Cloud endpoint ({LLM_BASE_URL}) with no run cap "
-                      f"(MAX_STEPS / MAX_LLM_CALLS / TOKEN_BUDGET all unset) — this "
-                      f"loop is unbounded and will keep spending until interrupted.[/]")
+        say(f"[yellow]⚠ Cloud endpoint ({LLM_BASE_URL}) with no run cap "
+            f"(MAX_STEPS / MAX_LLM_CALLS / TOKEN_BUDGET all unset) — this "
+            f"loop is unbounded and will keep spending until interrupted.[/]")
 
-    reader  = LeafGreenReader(mgba, decrypt=True)
+    reader = LeafGreenReader(mgba, decrypt=True)
 
     # Optionally load an mGBA save STATE directly — instant, no title/Continue/
-    # recap. Takes precedence over START_FROM_SAVE (native only).
-    if START_FROM_STATE and MGBA_BACKEND == "native":
-        if mgba.load_state_file(START_FROM_STATE):
+    # recap. Takes precedence over start_save (native only).
+    if start_state and backend == "native":
+        if mgba.load_state_file(start_state):
             mgba.tick(30)   # let post-load fade/flags settle before first read
             s = reader.read_state()
-            console.print(f"[green]Loaded save state: {START_FROM_STATE} "
-                          f"(map {s.map_bank}/{s.map_id}, pos ({s.player_x},{s.player_y}))[/]")
+            say(f"[green]Loaded save state: {start_state} "
+                f"(map {s.map_bank}/{s.map_id}, pos ({s.player_x},{s.player_y}))[/]")
         else:
-            console.print(f"[red]Could not load save state: {START_FROM_STATE}[/]")
+            say(f"[red]Could not load save state: {start_state}[/]")
     # Otherwise, optionally boot from a battery save and drive to "Continue" so the
     # agent starts in real gameplay instead of the new-game intro (native only).
-    elif START_FROM_SAVE and MGBA_BACKEND == "native":
-        if mgba.load_save(START_FROM_SAVE):
+    elif start_save and backend == "native":
+        if mgba.load_save(start_save):
             got_control = drive_into_gameplay(mgba, reader)
             where = f"map {mgba.read8(Addr.MAP_BANK)}/{mgba.read8(Addr.MAP_ID)}"
             if got_control:
-                console.print(f"[green]Continued from save: {START_FROM_SAVE} ({where})[/]")
+                say(f"[green]Continued from save: {start_save} ({where})[/]")
             else:
-                console.print(f"[yellow]Continued from save but could not confirm player "
-                              f"control ({where}) — may still be in the quest recap[/]")
+                say(f"[yellow]Continued from save but could not confirm player "
+                    f"control ({where}) — may still be in the quest recap[/]")
         else:
-            console.print(f"[red]Could not load save: {START_FROM_SAVE}[/]")
+            say(f"[red]Could not load save: {start_save}[/]")
 
     tilemap = TilemapReader(mgba)
-    ltm     = LongTermMemory()
+    ltm     = LongTermMemory(path=ltm_path)
     client  = AgentClient(mgba, reader, ltm)
     stm     = ShortTermMemory()
-    journal = BattleJournal()
+    journal = BattleJournal(path=journal_path)
     reward  = RewardTracker(shaped=True)
 
-    ltm.new_session()
-    console.print(f"Session #{ltm.data['session_count']} | Badges: {ltm.data['badges_earned']}/8 | "
-                  f"Milestones: {len(ltm.data['milestones'])}")
+    if fresh_session:
+        ltm.new_session()
+    say(f"Session #{ltm.data['session_count']} | Badges: {ltm.data['badges_earned']}/8 | "
+        f"Milestones: {len(ltm.data['milestones'])}")
 
     # ── Startup badge reconciliation ─────────────────────────────────────────
-    # Game RAM is the source of truth for badges — it IS the actual save state.
-    # We never write the badge byte. Instead we fold any badges RAM shows into
-    # LTM, which is a monotonic record for reward/milestone tracking. RAM can
-    # legitimately regress when the agent load_state()s to retry a gym, so we must
-    # not un-earn milestones or (worse) fabricate badges.
-    #
-    # Read the badge bitmask via the RELOCATION-SAFE reader (deref SAVEBLOCK1_PTR
-    # + BADGES_OFFSET), NOT the fixed Addr.BADGES: SaveBlock1 is DMA-relocated, so
-    # with START_FROM_STATE (a state saved after any warp) the fixed address points
-    # at arbitrary bytes and the monotonic reconciler would permanently adopt
-    # phantom badges/milestones into LTM.
+    # Fold any badges RAM shows into LTM (monotonic mirror for reward/milestone
+    # tracking; never un-earned). Read via the RELOCATION-SAFE reader.read_badges()
+    # — NOT the fixed Addr.BADGES, which drifts off the badge byte after a DMA
+    # relocation and would fabricate phantom badges into LTM.
     _adopted = ltm.reconcile_badges_from_ram(reader.read_badges()[1])
     if _adopted:
-        console.print(f"[yellow]Adopted badges from game save into LTM: {', '.join(_adopted)}[/]")
-    del _adopted
+        say(f"[yellow]Adopted badges from game save into LTM: {', '.join(_adopted)}[/]")
+
+    return AgentRuntime(mgba=mgba, reader=reader, client=client, ltm=ltm,
+                        stm=stm, journal=journal, reward=reward, tilemap=tilemap)
+
+
+def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str = "",
+                max_steps: int = 0, verbose: bool = True) -> EpisodeResult:
+    """Drive the decision loop until the goal is met, a cap is hit, or the run is
+    interrupted / exceeds the error budget. Returns an EpisodeResult scorecard.
+
+    With goal=None and max_steps=0 this is the open-ended real run (what main()
+    uses). The eval harness passes a goal predicate + step budget per scenario.
+    Spend caps (MAX_LLM_CALLS/TOKEN_BUDGET) always apply as a safety net.
+    """
+    mgba, reader, client = rt.mgba, rt.reader, rt.client
+    ltm, stm, journal, reward, tilemap = rt.ltm, rt.stm, rt.journal, rt.reward, rt.tilemap
 
     prev_state           = None
     battle_was_active    = False
@@ -206,6 +288,23 @@ def main():
     step_count           = 0
     consecutive_errors   = 0      # ticks that raised in a row (see MAX_CONSECUTIVE_ERRORS)
     blackout_active      = False  # inside a blackout (all fainted); reset on recovery
+    decision_ticks       = 0      # overworld decision ticks (for stuck_ratio)
+    stuck_ticks          = 0      # of those, how many with no movement
+
+    def _result(reason: str, passed: bool, s: Optional[GameState] = None) -> EpisodeResult:
+        if s is None:
+            s = reader.read_state()
+        return EpisodeResult(
+            reason=reason, passed=passed, steps=step_count,
+            reward=round(reward.total, 2), llm_calls=client.llm_calls,
+            prompt_tokens=client.total_prompt_tokens,
+            completion_tokens=client.total_completion_tokens,
+            final_map=(s.map_bank, s.map_id), final_pos=(s.player_x, s.player_y),
+            badges=ltm.data["badges_earned"],
+            milestones=list(ltm.data.get("milestones", [])),
+            stuck_ratio=round(stuck_ticks / decision_ticks, 3) if decision_ticks else 0.0,
+            goal_desc=goal_desc,
+        )
 
     while True:
         try:
@@ -214,6 +313,13 @@ def main():
             stm.current_state = state
             stm.last_state    = prev_state
             stm.last_diff     = diff
+
+            # Goal reached? (eval harness only; no-op for the open-ended real run.)
+            if goal is not None and goal(state, ltm):
+                if verbose:
+                    console.print(f"[green bold]GOAL reached: {goal_desc}[/]")
+                ltm.save()
+                return _result("goal", True, state)
 
             in_battle = state.context == GameContext.IN_BATTLE
             if in_battle and not battle_was_active:
@@ -488,7 +594,8 @@ def main():
             # with prose instead of acting. Make the imperative unmissable.
             obs_parts.append("→ Your turn: decide the best next action and call a tool NOW (do not reply with text only)")
             obs = " | ".join(obs_parts)
-            console.print(f"[yellow]OBS:[/] {obs[:140]}")
+            if verbose:
+                console.print(f"[yellow]OBS:[/] {obs[:140]}")
 
             # ── Blackout check ───────────────────────────────────────────────
             party_wiped = bool(state.party) and all(p.current_hp == 0 for p in state.party)
@@ -533,7 +640,7 @@ def main():
                 stm.record_action(";".join(actions), state.player_x, state.player_y)
             elif reasoning:
                 stm.record_action(reasoning[:80], state.player_x, state.player_y)
-            if reasoning:
+            if reasoning and verbose:
                 console.print(f"[dim]{reasoning[:160]}[/]")
 
             # set_opponent is now only a fallback — memory (read_enemy_lead) is
@@ -551,46 +658,72 @@ def main():
             # simply holds; only a real exception grows it.)
             consecutive_errors = 0
 
+            # Stuck tracking: an overworld decision tick that didn't move the
+            # player. A high ratio is the signature of the Route-2 "can't cross"
+            # thrash — surfaced as EpisodeResult.stuck_ratio for the eval harness.
+            if state.context == GameContext.OVERWORLD:
+                decision_ticks += 1
+                if prev_state is not None and \
+                        (state.player_x, state.player_y) == (prev_state.player_x, prev_state.player_y):
+                    stuck_ticks += 1
+
             prev_state = state
             mgba.tick()
 
             step_count += 1
-            if MAX_STEPS and step_count >= MAX_STEPS:
-                console.print(f"[green]Reached MAX_STEPS={MAX_STEPS} — stopping. "
-                              f"{_run_summary(reward, client, step_count)}[/]")
+            if max_steps and step_count >= max_steps:
+                if verbose:
+                    console.print(f"[green]Reached max_steps={max_steps} — stopping. "
+                                  f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
-                break
+                return _result("max_steps", False, state)
             # Spend guards (matter for cloud endpoints; 0 = unlimited). Stop
-            # cleanly, same as MAX_STEPS, so an unattended run can't run up an
+            # cleanly, same as max_steps, so an unattended run can't run up an
             # unbounded bill.
             if MAX_LLM_CALLS and client.llm_calls >= MAX_LLM_CALLS:
-                console.print(f"[green]Reached MAX_LLM_CALLS={MAX_LLM_CALLS} — stopping. "
-                              f"{_run_summary(reward, client, step_count)}[/]")
+                if verbose:
+                    console.print(f"[green]Reached MAX_LLM_CALLS={MAX_LLM_CALLS} — stopping. "
+                                  f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
-                break
+                return _result("max_llm_calls", False, state)
             if TOKEN_BUDGET and client.total_tokens >= TOKEN_BUDGET:
-                console.print(f"[green]Reached TOKEN_BUDGET={TOKEN_BUDGET} — stopping. "
-                              f"{_run_summary(reward, client, step_count)}[/]")
+                if verbose:
+                    console.print(f"[green]Reached TOKEN_BUDGET={TOKEN_BUDGET} — stopping. "
+                                  f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
-                break
+                return _result("token_budget", False, state)
 
         except KeyboardInterrupt:
-            console.print(f"\n[red]Stopped.[/] {_run_summary(reward, client, step_count)}")
+            if verbose:
+                console.print(f"\n[red]Stopped.[/] {_run_summary(reward, client, step_count)}")
             ltm.save()
-            break
+            return _result("interrupted", False)
         except Exception as e:
             consecutive_errors += 1
             _log_exception(e)
-            console.print(f"[red]Error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): "
-                          f"{type(e).__name__}: {e}[/] — see {ERRORS_LOG}")
-            console.print_exception(max_frames=4)
+            if verbose:
+                console.print(f"[red]Error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): "
+                              f"{type(e).__name__}: {e}[/] — see {ERRORS_LOG}")
+                console.print_exception(max_frames=4)
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                console.print(f"[red bold]{consecutive_errors} consecutive errors — "
-                              f"stopping. Full tracebacks in {ERRORS_LOG}. "
-                              f"{_run_summary(reward, client, step_count)}[/]")
+                if verbose:
+                    console.print(f"[red bold]{consecutive_errors} consecutive errors — "
+                                  f"stopping. Full tracebacks in {ERRORS_LOG}. "
+                                  f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
-                sys.exit(1)
+                return _result("error_budget", False)
             time.sleep(1.0)
+
+
+def main():
+    rt = build_runtime(verbose=True)
+    if rt is None:
+        sys.exit(1)
+    result = run_episode(rt, max_steps=MAX_STEPS, verbose=True)
+    # run_episode already printed the stop line. Propagate a hard failure as a
+    # non-zero exit so a wrapping shell/CI notices the error-budget abort.
+    if result.reason == "error_budget":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

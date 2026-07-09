@@ -21,6 +21,7 @@ logs/*.json
 logs/*.jsonl
 logs/*.log
 logs/*.bak
+logs/eval/
 
 # Save states (binary, machine-specific)
 saves/*

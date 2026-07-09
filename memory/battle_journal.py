@@ -10,8 +10,10 @@ class BattleRecord:
     moves_used: list[str];  hp_remaining_pct: float;  reward: float;  notes: str
 
 class BattleJournal:
-    def __init__(self):
-        self.path = Path(JOURNAL_PATH)
+    def __init__(self, path=None):
+        # path overrides the default battles.jsonl — the eval harness isolates it
+        # so scenario battles don't pollute the real journal.
+        self.path = Path(path or JOURNAL_PATH)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, record: BattleRecord):
