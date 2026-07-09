@@ -28,7 +28,7 @@ Two backends, selected by `MGBA_BACKEND` in `.env`:
 | Binding source | `game/_mgba_build.py` | cffi builder → `game/_mgba_native*.so` (gitignored) |
 | Native client | `game/mgba_core.py` (`NativeMGBAClient`) | Drop-in for `MGBAClient` |
 | LeafGreen ROM | `~/mgba-http/Pokemon_LeafGreen.gba` (override with `ROM_PATH`) | US v1.0, 16 MB |
-| LM Studio model | `MODEL_NAME` in `.env` — a tool-capable model, port 1234 | text-only models: set `USE_VISION=false`; ensure `MAX_TOKENS` fits the model's loaded context |
+| LLM (local or cloud) | `MODEL_NAME` + `LLM_BASE_URL`/`LLM_API_KEY` in `.env` — a tool-capable model | Local: LM Studio on port 1234. Cloud: point `LLM_BASE_URL` at any OpenAI-compatible endpoint (OpenAI, OpenRouter, …). Text-only models: `USE_VISION=false`; ensure `MAX_TOKENS` fits the loaded context |
 | Project root | `/Users/kylec/Projects/pokemon-agent` | |
 
 Build the binding once (or after upgrading libmgba):
@@ -86,10 +86,12 @@ Pokemon_LeafGreen.gba
    ├── game/memory_reader.py    WRAM decoder — XOR decryption + detect_context
    ├── game/state.py            GameState, PokemonStatus, StateDiff, helpers
    ├── game/constants.py        Memory addresses (authoritative), lookup tables, charset
-   ├── game/tilemap_reader.py   ROM tile passability for navigation hints
+   ├── game/tilemap_reader.py   ROM tile passability, warps, connections (navigation)
+   ├── game/pathfinding.py      A* grid pathfinding + door_centers (pure, testable)
    ├── game/viewer.py           Optional pygame window (SHOW_WINDOW)
-   ├── agent/lm_studio_client.py OpenAI-compat client, tool calling (capped rounds)
-   ├── agent/tools.py           Tool schemas
+   ├── agent/lm_studio_client.py OpenAI-compat client (local OR cloud), tool calling +
+   │                            the nav/battle skills (walk_to/go_to/go_to_map/use_move)
+   ├── agent/tools.py           Tool schemas + button-name normalization
    ├── agent/history.py         Message trimming + control-token stripping (dependency-light)
    ├── agent/reward.py          Shaped/sparse reward tracker
    ├── memory/short_term.py     Current context (in-process)
@@ -99,6 +101,8 @@ Pokemon_LeafGreen.gba
        ├── type_chart.py        Gen III type effectiveness
        ├── leafgreen_data.py    Gyms, moves (type/power), Pokémon types, milestones
        ├── navigation.py        Map names, route/building guidance, area maps
+       ├── map_graph.py         GENERATED map connection+warp graph + BFS routing
+       │                        (tools/gen_map_graph.py, from the pokefirered decomp)
        ├── battle.py            Battle observation builder (best-move ranking)
        └── system_prompt.py     Dynamic system prompt builder
 ```
@@ -435,6 +439,11 @@ ones:
 | Screen fade | `0x03000F9C` | 1 while a menu is on screen **or** mid-fade; clears the instant a menu closes |
 | `gBattleTypeFlags` | `0x02022B4C` | TRAINER bit `0x08`; set at battle init, read at battle start |
 | Bag key-items pocket | `gSaveBlock1(0x03005008) + 0x3B8` | 30 slots; count non-empty for the `key_item` reward |
+| Current map (bank/id) | deref `PLAYER_PTR` `+0x04`/`+0x05` | the TRUE current map (interior-aware); the absolute `0x02031DBC/DBD` is the stale *parent outdoor* map |
+| `gEnemyParty[0]` | `0x0202402C` | opponent's active Pokémon — same 100-byte Gen III struct as gPlayerParty; fixed global. `read_enemy_lead()` |
+| `gObjectEvents` | `0x02036E38` (= OW slot 0) | NPCs on screen; 36-byte stride, `currentCoords` at +0x10/+0x12 = grid coord **+7**. walk_to routes around them |
+| `gBattlerControllerFuncs[0]` | `0x03004FE0` | `== 0x0802EA11` (HandleInputChooseMove) ⇒ FIGHT move menu is open (use_move gate) |
+| `gMoveSelectionCursor` | `0x02023FFC` | move slot A commits (2×2 grid); use_move writes the target slot here, then presses A |
 
 ### Context Detection (verified live — implemented in `memory_reader.detect_context`)
 
@@ -633,25 +642,34 @@ Pallet → Viridian → Pewter [GYM1] → Cerulean [GYM2]
 ### Tool List
 
 ```python
-# Defined in agent/tools.py
-press_button(button: str, times: int = 1)   # times clamped to 1–10
+# Defined in agent/tools.py. Navigation and battle are HIGH-LEVEL SKILLS —
+# deterministic code drives the emulator; the LLM only picks destinations/moves.
+go_to(destination: str)      # travel to a named map ("Pewter City") OR waypoint
+                             #   ("Pokemon Center"/"Mart"/"Gym"). Auto-routes across
+                             #   map connections + building/cave warps (BFS over
+                             #   knowledge/map_graph.py); resumable on battle/dialog.
+                             #   THE primary overworld tool.
+walk_to(x: int, y: int)      # A* to a tile on the CURRENT map (routes around walls +
+                             #   loaded NPCs; warp-aware; stops on battle/dialog).
+go_to_map(direction: str)    # cross the seamless connection on one edge (N/S/E/W).
+use_move(move: str)          # battle: drive the FIGHT menu and use a move by name,
+                             #   confirming via that move's PP dropping.
+press_button(button: str, times: int = 1)   # menus/dialog/nudges (times clamped 1–10)
 read_game_state() -> GameState
-save_state(slot: int = 0)
-load_state(slot: int = 0)
+save_state(slot: int = 0) / load_state(slot: int = 0)
 wait_frames(frames: int)                     # advances the emulator (native) / waits (http)
-set_opponent(species: str)                   # unlocks type/effectiveness analysis in battle
 record_milestone(name: str, note: str = "")  # persist a story milestone to long-term memory
 ```
+The opponent is identified from memory (`gEnemyParty`), so there is no
+`set_opponent` tool — it's shown in the observation automatically.
 
 ### Battle Decision Priority
 
-1. `read_game_state` at start of each turn
-2. Use 2× effective move if available and PP > 1
-3. Switch if opponent has 2× type advantage on you
-4. Heal if HP < 30%
-5. Save state before every gym leader and every E4 trainer
-6. After loss: load state, try different strategy
-7. If stuck (5+ same actions, no change): press A to advance dialog
+1. Opponent + types are auto-detected (shown in the obs) — no need to set them.
+2. `use_move("<name>")` to attack — prefer the super-effective / highest-power move with PP.
+3. Switch if the opponent has a 2× type advantage and you have a better counter.
+4. Heal if HP < 30% (`go_to("Pokemon Center")`, or Bag → Medicine).
+5. Save state before every gym leader and every E4 trainer; after a loss, load and retry.
 
 ### Reward Schedule
 
