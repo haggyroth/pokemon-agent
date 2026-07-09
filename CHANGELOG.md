@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.7.4]
+
+### Fixed
+- fix: `walk_to` stops on a wild battle or dialog that interrupts a walk (it only
+  stopped on a map change before, so it mashed through grass into an encounter).
+  Now returns on IN_BATTLE/DIALOG_OPEN. First piece of nav Track B (#49)
+
 ## [0.7.3]
 
 ### Fixed
@@ -249,6 +256,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.7.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.4
 [0.7.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.3
 [0.7.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.2
 [0.7.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.1
