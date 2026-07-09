@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.14.2]
+
+### Fixed
+- fix: confirm real player control on boot (#79) — `drive_into_gameplay` declared
+  success at the first full-color frame, but the FRLG recap has bright frames and a
+  fade before control, so ~half of boots handed back a frozen player on a garbage
+  tilemap. It now verifies the player responds to input (`_has_control`) and retries
+  the boot up to 4× (5/5 fresh boots now reach movable control)
+- fix: turn-vs-step in `walk_to` — Gen III's first D-pad press only turns the
+  character; the blocked-tile logic from 0.14.1 mistook every corner for an obstacle
+  and stalled (e.g. inside the Viridian Forest gate). Each move now presses up to
+  twice (turn, then step) before flagging a tile blocked. The agent now traverses
+  Pallet → Route 1 → Route 2 → the forest gate → into Viridian Forest
+
 ## [0.14.1]
 
 ### Fixed
