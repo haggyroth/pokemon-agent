@@ -106,19 +106,6 @@ TOOLS = [
         }, "required": ["frames"]},
     }},
     {"type": "function", "function": {
-        "name": "set_opponent",
-        "description": (
-            "Tell the agent which Pokémon you are currently facing in battle. "
-            "Read the opponent's name from the battle screenshot and call this ONCE "
-            "at the start of each new battle. This unlocks type-effectiveness "
-            "analysis for your moves."
-        ),
-        "parameters": {"type": "object", "properties": {
-            "species": {"type": "string",
-                        "description": "Opponent Pokémon name exactly as shown (e.g. 'GEODUDE', 'STARMIE')"},
-        }, "required": ["species"]},
-    }},
-    {"type": "function", "function": {
         "name": "record_milestone",
         "description": (
             "Record a story milestone permanently to long-term memory. "

@@ -304,23 +304,28 @@ class AgentClient:
                   "north": "North", "south": "South", "east": "East", "west": "West",
                   "up": "North", "down": "South", "left": "West", "right": "East"}
 
-    # Waypoint keywords → a map "kind" in the graph (nearest one is routed to).
-    _WAYPOINT_KIND = {
-        "pokemon center": "pokecenter", "poke center": "pokecenter", "pokecenter": "pokecenter",
-        "pokécenter": "pokecenter", "pokémon center": "pokecenter", "center": "pokecenter",
-        "pc": "pokecenter", "heal": "pokecenter", "healing": "pokecenter",
-        "mart": "mart", "poke mart": "mart", "pokemart": "mart", "shop": "mart", "store": "mart",
-        "gym": "gym",
-    }
+    @staticmethod
+    def _waypoint_kind(dest: str):
+        """Fuzzy-match a destination string to a waypoint kind, or None. Substring
+        based so 'Viridian Pokemart', 'Poke Mart', 'Pewter City Gym' all resolve."""
+        if any(k in dest for k in ("pokemon center", "poke center", "pokecenter")) \
+           or dest in ("pc", "center", "heal", "healing"):
+            return "pokecenter"
+        if "mart" in dest or dest in ("shop", "store"):
+            return "mart"
+        if "gym" in dest:
+            return "gym"
+        return None
 
     def _resolve_destination(self, destination: str):
         """Resolve a go_to destination string to (target_map, name). Accepts a map
-        name (exact/partial) or a waypoint keyword (pokemon center / mart / gym),
-        routing waypoints to the nearest such map from the current location."""
+        name (exact/partial) or a waypoint (pokemon center / mart / gym, matched
+        fuzzily), routing waypoints to the nearest such map from the current spot."""
         from knowledge.map_graph import nearest_of_kind
-        dest = str(destination).strip().lower()
+        # normalise: lowercase, strip, drop accents (é→e) so "Poké Mart" matches.
+        dest = str(destination).strip().lower().replace("é", "e").replace("è", "e")
         cur = self.reader.read_current_map()
-        kind = self._WAYPOINT_KIND.get(dest)
+        kind = self._waypoint_kind(dest)
         if kind:
             found = nearest_of_kind(cur, kind)
             if not found:
@@ -524,14 +529,6 @@ class AgentClient:
                 frames = int(args.get("frames", 30))
                 self.mgba.tick(frames)
                 return f"Waited {frames} frames."
-            case "set_opponent":
-                species = args.get("species", "").upper().strip()
-                self._current_opponent = species
-                from knowledge.leafgreen_data import POKEMON_TYPES
-                known = species in POKEMON_TYPES
-                return (f"Opponent set to {species}. "
-                        + (f"Types: {POKEMON_TYPES[species]}" if known
-                           else "Species not in database — effectiveness unknown."))
             case "record_milestone":
                 ms_name = args.get("name", "")
                 if ms_name not in MILESTONES:
