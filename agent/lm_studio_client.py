@@ -251,6 +251,51 @@ class AgentClient:
         px, py = self.reader.read_player_pos()
         return f"Stopped at ({px},{py}) while heading to ({tx},{ty})."
 
+    _EDGE = {  # direction -> (border-cell generator, step button)
+        "North": ("top",    "Up"),
+        "South": ("bottom", "Down"),
+        "West":  ("left",   "Left"),
+        "East":  ("right",  "Right"),
+    }
+    _DIR_ALIAS = {"n": "North", "s": "South", "e": "East", "w": "West",
+                  "north": "North", "south": "South", "east": "East", "west": "West",
+                  "up": "North", "down": "South", "left": "West", "right": "East"}
+
+    def _go_to_map(self, direction: str) -> str:
+        """Cross the map connection on the given edge (walk to the edge gap, then
+        step off). direction is a compass word/letter (N/S/E/W)."""
+        direction = self._DIR_ALIAS.get(str(direction).strip().lower(), str(direction).title())
+        if direction not in self._EDGE:
+            return f"'{direction}' is not a valid edge (use North/South/East/West)."
+        self.tilemap.refresh()
+        conns = {c["direction"] for c in self.tilemap.read_connections()}
+        if direction not in conns:
+            return f"This map has no connection to the {direction} (edges: {', '.join(conns) or 'none'})."
+        grid, w, h = self.tilemap.passable_grid()
+        if grid is None:
+            return "Cannot read the map right now."
+        side, step = self._EDGE[direction]
+        if side == "top":      edge = [(x, 0) for x in range(w) if grid[0][x]]
+        elif side == "bottom": edge = [(x, h - 1) for x in range(w) if grid[h - 1][x]]
+        elif side == "left":   edge = [(0, y) for y in range(h) if grid[y][0]]
+        else:                  edge = [(w - 1, y) for y in range(h) if grid[y][w - 1]]
+        if not edge:
+            return f"No walkable opening on the {direction} edge."
+        px, py = self.reader.read_player_pos()
+        edge.sort(key=lambda c: abs(c[0] - px) + abs(c[1] - py))
+        start_map = self.reader.read_current_map()
+        for ex, ey in edge[:4]:
+            self._walk_to(ex, ey)
+            if self.reader.read_current_map() != start_map:
+                nb, ni = self.reader.read_current_map()
+                return f"Crossed {direction} to map {nb}/{ni} at {self.reader.read_player_pos()}."
+            for _ in range(5):   # step off the edge into the connected map
+                self.mgba.tap(step)
+                if self.reader.read_current_map() != start_map:
+                    nb, ni = self.reader.read_current_map()
+                    return f"Crossed {direction} to map {nb}/{ni} at {self.reader.read_player_pos()}."
+        return f"Reached the {direction} edge but could not cross."
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -264,6 +309,8 @@ class AgentClient:
                 return f"Pressed {button} × {times}"
             case "walk_to":
                 return self._walk_to(int(args["x"]), int(args["y"]))
+            case "go_to_map":
+                return self._go_to_map(args["direction"])
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

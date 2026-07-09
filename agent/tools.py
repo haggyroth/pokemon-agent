@@ -44,6 +44,18 @@ TOOLS = [
         }, "required": ["x", "y"]},
     }},
     {"type": "function", "function": {
+        "name": "go_to_map",
+        "description": "Leave the current map by crossing a seamless connection on the "
+                       "given edge (see 'Map edges' in the observation). Walks to the "
+                       "opening on that edge and steps across into the adjacent map. "
+                       "direction is North/South/East/West. Use this to travel between "
+                       "towns and routes.",
+        "parameters": {"type": "object", "properties": {
+            "direction": {"type": "string",
+                          "enum": ["North", "South", "East", "West"]},
+        }, "required": ["direction"]},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},
