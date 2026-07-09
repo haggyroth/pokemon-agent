@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.14.4]
+
+### Fixed
+- fix: validate the SaveBlock1/map pointer before dereferencing in
+  `read_badges`/`read_player_pos`/`read_current_map` (#66) — on a title/reset/
+  transition frame the pointer is stale, so the reads returned garbage positions
+  and a badge flicker the reward logic could misread as newly-earned; they now
+  return the last good value. Also: honest comment on reward persistence (#71),
+  log NPC-read failures instead of silently pathing through NPCs (#73), and
+  document the read-only-RAM-plus-move-cursor write policy (#74)
+
 ## [0.14.3]
 
 ### Fixed
