@@ -369,6 +369,56 @@ class AgentClient:
             waiter()
         self.mgba.hold(button, 20)
 
+    def _use_move(self, name: str) -> str:
+        """Use a move by name in battle, deterministically.
+
+        Per pokefirered HandleInputChooseMove, pressing A commits
+        gMoveSelectionCursor[gActiveBattler] as the chosen move. So we: advance to
+        the FIGHT move menu (detected by gBattlerControllerFuncs[0] ==
+        CTRL_CHOOSE_MOVE), WRITE the target slot into the cursor, press A to
+        commit, then let the turn RESOLVE (the move executes and PP decrements only
+        after both sides have chosen and the turn plays out — checking sooner is
+        why this looked broken before). Success = that move's PP dropped (or the
+        battle ended). Single-battle scope (player = battler 0)."""
+        from game.constants import Addr
+        from game.state import GameContext
+        party = self.reader.read_party()
+        if not party:
+            return "No active Pokémon."
+        names = [n.lower() for n in party[0].move_names]
+        if name.lower().strip() not in names:
+            known = ", ".join(m for m in party[0].move_names if m)
+            return f"'{name}' is not a known move. Known moves: {known}."
+        slot = names.index(name.lower().strip())
+        move_label = party[0].move_names[slot]
+        if party[0].pp[slot] == 0:
+            return f"{move_label} has no PP left — choose another move."
+
+        for _ in range(20):
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                return "Battle is over."
+            if hasattr(self.mgba, "wait_until_idle"):
+                self.mgba.wait_until_idle()
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) != Addr.CTRL_CHOOSE_MOVE:
+                self._battle_press("A")   # advance intro/result text, or open FIGHT
+                continue
+            # Move menu is up: pick the slot and commit.
+            pp_before = self.reader.read_party()[0].pp[slot]
+            self.mgba.write8(Addr.MOVE_CURSOR, slot)
+            self.mgba.hold("A", 20)       # A edge → commits gMoveSelectionCursor
+            # Let the turn resolve — advance result text until OUR move's PP drops,
+            # the battle ends, or the next action menu appears.
+            for _ in range(24):
+                after = self.reader.read_party()
+                if not after or self.reader.detect_context() != GameContext.IN_BATTLE:
+                    return f"Used {move_label} (battle ended)."
+                if after[0].pp[slot] < pp_before:
+                    return f"Used {move_label}."
+                if hasattr(self.mgba, "wait_until_idle"):
+                    self.mgba.wait_until_idle()
+                self.mgba.hold("A", 18)
+        return f"Could not use {name} — the battle menu did not respond as expected."
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -394,6 +444,8 @@ class AgentClient:
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "use_move":
+                return self._use_move(args["move"])
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [
