@@ -384,7 +384,8 @@ def main():
                         name = MAP_NAMES.get((c["map_bank"], c["map_id"]),
                                              f"{c['map_bank']}/{c['map_id']}")
                         parts.append(f"{c['direction']}→{name}")
-                    obs_parts.append("Map edges (walk off that edge to cross): " + ", ".join(parts))
+                    obs_parts.append("Map edges (call go_to_map(direction) to travel there): "
+                                     + ", ".join(parts))
             if diff.notes:
                 obs_parts.append("Changes: " + "; ".join(diff.notes))
             # Revisit warning — explicit signal to explore new directions
