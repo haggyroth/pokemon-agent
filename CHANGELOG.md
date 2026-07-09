@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.11.0]
+
+### Added
+- feat: warp-aware routing + waypoints — `go_to(destination)` now routes across
+  building/cave warps as well as connections, and accepts waypoints ("Pokemon
+  Center", "Mart", "Gym") routed to the nearest one (`MAP_WARPS`/`MAP_KIND` +
+  `route_to`/`nearest_of_kind` in map_graph.py). `walk_to` routes around on-screen
+  NPCs (gObjectEvents) and can target door tiles on walls. Completes the nav
+  system (#54, closes #51)
+
+### Fixed
+- fix: removed an incorrect constants note claiming 0x0202402C is gFrameCount —
+  verified live it is gEnemyParty (opponent ID was correct)
+
 ## [0.10.0]
 
 ### Added
@@ -283,6 +297,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.11.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.11.0
 [0.10.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.10.0
 [0.9.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.9.0
 [0.8.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.8.0
