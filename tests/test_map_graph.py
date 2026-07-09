@@ -1,5 +1,6 @@
 from knowledge.map_graph import (
     MAP_CONNECTIONS, MAP_WARPS, MAP_KIND, bfs_route, route_to, nearest_of_kind,
+    node_for,
 )
 
 
@@ -15,18 +16,48 @@ def test_already_there_is_empty():
     assert bfs_route((3, 0), (3, 0)) == []
 
 
-def test_multi_hop_pallet_to_pewter():
-    route = bfs_route((3, 0), (3, 2))
+def test_multi_hop_pallet_to_viridian_is_clean_norths():
+    # The un-gated early stretch is still a simple connection walk.
+    route = route_to((3, 0), (3, 1))         # Pallet → Viridian City
+    assert [d for _, d, _m in route] == ["North", "North"]   # Route 1 → Viridian
+    assert route[-1][2] == (3, 1)
+
+
+def test_pallet_to_pewter_routes_through_viridian_forest():
+    # Pewter sits past Route 2, which is split by Viridian Forest's gates (#59).
+    # A correct route must WARP through the forest (1,0), not walk a sealed edge.
+    route = route_to((3, 0), (3, 2))
     assert route is not None
-    dirs = [d for d, _ in route]
-    dests = [m for _, m in route]
-    assert dests[-1] == (3, 2)               # ends at Pewter
-    assert dirs == ["North", "North", "North", "North"]  # Route1→Viridian→Route2→Pewter
-    # every hop is a real edge in the graph
-    cur = (3, 0)
-    for d, nb in route:
-        assert MAP_CONNECTIONS[cur][d] == nb
-        cur = nb
+    assert route[-1][2] == (3, 2)                        # ends at Pewter
+    maps = [step[2] for step in route]
+    assert (1, 0) in maps, "route must pass through Viridian Forest"
+    # It reaches Route 2's NORTH region and crosses North into Pewter from there.
+    assert route[-1][:2] == ("connection", "North")
+    assert (3, 20, "N") in maps                          # the north region node
+
+
+def test_route2_south_needs_the_forest_but_north_is_direct():
+    # From the south region the north edge is unreachable → route via the forest.
+    south = route_to((3, 20, "S"), (3, 2))
+    assert [s[0] for s in south[:4]] == ["warp", "warp", "warp", "warp"]
+    assert south[-1] == ("connection", "North", (3, 2))
+    # From the north region it's a single seamless edge.
+    assert route_to((3, 20, "N"), (3, 2)) == [("connection", "North", (3, 2))]
+
+
+def test_node_for_regionizes_split_map_by_y():
+    assert node_for(3, 20, 5, 60) == (3, 20, "S")     # south half
+    assert node_for(3, 20, 5, 14) == (3, 20, "N")     # north half
+    assert node_for(3, 1) == (3, 1)                    # non-split map unchanged
+    assert node_for(3, 1, 10, 10) == (3, 1)
+
+
+def test_connection_only_route_to_pewter_is_not_the_naive_four_norths():
+    # Regression for #59: the direct (3,20)->North->Pewter walk is a lie from the
+    # south region. bfs_route (connection-only) must NOT offer it as a 4-step walk.
+    route = bfs_route((3, 0), (3, 2))
+    naive = route is not None and [d for d, _ in route] == ["North"] * 4
+    assert not naive, "connection-only routing must not claim a straight walk to Pewter"
 
 
 def test_unreachable_returns_none():

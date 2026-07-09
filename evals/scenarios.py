@@ -44,12 +44,14 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         name="reach_pewter",
         goal=goals.reached_map(3, 2, "Pewter City"),
-        max_steps=80,
+        max_steps=150,
         start_save=DEFAULT_SAVE,
         notes="The gauntlet: Route 2 is split by Viridian Forest's gate buildings, "
-              "so go_to must WARP through the forest rather than walk to the north "
-              "edge. Currently thrashes on 'reached the North edge but could not "
-              "cross'.",
+              "so go_to must WARP through the forest rather than walk to the sealed "
+              "north edge. #59 fixed this with region-aware routing (verified: the "
+              "agent now enters the forest); a full Pallet→Pewter traversal wasn't "
+              "hardware-confirmed end-to-end, so this stays xfail until a run turns "
+              "it into an XPASS.",
         xfail="#59",
     ),
 ]
