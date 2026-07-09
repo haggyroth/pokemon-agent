@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.5.5]
+
+### Fixed
+- fix: the current map is now read from the live DMA block (`[PLAYER_PTR]+0x04/05`)
+  instead of the absolute `0x02031DBC/DBD`, which is the *parent outdoor* map and
+  stays on the town while indoors. The agent was misreading every interior as the
+  town (e.g. the player's bedroom read as "Pallet Town"), getting outdoor route
+  guidance it couldn't act on (#39)
+
 ## [0.5.4]
 
 ### Fixed
@@ -170,6 +179,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.5.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.5
 [0.5.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.4
 [0.5.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.3
 [0.5.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.2
