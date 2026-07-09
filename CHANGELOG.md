@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.12.0]
+
+### Added
+- feat: configurable LLM endpoint + API key (`LLM_BASE_URL`, `LLM_API_KEY`) so the
+  agent can use any OpenAI-compatible cloud model (OpenAI, OpenRouter proxying
+  Claude/Gemini, etc.), not just local LM Studio. Local defaults unchanged (#56)
+
 ## [0.11.1]
 
 ### Fixed
@@ -306,6 +313,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.12.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.12.0
 [0.11.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.11.1
 [0.11.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.11.0
 [0.10.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.10.0
