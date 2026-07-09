@@ -95,15 +95,29 @@ class MGBAClient:
     # ── State management ──────────────────────────────────────────────────────
     # slot param MUST be a string per swagger schema
 
-    def save_state(self, slot: int = 0) -> None:
-        """Save to a numbered slot (mGBA manages file location)."""
-        self.session.post(f"{self.base}/core/savestateslot",
-                          params={"slot": str(slot)})
+    def save_state(self, slot: int = 0) -> bool:
+        """Save to a numbered slot (mGBA manages file location). Returns True if
+        the request succeeded (HTTP 2xx); the slot endpoint returns no body, so
+        this reflects transport success, not a core-level bool. Interface parity
+        with the native backend so callers can branch on failure."""
+        try:
+            r = self.session.post(f"{self.base}/core/savestateslot",
+                                  params={"slot": str(slot)})
+            return r.ok
+        except Exception:
+            return False
 
-    def load_state(self, slot: int = 0) -> None:
-        """Load from a numbered slot."""
-        self.session.post(f"{self.base}/core/loadstateslot",
-                          params={"slot": str(slot)})
+    def load_state(self, slot: int = 0) -> bool:
+        """Load from a numbered slot. Returns True on a successful request. Note
+        the REST slot endpoint can't distinguish "no such slot" from success at
+        the body level, so a missing slot may still report True on the http
+        backend; the native backend reports it accurately."""
+        try:
+            r = self.session.post(f"{self.base}/core/loadstateslot",
+                                  params={"slot": str(slot)})
+            return r.ok
+        except Exception:
+            return False
 
     def save_state_file(self, path: str) -> bool:
         """Save state to a specific file. Use for named pre-gym saves."""

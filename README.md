@@ -91,6 +91,8 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 | `USE_VISION` | `true` | Attach the screenshot to the model. Set `false` for text-only models or unstable vision |
 | `START_FROM_SAVE` | — | Path to a battery `.sav` to load and "Continue" into at startup (native) |
 | `MAX_STEPS` | `0` | Stop after N decision steps (`0` = run until interrupted) |
+| `MAX_LLM_CALLS` | `0` | Stop after N LLM API calls (`0` = unlimited). Spend guard for cloud endpoints |
+| `TOKEN_BUDGET` | `0` | Stop once cumulative prompt+completion tokens reach this (`0` = unlimited) |
 | `SHOW_WINDOW` | `false` | Live pygame window (native backend; requires `pygame`) |
 | `VIEWER_SCALE` | `3` | Window scale — 240×160 × scale |
 | `VIEWER_FPS` | `60` | Playback cap; `0` = full emulator speed |

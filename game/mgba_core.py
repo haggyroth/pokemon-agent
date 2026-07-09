@@ -174,11 +174,16 @@ class NativeMGBAClient:
     def _slot_path(self, slot: int) -> str:
         return str(SAVE_DIR / f"slot_{slot}.ss1")
 
-    def save_state(self, slot: int = 0) -> None:
-        lib.pycore_save_state(self._h, self._slot_path(slot).encode())
+    def save_state(self, slot: int = 0) -> bool:
+        """Save to a numbered slot. Returns True on success (False if the core
+        rejected it), so callers don't silently believe a failed save."""
+        return bool(lib.pycore_save_state(self._h, self._slot_path(slot).encode()))
 
-    def load_state(self, slot: int = 0) -> None:
-        lib.pycore_load_state(self._h, self._slot_path(slot).encode())
+    def load_state(self, slot: int = 0) -> bool:
+        """Load from a numbered slot. Returns False if the slot file is missing
+        or the core rejected it — callers must handle a failed load (e.g. no state
+        was saved yet this session) rather than assuming a reload happened."""
+        return bool(lib.pycore_load_state(self._h, self._slot_path(slot).encode()))
 
     def save_state_file(self, path: str) -> bool:
         return bool(lib.pycore_save_state(self._h, str(path).encode()))
