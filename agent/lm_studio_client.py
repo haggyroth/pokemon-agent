@@ -209,6 +209,7 @@ class AgentClient:
         via A* over the tilemap. Replans if a step is unexpectedly blocked (an
         NPC moved) and stops if the map changes (walked onto a warp/edge)."""
         from game.pathfinding import find_path
+        from game.state import GameContext
         start_map = self.reader.read_current_map()
         warps = set(self.tilemap.read_warps())
         for _attempt in range(8):
@@ -244,11 +245,21 @@ class AgentClient:
                 if self.reader.read_current_map() != start_map:
                     nb, ni = self.reader.read_current_map()
                     return f"Entered a new map ({nb}/{ni}) at ({self.reader.read_player_pos()})."
+                # A wild encounter or NPC/script can interrupt mid-walk — stop and
+                # hand control back so the agent deals with it, rather than mashing
+                # movement into a battle/dialog.
+                ctx = self.reader.detect_context()
+                if ctx == GameContext.IN_BATTLE:
+                    return f"A wild battle started while walking (at {self.reader.read_player_pos()})."
+                if ctx == GameContext.DIALOG_OPEN:
+                    return f"A dialog opened while walking (at {self.reader.read_player_pos()})."
                 if self.reader.read_player_pos() == before:
                     break   # unexpectedly blocked → replan
             else:
                 continue    # full path walked without a block; loop re-checks arrival
         px, py = self.reader.read_player_pos()
+        if (px, py) == (tx, ty):
+            return f"Arrived at ({tx},{ty})."   # e.g. a warp target we couldn't step through
         return f"Stopped at ({px},{py}) while heading to ({tx},{ty})."
 
     _EDGE = {  # direction -> (border-cell generator, step button)
