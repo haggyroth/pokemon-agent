@@ -278,9 +278,19 @@ def get_route_guidance(state: GameState, milestones: list[str]) -> str:
     """Return 2-5 line guidance for the current (map, phase). Falls back to
     STORY_PATH badge-gated hint when no specific entry exists."""
     map_key = (state.map_bank, state.map_id)
-    location = MAP_NAMES.get(map_key, f"unknown area (bank={state.map_bank}, id={state.map_id})")
     phase    = derive_phase(state, milestones)
 
+    # Indoors, the outdoor route ("go north to Route 1") is unreachable until you
+    # leave the building — lead with the exit instead of the town-level objective.
+    if infer_building_type(state.map_bank, state.map_id) == "interior":
+        return "\n".join([
+            f"Current location: indoors (map {state.map_bank}/{state.map_id})",
+            f"Phase: {phase}",
+            "You are INSIDE a building. Leave it first: walk onto a door/exit tile "
+            "(see 'Exits' in the observation), then resume the route outside.",
+        ])
+
+    location = MAP_NAMES.get(map_key, f"unknown area (bank={state.map_bank}, id={state.map_id})")
     lines = [f"Current location: {location}", f"Phase: {phase}"]
 
     specific = ROUTE_GUIDE.get(map_key, {}).get(phase)
