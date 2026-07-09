@@ -272,12 +272,22 @@ class AgentClient:
         start_map = self.reader.read_current_map()
         warps = set(self.tilemap.read_warps())
         blocked: set[tuple[int, int]] = set()   # tiles a step failed to enter
-        for _attempt in range(14):
+        saw_path = False                        # ever found a route this call?
+        for _attempt in range(16):
             self.tilemap.refresh()
             grid, w, h = self.tilemap.passable_grid()
             if grid is None:
-                return "Cannot read the map to path-find right now."
+                self.mgba.tick(15)              # map still loading — settle & retry
+                continue
             px, py = self.reader.read_player_pos()
+            # Just after a warp the new map hasn't finished loading, so refresh()
+            # can still hold the PREVIOUS map's grid — on which the player's real
+            # position is out of bounds. Don't pathfind on a stale grid (that made
+            # walk_to give up with a bogus "no path" the instant it entered a new
+            # area, e.g. warping into Viridian Forest); let it settle and re-read.
+            if not (0 <= px < w and 0 <= py < h):
+                self.mgba.tick(15)
+                continue
             if (px, py) == (tx, ty):
                 # On a door/stairs tile, stepping onto it isn't enough — you have
                 # to step through. Nudge each direction until the map changes.
@@ -304,8 +314,13 @@ class AgentClient:
                 return grid[y][x] and (x, y) not in npcs and (x, y) not in blocked
             path = find_path((px, py), (tx, ty), _passable, w, h)
             if path is None:
-                return (f"No walkable path from ({px},{py}) to ({tx},{ty}) — "
-                        f"the target may be blocked or off this map.")
+                # Could be a genuinely blocked target, or a transient (an NPC on
+                # the only corridor, a not-yet-settled map). Settle and retry a few
+                # times rather than bailing on the first None; report "no path" only
+                # if we never found one across the whole attempt budget.
+                self.mgba.tick(8)
+                continue
+            saw_path = True
             for mv in path:
                 before = self.reader.read_player_pos()
                 # Gen III turn-vs-step: the FIRST press of a direction you aren't
@@ -339,6 +354,9 @@ class AgentClient:
         px, py = self.reader.read_player_pos()
         if (px, py) == (tx, ty):
             return f"Arrived at ({tx},{ty})."   # e.g. a warp target we couldn't step through
+        if not saw_path:
+            return (f"No walkable path from ({px},{py}) to ({tx},{ty}) — "
+                    f"the target may be blocked or off this map.")
         return f"Stopped at ({px},{py}) while heading to ({tx},{ty})."
 
     _EDGE = {  # direction -> (border-cell generator, step button)

@@ -70,6 +70,24 @@ class FakeWorld:
         return 0
 
 
+class LoadingWorld(FakeWorld):
+    """Models a just-warped map that hasn't finished loading: passable_grid()
+    returns a tiny STALE grid (on which the real player position is out of bounds)
+    until enough ticks pass, then the true grid appears — the #81 forest-entry bug."""
+    def __init__(self, grid, start, stale_for=2):
+        super().__init__(grid, start)
+        self.ticks = 0
+        self.stale_for = stale_for
+
+    def tick(self, *a):
+        self.ticks += 1
+
+    def passable_grid(self):
+        if self.ticks < self.stale_for:
+            return [[True, True], [True, True]], 2, 2      # stale 2x2
+        return super().passable_grid()
+
+
 def _client(world):
     c = AgentClient.__new__(AgentClient)
     c.mgba = world
@@ -105,6 +123,16 @@ def test_walk_to_routes_around_hidden_obstacle():
     world = FakeWorld(_open(5, 5), start=(0, 0), mystery={(0, 2)})
     msg = _client(world)._walk_to(0, 4)
     assert world.pos == (0, 4), msg
+    assert "Arrived" in msg
+
+
+def test_walk_to_waits_for_stale_grid_after_warp():
+    # Player is at (4,4) but the map just changed and passable_grid() still returns
+    # the previous (tiny) grid, on which (4,4) is out of bounds. walk_to must NOT
+    # declare "no path" — it should settle until the real 5x5 grid loads, then walk.
+    world = LoadingWorld(_open(5, 5), start=(4, 4), stale_for=2)
+    msg = _client(world)._walk_to(0, 0)
+    assert world.pos == (0, 0), msg
     assert "Arrived" in msg
 
 
