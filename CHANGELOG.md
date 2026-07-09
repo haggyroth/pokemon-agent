@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.12.1]
+
+### Fixed
+- fix: harden reliability blockers found in code review — startup badge
+  reconciliation now reads the relocation-safe `reader.read_badges()` instead of
+  the fixed `Addr.BADGES` (a DMA-relocated read fabricated phantom badges into
+  LTM); the tool-execution loop wraps `_execute` so a malformed model tool call
+  can no longer orphan `tool_calls` in history and cascade API 400s;
+  `progress.json` is written atomically (temp + fsync + `os.replace`) and a
+  corrupt file is renamed aside instead of crashing startup; the main-loop
+  catch-all logs full tracebacks to `logs/errors.log` and exits cleanly after 30
+  consecutive failing ticks instead of spinning forever (#60, #61, #62, #65)
+
 ## [0.12.0]
 
 ### Added
