@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.6.1]
+
+### Added
+- feat: `START_FROM_STATE` run control — load an mGBA save state (`.ss*`) directly
+  at startup (native), landing instantly in that scene with no title/Continue/
+  recap. Takes precedence over `START_FROM_SAVE`. Useful for testing from a fixed
+  spot (a Pallet Town exterior state ships in `saves/`, gitignored) (#41)
+
 ## [0.6.0]
 
 ### Added
@@ -187,6 +195,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.6.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.1
 [0.6.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.0
 [0.5.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.5
 [0.5.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.4
