@@ -296,6 +296,15 @@ class AgentClient:
                     return f"Crossed {direction} to map {nb}/{ni} at {self.reader.read_player_pos()}."
         return f"Reached the {direction} edge but could not cross."
 
+    def _battle_press(self, button: str) -> None:
+        """A battle-reliable press: wait until the game is idle (text finished /
+        menu up), then hold long enough to register. Short taps are silently
+        dropped during battle animations/printing."""
+        waiter = getattr(self.mgba, "wait_until_idle", None)
+        if waiter:
+            waiter()
+        self.mgba.hold(button, 20)
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -304,8 +313,16 @@ class AgentClient:
                 times = max(1, min(int(args.get("times", 1)), 10))
                 # Accept compass synonyms (West→Left, N→Up, …) the model emits.
                 button = normalize_button(args["button"])
+                # In battle, short taps are dropped during text printing/animations —
+                # the game only accepts input once idle. Use the reliable path so
+                # the model's FIGHT/move/A presses actually register.
+                from game.state import GameContext
+                in_battle = self.reader.detect_context() == GameContext.IN_BATTLE
                 for _ in range(times):
-                    self.mgba.tap(button)
+                    if in_battle:
+                        self._battle_press(button)
+                    else:
+                        self.mgba.tap(button)
                 return f"Pressed {button} × {times}"
             case "walk_to":
                 return self._walk_to(int(args["x"]), int(args["y"]))

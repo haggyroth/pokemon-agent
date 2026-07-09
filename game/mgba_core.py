@@ -85,6 +85,30 @@ class NativeMGBAClient:
         lib.pycore_set_keys(self._h, 0)
         self.run_frames(frames)
 
+    def wait_until_idle(self, max_frames: int = 300, stable: int = 8) -> bool:
+        """Run frames (no input) until the screen stops changing — i.e. the game
+        is waiting for input (a text box finished printing, or a menu is up).
+
+        Battle text/menus only accept input once idle; pressing during printing or
+        animation is silently dropped (the root cause of the in-battle flailing).
+        Returns True if idle was reached, False on timeout. Native backend only.
+        """
+        lib.pycore_set_keys(self._h, 0)
+        last = None
+        streak = 0
+        v = self._viewer
+        for _ in range(max_frames):
+            lib.pycore_run_frame(self._h)
+            buf = ffi.buffer(self._video, self._video_bytes)
+            if v is not None:
+                v.render(buf)
+            h = hash(bytes(buf)[::311])   # cheap sparse framebuffer fingerprint
+            streak = streak + 1 if h == last else 0
+            last = h
+            if streak >= stable:
+                return True
+        return False
+
     def reset(self) -> None:
         """Reboot the core (as if power-cycled). Battery save data persists."""
         lib.pycore_reset(self._h)

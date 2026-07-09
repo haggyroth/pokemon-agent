@@ -7,6 +7,9 @@ class Addr:
     # Fixed global (NOT DMA-relocated). slot 0 = the wild mon / trainer's active
     # lead. Verified live: (0x02024284 - 600) decodes to the wild encounter.
     ENEMY_PARTY  = 0x0202402C
+    # Move-selection cursor (FIGHT submenu), 2×2 grid: 0=TL 1=TR 2=BL 3=BR.
+    # Verified live: 0 →Down→ 2 →Right→ 3. Used by use_move to navigate to a slot.
+    MOVE_CURSOR  = 0x02023FF8
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
