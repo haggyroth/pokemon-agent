@@ -272,6 +272,30 @@ class AgentClient:
                   "north": "North", "south": "South", "east": "East", "west": "West",
                   "up": "North", "down": "South", "left": "West", "right": "East"}
 
+    def _go_to(self, destination: str) -> str:
+        """Travel toward a named map (e.g. "Viridian City", "Route 1"). If it's
+        directly connected to the current map, cross to it; otherwise report the
+        adjacent maps so the agent can head that way one connection at a time.
+        Uses live connection data, so it can't send you the wrong direction."""
+        dest = str(destination).strip().lower()
+        matches = [(k, v) for k, v in MAP_NAMES.items()
+                   if v.lower() == dest or dest in v.lower()]
+        if not matches:
+            return f"Unknown destination '{destination}'."
+        exact = [(k, v) for k, v in matches if v.lower() == dest]
+        target_map, target_name = (exact or matches)[0]
+        if self.reader.read_current_map() == target_map:
+            return f"Already at {target_name}."
+        self.tilemap.refresh()
+        conns = self.tilemap.read_connections()
+        for cn in conns:
+            if (cn["map_bank"], cn["map_id"]) == target_map:
+                return self._go_to_map(cn["direction"])
+        adj = ", ".join(f"{cn['direction']}→{MAP_NAMES.get((cn['map_bank'], cn['map_id']), '?')}"
+                        for cn in conns) or "none"
+        return (f"{target_name} is not directly connected to here. Adjacent maps: {adj}. "
+                f"Travel toward {target_name} one connection at a time (go_to_map).")
+
     def _go_to_map(self, direction: str) -> str:
         """Cross the map connection on the given edge (walk to the edge gap, then
         step off). direction is a compass word/letter (N/S/E/W)."""
@@ -339,6 +363,8 @@ class AgentClient:
                 return self._walk_to(int(args["x"]), int(args["y"]))
             case "go_to_map":
                 return self._go_to_map(args["direction"])
+            case "go_to":
+                return self._go_to(args["destination"])
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [
