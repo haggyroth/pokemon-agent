@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.6.3]
+
+### Added
+- feat: `TilemapReader.read_connections()` reads gMapHeader map connections;
+  outdoors the observation lists which edge leads where ("Map edges: North→Route
+  1, South→Route 21"). Town/route exits are seamless connections (not warps), so
+  the agent previously had no way to find them. First piece of the nav skill
+  layer (#43)
+
 ## [0.6.2]
 
 ### Fixed
@@ -204,6 +213,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.6.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.3
 [0.6.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.2
 [0.6.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.1
 [0.6.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.0
