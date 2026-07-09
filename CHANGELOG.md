@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.14.0]
+
+### Added
+- feat: eval harness (`python -m evals`) — scores a run against a goal + step
+  budget with an `EpisodeResult` scorecard (pass/fail, steps, reward, stuck-ratio,
+  LLM calls, tokens), writing `logs/eval/<ts>.json`. Scenarios + goals live in
+  `evals/` (pure, CI-tested); `reach_pewter` is an `xfail` documenting #59. A
+  Tier-1 no-LLM nav-skill check (`RUN_NAV_EVALS=1 pytest tests/test_nav_scenarios.py`)
+  isolates routing bugs from reasoning bugs (#77)
+
+### Changed
+- refactor: extracted `build_runtime()` + `run_episode(goal, max_steps)` from
+  `main()`'s decision loop (the eval harness reuses the exact same loop, so eval
+  and real runs never diverge); `LongTermMemory`/`BattleJournal` accept a path
+  override so a scenario runs against isolated scratch files (#77)
+
 ## [0.13.0]
 
 ### Added
