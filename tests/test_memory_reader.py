@@ -59,10 +59,13 @@ def test_detect_context_dialog():
 
 
 def test_detect_context_start_menu():
-    # Start menu keeps the field callback2 but sets MENU_OPEN.
+    # Overlay menu (Start/Save): field callback2, MENU_OPEN set, AND SCREEN_FADE
+    # 1 while it is on screen. All three are needed — MENU_OPEN alone is
+    # unreliable (it over-stays after a menu closes; see the stale regression).
     fc = FakeClient()
     stage_overworld(fc)
     fc.set8(Addr.MENU_OPEN, 1)
+    fc.set8(Addr.SCREEN_FADE, 1)
     assert make_reader(fc).detect_context() == GameContext.IN_MENU
 
 
@@ -71,16 +74,31 @@ def test_detect_context_fullscreen_submenu():
     fc = FakeClient()
     fc.set32(Addr.GMAIN_CALLBACK2, 0x08107EB9)  # e.g. the Bag callback
     fc.set8(Addr.MENU_OPEN, 1)
-    assert make_reader(fc).detect_context() == GameContext.IN_MENU
-
-
-def test_menu_flag_takes_precedence_over_fade():
-    # SCREEN_FADE is set while menus are open; MENU_OPEN must win.
-    fc = FakeClient()
-    stage_overworld(fc)
-    fc.set8(Addr.MENU_OPEN, 1)
     fc.set8(Addr.SCREEN_FADE, 1)
     assert make_reader(fc).detect_context() == GameContext.IN_MENU
+
+
+def test_stale_menu_flag_after_close_is_overworld():
+    # Regression for the phantom-menu trap: after a full-screen menu closes, the
+    # game returns to the field callback and clears SCREEN_FADE, but MENU_OPEN can
+    # stay 1 (stale). We must read OVERWORLD, not IN_MENU — otherwise the agent
+    # "closes the menu" forever (this killed a real run).
+    fc = FakeClient()
+    stage_overworld(fc)
+    fc.set8(Addr.MENU_OPEN, 1)     # stale leftover
+    fc.set8(Addr.SCREEN_FADE, 0)   # nothing on screen → the menu really is closed
+    assert make_reader(fc).detect_context() == GameContext.OVERWORLD
+
+
+def test_stale_menu_flag_does_not_block_dialog():
+    # Same stale MENU_OPEN, but a script/dialog is now running — must read
+    # DIALOG_OPEN, not IN_MENU.
+    fc = FakeClient()
+    stage_overworld(fc)
+    fc.set8(Addr.MENU_OPEN, 1)     # stale
+    fc.set8(Addr.SCREEN_FADE, 0)
+    fc.set8(Addr.SCRIPT_RAM, 1)
+    assert make_reader(fc).detect_context() == GameContext.DIALOG_OPEN
 
 
 def test_detect_context_battle():

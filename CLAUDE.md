@@ -430,9 +430,9 @@ ones:
 | Map bank / id | `0x02031DBC` / `0x02031DBD` | |
 | Player X/Y | deref `PLAYER_PTR` `0x03005008` +0/+2 | DMA-protected block; camera = player tile |
 | `gMain.callback2` | `0x030030F4` | live "current screen" dispatcher — the context gate |
-| Menu-open flag | `0x03002415` | non-zero while ANY field menu is open |
+| Menu flag | `0x03002415` | set while a field menu is open, but **over-stays** after a full-screen menu closes — pair with screen-fade, never use alone |
 | Script engine | `0x03000EB0` | byte[0] ≠ 0 while a map script/dialog runs |
-| Screen fade | `0x03000F9C` | 1 during fades **and** while a menu is open |
+| Screen fade | `0x03000F9C` | 1 while a menu is on screen **or** mid-fade; clears the instant a menu closes |
 | `gBattleTypeFlags` | `0x02022B4C` | TRAINER bit `0x08`; set at battle init, read at battle start |
 | Bag key-items pocket | `gSaveBlock1(0x03005008) + 0x3B8` | 30 slots; count non-empty for the `key_item` reward |
 
@@ -443,15 +443,25 @@ deprecated: `OVERWORLD_FLAG` (`0x0202287C`) reads 0 during free-roam, and
 `BATTLE_FLAGS` (`0x02022880`) is transient during battle and stale afterward. The
 correct gate is `gMain.callback2`:
 
+`MENU_OPEN` alone is **not** a safe gate: after a full-screen menu (Pokédex/Bag/…)
+closes it stays `1` back on the field, which trapped the agent in a phantom
+`IN_MENU` forever. The fix pairs it with `SCREEN_FADE`, which *does* clear when a
+menu closes (an open menu is `MENU_OPEN && SCREEN_FADE`; a stale flag has
+`SCREEN_FADE == 0` and reads OVERWORLD):
+
 ```python
-cb2 = read32(GMAIN_CALLBACK2)             # 0x030030F4
-if cb2 == CB2_BATTLE:                      # 0x08011101   -> IN_BATTLE
-elif read8(MENU_OPEN) != 0:                # 0x03002415   -> IN_MENU  (any field menu)
-elif cb2 == CB2_OVERWORLD:                 # 0x080565B5
-    if read8(SCREEN_FADE) == 1:            #              -> TRANSITIONING
-    elif read8(SCRIPT_RAM) != 0:           # byte[0]      -> DIALOG_OPEN  (NPC/sign/script)
-    else:                                  #              -> OVERWORLD
-else:                                      #              -> TRANSITIONING  (warps, load screens)
+cb2  = read32(GMAIN_CALLBACK2)            # 0x030030F4
+menu = read8(MENU_OPEN) != 0             # 0x03002415  (over-stays; never under-reports)
+fade = read8(SCREEN_FADE) == 1          # 0x03000F9C  (on-screen menu OR fade; clears on close)
+if cb2 == CB2_BATTLE:                     # 0x08011101   -> IN_BATTLE
+elif cb2 == CB2_OVERWORLD:                # 0x080565B5   (field callback)
+    if menu and fade:                     #              -> IN_MENU  (Start/Save overlay)
+    elif fade:                            #              -> TRANSITIONING  (warp/map fade)
+    elif read8(SCRIPT_RAM) != 0:          # byte[0]      -> DIALOG_OPEN  (NPC/sign/script)
+    else:                                 #              -> OVERWORLD  (stale MENU_OPEN lands here)
+else:                                     # full-screen menu has its own callback
+    if menu:                              #              -> IN_MENU  (Pokédex/Party/Bag/Option/…)
+    else:                                 #              -> TRANSITIONING  (warps, load screens)
 ```
 
 `GameContext` values: `OVERWORLD`, `IN_BATTLE`, `DIALOG_OPEN`, `IN_MENU`,
