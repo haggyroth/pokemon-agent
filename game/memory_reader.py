@@ -165,10 +165,24 @@ class LeafGreenReader:
         ptr = self.client.read32(Addr.PLAYER_PTR)
         return self.client.read16(ptr), self.client.read16(ptr + 2)
 
+    def read_current_map(self) -> tuple[int, int]:
+        """Current (map_bank, map_id) from the live DMA map block.
+
+        NOT the absolute Addr.MAP_BANK/MAP_ID — those are the parent OUTDOOR map
+        and stay on the town while you are inside its buildings, so they report
+        e.g. Pallet Town (3,0) even in the player's bedroom. The block behind
+        PLAYER_PTR carries the true current map at +0x04 (group) / +0x05 (num),
+        which is what MAP_NAMES is keyed on.
+        """
+        ptr = self.client.read32(Addr.PLAYER_PTR)
+        return (self.client.read8(ptr + Addr.MAP_GROUP_OFFSET),
+                self.client.read8(ptr + Addr.MAP_NUM_OFFSET))
+
     def read_state(self) -> GameState:
         context = self.detect_context()
         party   = self.read_party()
         px, py  = self.read_player_pos()
+        map_bank, map_id = self.read_current_map()
         badge_count, badge_bits = self.read_badges()
         return GameState(
             context=context,
@@ -176,8 +190,8 @@ class LeafGreenReader:
             badge_bits=badge_bits,
             party=party,
             party_count=len(party),
-            map_bank=self.client.read8(Addr.MAP_BANK),
-            map_id=self.client.read8(Addr.MAP_ID),
+            map_bank=map_bank,
+            map_id=map_id,
             player_x=px,
             player_y=py,
             screen_fading=(context == GameContext.TRANSITIONING),

@@ -95,9 +95,13 @@ def stage_overworld(fc: FakeClient, *, x: int = 5, y: int = 7,
     fc.set8(Addr.SCREEN_FADE, 0)
     fc.set8(Addr.SCRIPT_RAM, 0)
     fc.set8(Addr.MENU_OPEN, 0)   # no field menu open
+    # The parent-outdoor addresses (stale for interiors) — set for completeness.
     fc.set8(Addr.MAP_BANK, map_bank)
     fc.set8(Addr.MAP_ID, map_id)
     ptr = 0x03005100
     fc.set32(Addr.PLAYER_PTR, ptr)
     fc.set16(ptr, x)
     fc.set16(ptr + 2, y)
+    # The TRUE current map lives in the DMA block at +0x04/+0x05 (read_current_map).
+    fc.set8(ptr + Addr.MAP_GROUP_OFFSET, map_bank)
+    fc.set8(ptr + Addr.MAP_NUM_OFFSET, map_id)
