@@ -273,10 +273,13 @@ class AgentClient:
                   "up": "North", "down": "South", "left": "West", "right": "East"}
 
     def _go_to(self, destination: str) -> str:
-        """Travel toward a named map (e.g. "Viridian City", "Route 1"). If it's
-        directly connected to the current map, cross to it; otherwise report the
-        adjacent maps so the agent can head that way one connection at a time.
-        Uses live connection data, so it can't send you the wrong direction."""
+        """Travel toward a named map (e.g. "Viridian City", "Route 1"), auto-routing
+        across multiple map connections. BFS the connection graph for a route, then
+        cross each edge in turn. Stops (so the agent can act, then re-call to resume)
+        if a wild battle/dialog interrupts or a hop is blocked (e.g. a cave splits
+        the map — connections are map-adjacency, not proof the map is walkable)."""
+        from game.state import GameContext
+        from knowledge.map_graph import bfs_route
         dest = str(destination).strip().lower()
         matches = [(k, v) for k, v in MAP_NAMES.items()
                    if v.lower() == dest or dest in v.lower()]
@@ -284,17 +287,38 @@ class AgentClient:
             return f"Unknown destination '{destination}'."
         exact = [(k, v) for k, v in matches if v.lower() == dest]
         target_map, target_name = (exact or matches)[0]
-        if self.reader.read_current_map() == target_map:
+        cur = self.reader.read_current_map()
+        if cur == target_map:
             return f"Already at {target_name}."
-        self.tilemap.refresh()
-        conns = self.tilemap.read_connections()
-        for cn in conns:
-            if (cn["map_bank"], cn["map_id"]) == target_map:
-                return self._go_to_map(cn["direction"])
-        adj = ", ".join(f"{cn['direction']}→{MAP_NAMES.get((cn['map_bank'], cn['map_id']), '?')}"
-                        for cn in conns) or "none"
-        return (f"{target_name} is not directly connected to here. Adjacent maps: {adj}. "
-                f"Travel toward {target_name} one connection at a time (go_to_map).")
+
+        route = bfs_route(cur, target_map)
+        if route is None:
+            # No connection route (needs a building/cave warp, or unmapped). Fall
+            # back to live adjacency so the agent at least gets a useful pointer.
+            self.tilemap.refresh()
+            conns = self.tilemap.read_connections()
+            for cn in conns:
+                if (cn["map_bank"], cn["map_id"]) == target_map:
+                    return self._go_to_map(cn["direction"])
+            adj = ", ".join(f"{cn['direction']}→{MAP_NAMES.get((cn['map_bank'], cn['map_id']), '?')}"
+                            for cn in conns) or "none"
+            return (f"No overworld route to {target_name} from here (it likely needs a "
+                    f"building/cave). Adjacent maps: {adj}.")
+
+        for direction, next_map in route:
+            before = self.reader.read_current_map()
+            res = self._go_to_map(direction)
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                return f"A wild battle started en route to {target_name}. Handle it, then go_to({target_name!r}) again."
+            after = self.reader.read_current_map()
+            if after == target_map:
+                return f"Arrived at {target_name}."
+            if after == before:
+                here = MAP_NAMES.get(before, before)
+                return (f"Heading to {target_name}: reached {here} but couldn't continue "
+                        f"{direction} ({res}). May need a building/cave, or try again.")
+        here = MAP_NAMES.get(self.reader.read_current_map(), "?")
+        return f"Stopped at {here} en route to {target_name}."
 
     def _go_to_map(self, direction: str) -> str:
         """Cross the map connection on the given edge (walk to the edge gap, then
@@ -318,12 +342,17 @@ class AgentClient:
             return f"No walkable opening on the {direction} edge."
         px, py = self.reader.read_player_pos()
         edge.sort(key=lambda c: abs(c[0] - px) + abs(c[1] - py))
+        from game.state import GameContext
         start_map = self.reader.read_current_map()
         for ex, ey in edge[:4]:
             self._walk_to(ex, ey)
             if self.reader.read_current_map() != start_map:
                 nb, ni = self.reader.read_current_map()
                 return f"Crossed {direction} to map {nb}/{ni} at {self.reader.read_player_pos()}."
+            # A wild battle/dialog interrupted the walk to the edge — bail so we
+            # don't mash the step direction into a battle/dialog menu.
+            if self.reader.detect_context() != GameContext.OVERWORLD:
+                return f"Interrupted while walking to the {direction} edge (context {self.reader.detect_context().name})."
             for _ in range(5):   # step off the edge into the connected map
                 self.mgba.tap(step)
                 if self.reader.read_current_map() != start_map:
