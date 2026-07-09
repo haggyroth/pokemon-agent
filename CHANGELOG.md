@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.7.0]
+
+### Added
+- feat: `walk_to(x, y)` navigation tool — A* pathfinding over the tilemap
+  (`game/pathfinding.py` + `TilemapReader.passable_grid()`) drives the player to a
+  destination instead of the model pressing directions tile-by-tile. Replans
+  around NPCs, stops on map change, and is warp-aware (one `walk_to(door)` leaves
+  a building). System prompt now prefers it for travel; `press_button` is for
+  menus/battle/dialog. First half of the LLM-as-strategist pivot (#44)
+
 ## [0.6.3]
 
 ### Added
@@ -213,6 +223,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.7.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.0
 [0.6.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.3
 [0.6.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.2
 [0.6.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.1
