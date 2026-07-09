@@ -19,6 +19,26 @@ import time, sys
 console = Console()
 
 
+def door_centers(warps: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Collapse contiguous warp tiles (a multi-tile doormat) to the middle tile of
+    each cluster — usually the only one that actually warps (the side tiles just
+    "arrive" without exiting). Single warps pass through unchanged."""
+    clusters: list[list[tuple[int, int]]] = []
+    for w in warps:
+        for cl in clusters:
+            if any(abs(w[0] - x) <= 1 and abs(w[1] - y) <= 1 for x, y in cl):
+                cl.append(w)
+                break
+        else:
+            clusters.append([w])
+    centers = []
+    for cl in clusters:
+        mx = sorted(x for x, _ in cl)[len(cl) // 2]
+        my = sorted(y for _, y in cl)[len(cl) // 2]
+        centers.append(min(cl, key=lambda t: abs(t[0] - mx) + abs(t[1] - my)))
+    return centers
+
+
 def _frame_chroma(mgba) -> float:
     """Mean chroma (max−min channel) over a coarse grid of the framebuffer.
 
@@ -377,7 +397,11 @@ def main():
             # Indoors: surface the door/stairs tiles so the agent can leave. The
             # outdoor route is unreachable until it does (see get_route_guidance).
             if tilemap.ready and infer_building_type(state.map_bank, state.map_id) == "interior":
-                warps = tilemap.read_warps()
+                # A door can span several adjacent warp tiles but usually only the
+                # CENTER one actually warps (the side tiles "arrive" without exiting).
+                # Collapse each contiguous run to its middle so we point at the tile
+                # that works (fixes suggesting an off-by-one non-functional door).
+                warps = door_centers(tilemap.read_warps())
                 if warps:
                     px, py = state.player_x, state.player_y
                     nearest = min(warps, key=lambda w: abs(w[0] - px) + abs(w[1] - py))

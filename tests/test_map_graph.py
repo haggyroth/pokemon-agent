@@ -57,3 +57,12 @@ def test_nearest_of_kind_finds_pokecenter():
     target, steps = got
     assert MAP_KIND.get(target) == "pokecenter"
     assert steps and steps[-1][2] == target
+
+
+def test_door_centers_collapses_doormat():
+    from main import door_centers
+    # 3-tile doormat -> the middle (functional) tile
+    assert door_centers([(4, 8), (5, 8), (3, 8)]) == [(4, 8)]
+    # single door unchanged; separate doors kept
+    assert door_centers([(4, 8)]) == [(4, 8)]
+    assert sorted(door_centers([(3, 8), (4, 8), (5, 8), (10, 2)])) == [(4, 8), (10, 2)]
