@@ -255,15 +255,24 @@ class AgentClient:
             pass
         return tiles
 
+    _MOVE_DELTA = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
+
     def _walk_to(self, tx: int, ty: int) -> str:
         """Deterministically walk the player to tile (tx, ty) on the current map
-        via A* over the tilemap. Replans if a step is unexpectedly blocked (an
-        NPC moved) and stops if the map changes (walked onto a warp/edge)."""
+        via A* over the tilemap. Replans if a step is unexpectedly blocked and
+        stops if the map changes (walked onto a warp/edge).
+
+        Blocked-tile learning: the ROM tile passability can't see everything that
+        stops a step — a solid object event, a ledge (one-way), a cut tree, an NPC
+        that just moved. When a tap doesn't change our position, we mark the tile
+        we tried to enter as blocked and replan AROUND it, instead of re-planning
+        the identical path and stalling (the Viridian Forest / ledge stall)."""
         from game.pathfinding import find_path
         from game.state import GameContext
         start_map = self.reader.read_current_map()
         warps = set(self.tilemap.read_warps())
-        for _attempt in range(8):
+        blocked: set[tuple[int, int]] = set()   # tiles a step failed to enter
+        for _attempt in range(14):
             self.tilemap.refresh()
             grid, w, h = self.tilemap.passable_grid()
             if grid is None:
@@ -292,7 +301,7 @@ class AgentClient:
             def _passable(x, y):
                 if (x, y) == (tx, ty):
                     return True
-                return grid[y][x] and (x, y) not in npcs
+                return grid[y][x] and (x, y) not in npcs and (x, y) not in blocked
             path = find_path((px, py), (tx, ty), _passable, w, h)
             if path is None:
                 return (f"No walkable path from ({px},{py}) to ({tx},{ty}) — "
@@ -312,7 +321,12 @@ class AgentClient:
                 if ctx == GameContext.DIALOG_OPEN:
                     return f"A dialog opened while walking (at {self.reader.read_player_pos()})."
                 if self.reader.read_player_pos() == before:
-                    break   # unexpectedly blocked → replan
+                    # The step didn't land — something the tilemap can't see is in
+                    # that tile (object event, ledge, cut tree). Mark it blocked so
+                    # the replan routes around it instead of retrying the same path.
+                    dx, dy = self._MOVE_DELTA.get(mv, (0, 0))
+                    blocked.add((before[0] + dx, before[1] + dy))
+                    break   # replan with the obstacle excluded
             else:
                 continue    # full path walked without a block; loop re-checks arrival
         px, py = self.reader.read_player_pos()
@@ -347,10 +361,13 @@ class AgentClient:
         """Resolve a go_to destination string to (target_map, name). Accepts a map
         name (exact/partial) or a waypoint (pokemon center / mart / gym, matched
         fuzzily), routing waypoints to the nearest such map from the current spot."""
-        from knowledge.map_graph import nearest_of_kind
+        from knowledge.map_graph import nearest_of_kind, node_for
         # normalise: lowercase, strip, drop accents (é→e) so "Poké Mart" matches.
         dest = str(destination).strip().lower().replace("é", "e").replace("è", "e")
-        cur = self.reader.read_current_map()
+        # Region-qualify the start so routing off a split map (Route 2) is correct.
+        bank, mid = self.reader.read_current_map()
+        px, py = self.reader.read_player_pos()
+        cur = node_for(bank, mid, px, py)
         kind = self._waypoint_kind(dest)
         if kind:
             found = nearest_of_kind(cur, kind)
@@ -373,7 +390,7 @@ class AgentClient:
         interrupts). Stops — resumably — on a wild battle/dialog, or if a hop is
         blocked (e.g. a cave splits the map so the far edge isn't walkable)."""
         from game.state import GameContext
-        from knowledge.map_graph import route_to
+        from knowledge.map_graph import route_to, node_for
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
@@ -382,7 +399,11 @@ class AgentClient:
             cur = self.reader.read_current_map()
             if cur == target_map:
                 return f"Arrived at {target_name}."
-            route = route_to(cur, target_map)
+            # Region-qualify the current node (Route 2's north/south halves route
+            # differently) so a split map is crossed via its gate, not a sealed edge.
+            px, py = self.reader.read_player_pos()
+            cur_node = node_for(*cur, px, py)
+            route = route_to(cur_node, target_map)
             if not route:
                 return (f"No route to {target_name} from {MAP_NAMES.get(cur, cur)} "
                         f"(it may be behind a locked/blocked area).")

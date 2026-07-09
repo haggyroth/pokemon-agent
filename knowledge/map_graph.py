@@ -510,9 +510,88 @@ MAP_KIND: dict[tuple[int, int], str] = {
 }
 
 
+# ── Split-map region model (curated overlay on the generated graph, #59) ──────
+# A few maps are ONE map id but several DISCONNECTED walkable regions. Route 2
+# (3,20) is split by Viridian Forest's gate buildings into a north half (borders
+# Pewter) and a south half (borders Viridian); the impassable forest band sits
+# between them, so the only way across is to WARP through Viridian Forest via the
+# two gate buildings. Treating (3,20) as a single node makes routing emit a
+# "cross the North edge → Pewter" step that is unreachable from the south region,
+# and the agent thrashes on it forever ("reached the North edge but could not
+# cross"). We fix this by expanding split maps into region-qualified nodes
+# (bank, id, tag) so the graph routes through the forest.
+#
+# region(x, y) -> tag. Route 2's forest band is ~y13–51; y>=32 is unambiguously
+# the south half, y<32 the north half.
+SPLIT_MAPS: dict[tuple[int, int], dict] = {
+    (3, 20): {"tags": ("N", "S"), "region": lambda x, y: "S" if y >= 32 else "N"},
+}
+# Which region owns each OUTGOING seamless connection edge of a split map.
+SPLIT_CONN_REGION: dict[tuple[int, int], dict[str, str]] = {
+    (3, 20): {"North": "N", "South": "S"},
+}
+# Which region you ARRIVE in when a neighbor's connection lands on a split map
+# (MAP_CONNECTIONS carries no arrival coords). Keyed (from_map, split_dest_map).
+CONN_ARRIVAL_REGION: dict[tuple, str] = {
+    ((3, 1), (3, 20)): "S",   # Viridian City → Route 2 (enter at the south end)
+    ((3, 2), (3, 20)): "N",   # Pewter City   → Route 2 (enter at the north end)
+}
+# Same, for warps that land on a split map (Viridian Forest's two gates).
+WARP_ARRIVAL_REGION: dict[tuple, str] = {
+    ((15, 0), (3, 20)): "S",  # Viridian Forest SOUTH gate → Route 2 south
+    ((15, 3), (3, 20)): "N",  # Viridian Forest NORTH gate → Route 2 north
+}
+
+
+def node_for(bank: int, id: int, x: int | None = None, y: int | None = None):
+    """Live (bank, id[, x, y]) → routing node. Split maps need x,y to pick the
+    region and yield (bank, id, tag); everything else is the plain (bank, id)."""
+    split = SPLIT_MAPS.get((bank, id))
+    if split and x is not None and y is not None:
+        return (bank, id, split["region"](x, y))
+    return (bank, id)
+
+
+def _resolve_dest(src_map: tuple, dest_map: tuple, kind: str):
+    """Region-qualify a step's destination when it lands on a split map."""
+    if dest_map not in SPLIT_MAPS:
+        return dest_map
+    table = WARP_ARRIVAL_REGION if kind == "warp" else CONN_ARRIVAL_REGION
+    tag = table.get((src_map, dest_map))
+    return (dest_map[0], dest_map[1], tag) if tag is not None else dest_map
+
+
+def _build_augmented():
+    """Expand the generated (bank,id) graph into region-aware nodes for split maps.
+    Returns (A_CONN, A_WARP): node -> {dir: dest_node} and node -> [(x,y,dest_node)]."""
+    a_conn: dict = {}
+    a_warp: dict = {}
+    for m in set(MAP_CONNECTIONS) | set(MAP_WARPS):
+        split = SPLIT_MAPS.get(m)
+        for direction, dest in MAP_CONNECTIONS.get(m, {}).items():
+            tag = SPLIT_CONN_REGION.get(m, {}).get(direction) if split else None
+            src = (m[0], m[1], tag) if tag else m
+            a_conn.setdefault(src, {})[direction] = _resolve_dest(m, dest, "connection")
+        for (x, y, dest) in MAP_WARPS.get(m, []):
+            src = (m[0], m[1], split["region"](x, y)) if split else m
+            a_warp.setdefault(src, []).append((x, y, _resolve_dest(m, dest, "warp")))
+    return a_conn, a_warp
+
+
+_A_CONN, _A_WARP = _build_augmented()
+
+
+def _matches(node, goal) -> bool:
+    """A routing node satisfies goal if it's the same node, or (when goal is a
+    plain 2-tuple map) any region of that map."""
+    return node == goal or (len(goal) == 2 and node[:2] == goal)
+
+
 def bfs_route(start, goal):
     """Connection-only route [(direction, next_map), ...] — kept for callers that
-    only want seamless edges. [] if already there, None if no connection route."""
+    only want seamless edges. [] if already there, None if no connection route.
+    Note: gated maps (e.g. Route 2 → Pewter) have NO connection-only route now —
+    they require warps through the gate — so this returns None for those."""
     steps = route_to(start, goal, warps=False)
     if steps is None:
         return None
@@ -524,25 +603,29 @@ def route_to(start, goal, warps=True):
     Returns a list of steps, [] if already there, or None if unreachable:
       ("connection", direction, next_map)  — cross a seamless edge
       ("warp", (x, y), next_map)           — walk onto a door/stairs tile
+
+    start/goal are (bank, id) or region-qualified (bank, id, tag) nodes. A plain
+    goal map matches any region of that map. Split maps (Route 2) are routed
+    region-aware so the path goes THROUGH the gate rather than at a sealed edge.
     """
     from collections import deque
-    if start == goal:
+    if _matches(start, goal):
         return []
     q = deque([(start, [])])
     seen = {start}
     while q:
         cur, path = q.popleft()
-        for direction, nb in sorted(MAP_CONNECTIONS.get(cur, {}).items()):
+        for direction, nb in sorted(_A_CONN.get(cur, {}).items()):
             step = ("connection", direction, nb)
-            if nb == goal:
+            if _matches(nb, goal):
                 return path + [step]
             if nb not in seen:
                 seen.add(nb)
                 q.append((nb, path + [step]))
         if warps:
-            for (x, y, nb) in MAP_WARPS.get(cur, []):
+            for (x, y, nb) in _A_WARP.get(cur, []):
                 step = ("warp", (x, y), nb)
-                if nb == goal:
+                if _matches(nb, goal):
                     return path + [step]
                 if nb not in seen:
                     seen.add(nb)
@@ -552,22 +635,23 @@ def route_to(start, goal, warps=True):
 
 def nearest_of_kind(start, kind):
     """Route to the nearest map of a kind ("pokecenter"/"mart"/"gym").
-    Returns (goal_map, steps) or None."""
+    Returns (goal_map, steps) or None. Region-aware over the augmented graph;
+    the returned goal_map is the plain (bank, id) of the destination."""
     from collections import deque
-    if MAP_KIND.get(start) == kind:
-        return (start, [])
+    if MAP_KIND.get(start[:2]) == kind:
+        return (start[:2], [])
     q = deque([(start, [])])
     seen = {start}
     while q:
         cur, path = q.popleft()
-        neighbours = [("connection", d, m) for d, m in sorted(MAP_CONNECTIONS.get(cur, {}).items())]
-        neighbours += [("warp", (x, y), m) for (x, y, m) in MAP_WARPS.get(cur, [])]
+        neighbours = [("connection", d, m) for d, m in sorted(_A_CONN.get(cur, {}).items())]
+        neighbours += [("warp", (x, y), m) for (x, y, m) in _A_WARP.get(cur, [])]
         for step in neighbours:
             nb = step[2]
             if nb in seen:
                 continue
             seen.add(nb)
-            if MAP_KIND.get(nb) == kind:
-                return (nb, path + [step])
+            if MAP_KIND.get(nb[:2]) == kind:
+                return (nb[:2], path + [step])
             q.append((nb, path + [step]))
     return None
