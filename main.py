@@ -373,6 +373,17 @@ def main():
                     obs_parts.append(
                         f"EXITS (walk onto a door/stairs tile to leave the building): {coords}. "
                         f"Nearest is {nearest} — move {toward} onto it.")
+            # Outdoors: surface map connections (which edge leads to which map).
+            # These are seamless — walk off that edge to cross; not warp tiles.
+            elif tilemap.ready and state.context == GameContext.OVERWORLD:
+                conns = tilemap.read_connections()
+                if conns:
+                    parts = []
+                    for c in conns:
+                        name = MAP_NAMES.get((c["map_bank"], c["map_id"]),
+                                             f"{c['map_bank']}/{c['map_id']}")
+                        parts.append(f"{c['direction']}→{name}")
+                    obs_parts.append("Map edges (walk off that edge to cross): " + ", ".join(parts))
             if diff.notes:
                 obs_parts.append("Changes: " + "; ".join(diff.notes))
             # Revisit warning — explicit signal to explore new directions
