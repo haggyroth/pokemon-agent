@@ -98,7 +98,10 @@ def stage_overworld(fc: FakeClient, *, x: int = 5, y: int = 7,
     # The parent-outdoor addresses (stale for interiors) — set for completeness.
     fc.set8(Addr.MAP_BANK, map_bank)
     fc.set8(Addr.MAP_ID, map_id)
-    ptr = 0x03005100
+    # The DMA map block lives in EWRAM in the real game (the pointer at 0x03005008
+    # derefs into 0x0202xxxx); use a realistic EWRAM address so pointer-validity
+    # checks in read_player_pos/read_current_map treat it as valid.
+    ptr = 0x02025100
     fc.set32(Addr.PLAYER_PTR, ptr)
     fc.set16(ptr, x)
     fc.set16(ptr + 2, y)

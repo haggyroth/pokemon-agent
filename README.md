@@ -172,6 +172,8 @@ pathfinding/routing bug. It boots a real emulator, so it's opt-in:
 
 All memory reads use full GBA bus addresses, identical between the native binding and the HTTP API, so the decoder is backend-agnostic. Party data at `0x02024288` uses Gen III XOR encryption (PID ^ OT_ID key); HP, level, and status are unencrypted and always reliable.
 
+**On writes:** the agent treats game RAM as read-only for observation — it does not touch save data, badges, stats, RNG, or battle outcomes. The one sanctioned write is the battle move-cursor (`gMoveSelectionCursor`), which `use_move` sets to the target slot before pressing A. That's equivalent to navigating the FIGHT menu with the D-pad (it only chooses *which* of your moves to use, deterministically); it doesn't alter game logic. This is why "no ROM hacks" above refers to the ROM and game rules, not a claim that no RAM byte is ever written.
+
 The authoritative memory map is [`game/constants.py`](game/constants.py); see [CLAUDE.md](CLAUDE.md) for context-detection details, backend notes, and Gen III data structure documentation.
 
 ## Model recommendations

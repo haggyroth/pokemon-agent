@@ -31,6 +31,38 @@ def test_read_badges_ignores_stale_fixed_address():
     assert (count, bits) == (0, 0)
 
 
+def test_read_badges_returns_last_good_on_invalid_pointer():
+    # #66: a title/reset/transition frame reads an invalid SaveBlock1 pointer. We
+    # must return the last good badges, not a spurious 0 that would flicker and
+    # misfire the badge-increase reward when it snaps back.
+    fc = FakeClient()
+    sb = 0x02025540
+    fc.set32(Addr.SAVEBLOCK1_PTR, sb)
+    fc.set8(sb + Addr.BADGES_OFFSET, 0b11)   # 2 badges
+    reader = make_reader(fc)
+    assert reader.read_badges() == (2, 0b11)
+    fc.set32(Addr.SAVEBLOCK1_PTR, 0)         # pointer goes invalid
+    assert reader.read_badges() == (2, 0b11)  # last good, not (0, 0)
+
+
+def test_read_player_pos_returns_last_good_on_invalid_pointer():
+    fc = FakeClient()
+    stage_overworld(fc, x=9, y=14)
+    reader = make_reader(fc)
+    assert reader.read_player_pos() == (9, 14)
+    fc.set32(Addr.PLAYER_PTR, 0)             # invalid (mid-transition)
+    assert reader.read_player_pos() == (9, 14)
+
+
+def test_read_current_map_returns_last_good_on_invalid_pointer():
+    fc = FakeClient()
+    stage_overworld(fc, map_bank=3, map_id=2)
+    reader = make_reader(fc)
+    assert reader.read_current_map() == (3, 2)
+    fc.set32(Addr.PLAYER_PTR, 0x03005008)    # IWRAM, not a valid EWRAM block
+    assert reader.read_current_map() == (3, 2)
+
+
 def test_read_party_skips_empty_slots_and_decodes():
     fc = FakeClient()
     mon0 = build_party_mon(0x1234, 0x9999, level=12, cur_hp=25, max_hp=40,
