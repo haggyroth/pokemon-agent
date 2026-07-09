@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.6.0]
+
+### Added
+- feat: interior exit guidance. `TilemapReader.read_warps()` reads the current
+  map's door/stairs tiles; when the agent is indoors the route guidance says
+  "leave the building first" and the observation lists the exit tiles with the
+  nearest one and step-by-step direction to it (#40)
+
 ## [0.5.5]
 
 ### Fixed
@@ -179,6 +187,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.6.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.6.0
 [0.5.5]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.5
 [0.5.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.4
 [0.5.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.3
