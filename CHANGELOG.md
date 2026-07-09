@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.5.4]
+
+### Fixed
+- fix: a stale `MENU_OPEN` flag no longer traps the agent in a phantom `IN_MENU`.
+  The flag over-stays after a full-screen menu (Pokédex/Bag/…) closes; the
+  `IN_MENU` gate now also requires `SCREEN_FADE` (which clears on close), rebuilt
+  around `gMain.callback2` (#38)
+
 ## [0.5.3]
 
 ### Fixed
@@ -162,6 +170,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.5.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.4
 [0.5.3]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.3
 [0.5.2]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.2
 [0.5.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.5.1
