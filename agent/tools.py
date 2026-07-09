@@ -67,6 +67,16 @@ TOOLS = [
         }, "required": ["destination"]},
     }},
     {"type": "function", "function": {
+        "name": "use_move",
+        "description": "In battle, use one of your lead Pokémon's moves by name. Drives "
+                       "the battle menu for you — advances intro/result text, opens FIGHT, "
+                       "selects the move, and confirms it. Prefer this over press_button "
+                       "for attacking. Pick the move from the 'Your moves' list.",
+        "parameters": {"type": "object", "properties": {
+            "move": {"type": "string", "description": "Exact move name, e.g. 'Tackle'."},
+        }, "required": ["move"]},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},

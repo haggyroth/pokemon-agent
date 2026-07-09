@@ -7,9 +7,19 @@ class Addr:
     # Fixed global (NOT DMA-relocated). slot 0 = the wild mon / trainer's active
     # lead. Verified live: (0x02024284 - 600) decodes to the wild encounter.
     ENEMY_PARTY  = 0x0202402C
-    # Move-selection cursor (FIGHT submenu), 2×2 grid: 0=TL 1=TR 2=BL 3=BR.
-    # Verified live: 0 →Down→ 2 →Right→ 3. Used by use_move to navigate to a slot.
-    MOVE_CURSOR  = 0x02023FF8
+    # gMoveSelectionCursor[gActiveBattler] — the FIGHT move-selection slot (0-3,
+    # 2×2 grid: bit0=column, bit1=row). On A the game commits THIS value as the
+    # chosen move (per pokefirered HandleInputChooseMove), so use_move writes the
+    # target slot here then presses A. Verified live: writing it + an A edge, then
+    # letting the turn resolve, drops exactly that move's PP. Single-battle scope
+    # (player = battler 0). NOTE: the display var 4 bytes earlier (0x02023FF8) is
+    # NOT the one A reads — must use this address.
+    MOVE_CURSOR  = 0x02023FFC
+    # gBattlerControllerFuncs[0] — player battler's controller callback. Equals
+    # CTRL_CHOOSE_MOVE while the FIGHT move menu is open (reliable across turns).
+    # The action-select value varies, so only positively detect the move menu.
+    BATTLE_CTRL_FUNC = 0x03004FE0
+    CTRL_CHOOSE_MOVE = 0x0802EA11   # HandleInputChooseMove — move menu is up
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
