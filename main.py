@@ -12,31 +12,12 @@ from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
 from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
 from game.constants import Addr
+from game.pathfinding import door_centers
 from knowledge.battle import battle_summary
 from rich.console import Console
 import time, sys
 
 console = Console()
-
-
-def door_centers(warps: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Collapse contiguous warp tiles (a multi-tile doormat) to the middle tile of
-    each cluster — usually the only one that actually warps (the side tiles just
-    "arrive" without exiting). Single warps pass through unchanged."""
-    clusters: list[list[tuple[int, int]]] = []
-    for w in warps:
-        for cl in clusters:
-            if any(abs(w[0] - x) <= 1 and abs(w[1] - y) <= 1 for x, y in cl):
-                cl.append(w)
-                break
-        else:
-            clusters.append([w])
-    centers = []
-    for cl in clusters:
-        mx = sorted(x for x, _ in cl)[len(cl) // 2]
-        my = sorted(y for _, y in cl)[len(cl) // 2]
-        centers.append(min(cl, key=lambda t: abs(t[0] - mx) + abs(t[1] - my)))
-    return centers
 
 
 def _frame_chroma(mgba) -> float:
