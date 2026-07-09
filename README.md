@@ -27,8 +27,9 @@ The LLM uses tool calling to press buttons, read game state, and save/load emula
 - **In-process emulation** — libmgba driven directly in Python; deterministic frame stepping, no network round-trips
 - **Direct memory reading** — parses the 100-byte Gen III party struct, XOR-decrypts species ID and moves, reads HP/level/status unencrypted
 - **Context detection** — distinguishes OVERWORLD / IN_BATTLE / DIALOG / TRANSITIONING via memory flags
-- **Battle reasoning** — type chart lookups, Gen III physical/special split awareness, PP tracking
-- **Navigation hints** — tilemap passability from ROM data, overhead area maps, revisit detection
+- **High-level navigation skills** — `go_to("<place>")` auto-routes across map connections and building/cave doors (BFS over a graph generated from the pokefirered decomp), incl. waypoints like "Pokemon Center"; `walk_to(x,y)` A*-paths around walls and NPCs. The LLM picks destinations; code drives movement
+- **Battle skills** — opponent read from memory, type-chart / physical-special-split analysis, and `use_move("<name>")` that drives the FIGHT menu deterministically
+- **Navigation hints** — tilemap passability, warps, and connections from ROM data; overhead area maps
 - **Persistent memory** — battle journal (JSONL), long-term progress (JSON), session tracking
 - **Live viewer** — optional pygame window to watch the agent play (`SHOW_WINDOW=true`)
 - **State save/load** — saves before gym leaders, loads on blackout
@@ -80,7 +81,10 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 |----------|---------|-------------|
 | `MGBA_BACKEND` | `native` | `native` (in-process libmgba) or `http` (legacy mGBA-http) |
 | `ROM_PATH` | `~/mgba-http/Pokemon_LeafGreen.gba` | Path to the LeafGreen `.gba` (native backend) |
-| `MODEL_NAME` | — | Must match the LM Studio model name exactly |
+| `LLM_BASE_URL` | `http://localhost:1234/v1` | OpenAI-compatible endpoint. Point at a cloud provider (OpenAI, OpenRouter, …) to use cloud models |
+| `LLM_API_KEY` | `lm-studio` | API key for the endpoint (placeholder for local; your provider key for cloud) |
+| `MODEL_NAME` | — | Model id: the LM Studio name locally, or the provider's id (e.g. `gpt-4o`) for cloud |
+| `START_FROM_STATE` | — | Path to an mGBA save state (`.ss*`) to boot into directly (no title/Continue/recap) |
 | `ENABLE_THINKING` | `false` | Set `true` for reasoning models that expose thinking tokens |
 | `TEMPERATURE` | `0.6` | LLM sampling temperature |
 | `MAX_TOKENS` | `4096` | Response cap. `prompt + MAX_TOKENS` must fit the model's **loaded** context, or calls fail with "Context size exceeded" |
@@ -109,8 +113,8 @@ Tests that need the compiled binding or a ROM skip automatically when those aren
 ├── main.py                   Main agent loop
 ├── config.py                 Settings loaded from .env
 ├── agent/
-│   ├── lm_studio_client.py   LLM client, tool execution, capped tool-call loop
-│   ├── tools.py              Tool schemas (press_button, read_game_state, etc.)
+│   ├── lm_studio_client.py   LLM client (local/cloud) + nav/battle skills, tool loop
+│   ├── tools.py              Tool schemas (go_to, walk_to, use_move, press_button, …)
 │   ├── history.py            Message trimming + control-token stripping
 │   └── reward.py             Shaped → sparse reward tracker
 ├── game/
@@ -121,9 +125,11 @@ Tests that need the compiled binding or a ROM skip automatically when those aren
 │   ├── memory_reader.py      Gen III XOR decryption + state machine
 │   ├── state.py              GameState, PokemonStatus, StateDiff dataclasses
 │   ├── constants.py          Memory addresses, charset, lookup tables
-│   └── tilemap_reader.py     ROM passability data for navigation hints
+│   ├── pathfinding.py        A* grid pathfinding (pure/testable)
+│   └── tilemap_reader.py     ROM passability, warps, and connections
 ├── memory/                   Short-term, long-term, and battle-journal memory
-├── knowledge/                Type chart, gym data, navigation, prompts
+├── knowledge/                Type chart, gym data, navigation, map_graph, prompts
+├── tools/gen_map_graph.py    Regenerate knowledge/map_graph.py from a pokefirered checkout
 └── tests/                    Hardware-free unit tests
 ```
 
