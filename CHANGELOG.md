@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.14.3]
+
+### Fixed
+- fix: `walk_to` no longer bails with a bogus "No walkable path" right after a warp
+  (#81). It was reading the previous map's grid before the new map finished loading
+  (the player's real position is out of bounds of the stale grid). Now it detects the
+  out-of-bounds/stale case and settles until the map loads, and retries a `None` path
+  within its attempt budget instead of giving up on the first try. The agent now walks
+  from the Viridian Forest entrance deep into the maze (the deeper forest traversal is
+  still tracked in #81)
+
 ## [0.14.2]
 
 ### Fixed
