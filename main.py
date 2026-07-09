@@ -138,9 +138,37 @@ def _frame_chroma(mgba) -> float:
 _RECAP_CHROMA_CUTOFF = 40.0
 
 
-def drive_into_gameplay(mgba, reader) -> bool:
+def _has_control(mgba, reader) -> bool:
+    """True only if the player actually responds to input — the definitive test
+    for *real* overworld control vs. the quest-log recap (which ignores the D-pad
+    and only ends on B). The chroma gate alone false-positives on a bright recap
+    frame or mid-fade (#79), so we confirm by moving.
+
+    Note the Gen III turn-vs-step rule: the FIRST press of a direction you are not
+    already facing only TURNS the character (no tile change); the second press
+    steps. So we press each direction TWICE before concluding it didn't move —
+    otherwise a real, controllable player reads as stuck. Any axis that steps ⇒
+    control; we restore position with two opposite presses (turn, then step).
+    """
+    if reader.detect_context() != GameContext.OVERWORLD:
+        return False
+    for mv, back in (("Down", "Up"), ("Right", "Left"), ("Up", "Down"), ("Left", "Right")):
+        before = reader.read_player_pos()
+        mgba.tap(mv)                          # may only turn to face mv
+        if reader.read_player_pos() == before:
+            mgba.tap(mv)                      # now step
+        if reader.read_player_pos() != before:
+            mgba.tap(back)                    # turn back
+            mgba.tap(back)                    # step back → restore origin
+            return True
+    return False
+
+
+def drive_into_gameplay(mgba, reader, attempts: int = 4) -> bool:
     """Boot from the loaded battery save through the pre-gameplay gates into real
-    player control. Returns True once normal gameplay is reached.
+    player control. Returns True once normal gameplay is CONFIRMED (the player
+    responds to input), retrying the whole boot up to `attempts` times because the
+    recap skip is timing-flaky (#79).
 
     Two gates, each with its own tell:
 
@@ -152,22 +180,26 @@ def drive_into_gameplay(mgba, reader) -> bool:
          (field callback, no fade, no menu), so detect_context() and position
          both lie: the recap even auto-animates the player. Neither A-mashing nor
          waiting escapes it — **B skips it**, and the palette snaps back to full
-         color when it clears. So we press B until the frame is no longer
-         desaturated (see _frame_chroma).
+         color when it clears. We press B until the frame is no longer desaturated
+         (see _frame_chroma) AND the player actually responds to input
+         (_has_control) — chroma alone isn't enough.
     """
-    mgba.reset()
-    mgba.run_frames(200)                      # boot logos
+    for _attempt in range(attempts):
+        mgba.reset()
+        mgba.run_frames(200)                  # boot logos
 
-    for _ in range(80):                       # gate 1: title + Continue → game world
-        if mgba.read8(Addr.MAP_BANK) != 0:
-            break
-        mgba.tap("A")
+        for _ in range(80):                   # gate 1: title + Continue → game world
+            if mgba.read8(Addr.MAP_BANK) != 0:
+                break
+            mgba.tap("A")
 
-    for _ in range(80):                       # gate 2: skip the recap with B
-        if _frame_chroma(mgba) > _RECAP_CHROMA_CUTOFF:
-            mgba.tick(10)                     # let the last transition settle
-            return True                       # full color → normal gameplay
-        mgba.tap("B")
+        for _ in range(120):                  # gate 2: skip the recap with B
+            if _frame_chroma(mgba) > _RECAP_CHROMA_CUTOFF:
+                mgba.tick(10)                 # let the last transition settle
+                if _has_control(mgba, reader):
+                    return True               # full color AND input-responsive
+            mgba.tap("B")
+        # This attempt never reached confirmed control — reset and try again.
     return False                              # budget exhausted; hand off anyway
 
 
