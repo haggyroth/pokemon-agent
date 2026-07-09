@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.14.1]
+
+### Fixed
+- fix: region-aware routing through gated maps (#59) — Route 2 is one map id split
+  by Viridian Forest's gate buildings, so `go_to("Pewter City")` thrashed forever on
+  the sealed north edge. A curated split-map overlay expands such maps into
+  per-region nodes (`(3,20,"N")`/`(3,20,"S")`) so `route_to` routes THROUGH the
+  forest gates; `node_for()` maps a live position to its region. Also: `walk_to`
+  now marks a tile blocked and replans around it when a step fails (obstacles the
+  ROM passability grid can't see — object events, ledges, cut trees — which was the
+  Viridian Forest traversal stall and the general "ledges/trees" navigation issue)
+
 ## [0.14.0]
 
 ### Added
