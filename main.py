@@ -9,7 +9,7 @@ from memory.short_term import ShortTermMemory
 from memory.long_term import LongTermMemory
 from memory.battle_journal import BattleJournal, BattleRecord
 from knowledge.system_prompt import build_system_prompt
-from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES
+from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
 from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
 from game.constants import Addr
 from knowledge.battle import battle_summary
@@ -346,6 +346,23 @@ def main():
                     else:
                         alts = [f"{DIRECTION_BUTTON[d]}({d})" for d, ok in passable.items() if ok]
                         obs_parts.append(f"Travel {travel_dir} blocked — passable: {', '.join(alts) or 'none'} (find a detour)")
+            # Indoors: surface the door/stairs tiles so the agent can leave. The
+            # outdoor route is unreachable until it does (see get_route_guidance).
+            if tilemap.ready and infer_building_type(state.map_bank, state.map_id) == "interior":
+                warps = tilemap.read_warps()
+                if warps:
+                    px, py = state.player_x, state.player_y
+                    nearest = min(warps, key=lambda w: abs(w[0] - px) + abs(w[1] - py))
+                    steps = []
+                    if nearest[1] > py:   steps.append(f"{nearest[1]-py} Down")
+                    elif nearest[1] < py: steps.append(f"{py-nearest[1]} Up")
+                    if nearest[0] > px:   steps.append(f"{nearest[0]-px} Right")
+                    elif nearest[0] < px: steps.append(f"{px-nearest[0]} Left")
+                    toward = ", then ".join(steps) if steps else "you are next to it — step onto it"
+                    coords = ", ".join(f"({x},{y})" for x, y in warps[:4])
+                    obs_parts.append(
+                        f"EXITS (walk onto a door/stairs tile to leave the building): {coords}. "
+                        f"Nearest is {nearest} — move {toward} onto it.")
             if diff.notes:
                 obs_parts.append("Changes: " + "; ".join(diff.notes))
             # Revisit warning — explicit signal to explore new directions

@@ -85,6 +85,30 @@ class TilemapReader:
         except Exception:
             return None
 
+    def read_warps(self) -> list[tuple[int, int]]:
+        """Warp (door/stairs/exit) tile coordinates on the current map.
+
+        These are in the same coordinate space as the player position, so the
+        agent can walk onto one to change maps. Read from gMapHeader.events:
+          gMapHeader (Addr.MAP_HEADER): +0x00 mapLayout, +0x04 mapEvents.
+          MapEvents: +0x01 warpCount(u8), +0x08 warps ptr.
+          WarpEvent (8 bytes): x(s16 @0), y(s16 @2), elevation, warpId, mapNum, mapGroup.
+        Indoor maps have 1-3 warps (the exit); returns [] on any read error.
+        """
+        try:
+            events = self.client.read32(Addr.MAP_HEADER + 0x04)
+            if not (0x02000000 <= events < 0x03100000 or 0x08000000 <= events < 0x0A000000):
+                return []
+            count     = self.client.read8(events + 0x01)
+            warps_ptr = self.client.read32(events + 0x08)
+            out = []
+            for i in range(min(count, 16)):
+                base = warps_ptr + i * 8
+                out.append((self.client.read16(base), self.client.read16(base + 2)))
+            return out
+        except Exception:
+            return []
+
     def passable_directions(self, x: int, y: int) -> dict[str, bool]:
         """Return {N/S/E/W: can_walk} for each cardinal direction from (x, y)."""
         result = {}
