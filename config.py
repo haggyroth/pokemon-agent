@@ -21,6 +21,11 @@ ROM_PATH          = os.path.expanduser(
 # MAX_STEPS: stop after N decision steps (0 = run until interrupted). Useful for
 #   bounded smoke/eval runs.
 START_FROM_SAVE   = os.path.expanduser(os.getenv("START_FROM_SAVE", ""))
+# START_FROM_STATE: path to an mGBA save STATE (.ss*) to load directly at startup
+#   (native backend). Loads instantly into exactly that scene — no title screen,
+#   no Continue, no quest-log recap. Takes precedence over START_FROM_SAVE.
+#   Handy for testing from a fixed spot (e.g. the Pallet Town exterior).
+START_FROM_STATE  = os.path.expanduser(os.getenv("START_FROM_STATE", ""))
 MAX_STEPS         = int(os.getenv("MAX_STEPS", "0"))
 # USE_VISION: attach the live screenshot (and overhead area maps) to the model.
 # Set false for text-only models, or models whose vision is unstable/blows the
