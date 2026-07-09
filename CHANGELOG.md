@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.13.0]
+
+### Added
+- feat: spend controls for cloud LLM endpoints — `MAX_LLM_CALLS` and `TOKEN_BUDGET`
+  env caps stop the run cleanly (like `MAX_STEPS`); the agent tracks cumulative
+  LLM calls + prompt/completion tokens and prints a run summary (steps, reward,
+  calls, tokens) on every exit; a startup warning fires when `LLM_BASE_URL` is
+  non-local and no run cap is set (#64)
+
+### Fixed
+- fix: run safety — `save_state`/`load_state` return a real success bool on both
+  backends and the tool executor reports the true outcome instead of always
+  claiming success; the blackout handler fires the loss penalty once per blackout
+  (was every tick) and advances the game's own respawn when no save state exists
+  instead of looping on a no-op reload (#63)
+
 ## [0.12.1]
 
 ### Fixed
