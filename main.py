@@ -173,8 +173,20 @@ def main():
                 # Classify the battle from gBattleTypeFlags (set at battle init).
                 battle_is_trainer = bool(mgba.read32(Addr.BATTLE_TYPE_FLAGS)
                                          & Addr.BATTLE_TYPE_TRAINER)
-                current_enemy = ""
-                client._current_opponent = ""
+                # Identify the opponent from memory (gEnemyParty[0]) — do NOT rely
+                # on the model to read the species off the screen (it guessed wrong).
+                enemy = reader.read_enemy_lead()
+                current_enemy = (enemy.species_name or "").upper().strip() if enemy else ""
+                client._current_opponent = current_enemy
+
+            # Keep the opponent identity fresh from memory every battle tick (it
+            # can load a frame or two after the battle callback, and the lead
+            # changes when a trainer sends out its next Pokémon). Memory is
+            # authoritative — never let the model's guess override it.
+            if in_battle:
+                enemy = reader.read_enemy_lead()
+                if enemy and enemy.species_name:
+                    current_enemy = enemy.species_name.upper().strip()
 
             # Track which of our Pokémon is actually fighting. In single battles
             # only the active mon's HP changes, so the last slot to take damage
@@ -343,6 +355,9 @@ def main():
                                               lead.hp_percent, lead.pp,
                                               attacker_types=lead_types)
                     obs_parts.append(bsummary)
+                    enemy = reader.read_enemy_lead()
+                    if enemy:
+                        obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
                 surr = tilemap.surroundings_str(state.player_x, state.player_y)
@@ -445,8 +460,10 @@ def main():
             if reasoning:
                 console.print(f"[dim]{reasoning[:160]}[/]")
 
-            # Sync opponent name back from client (set via set_opponent tool)
-            if client._current_opponent:
+            # set_opponent is now only a fallback — memory (read_enemy_lead) is
+            # authoritative and refreshed each tick above. Use the tool's value
+            # only if we somehow couldn't read the opponent from memory.
+            if not current_enemy and client._current_opponent:
                 current_enemy = client._current_opponent
             # Clear on battle end
             if not in_battle:

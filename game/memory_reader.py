@@ -104,6 +104,35 @@ class LeafGreenReader:
             return GameContext.IN_MENU
         return GameContext.TRANSITIONING
 
+    def _decode_mon(self, raw: bytes, slot: int) -> PokemonStatus:
+        """Decode one 100-byte Gen III party struct into a PokemonStatus.
+        Works for gPlayerParty and gEnemyParty alike (identical struct)."""
+        status_word = int.from_bytes(raw[0x50:0x54], "little")
+        level       = raw[0x54]
+        current_hp  = int.from_bytes(raw[0x56:0x58], "little")
+        max_hp      = int.from_bytes(raw[0x58:0x5A], "little")
+
+        species_id, species_name = 0, "Unknown"
+        move_ids   = [0] * 4
+        move_names = [""] * 4
+        pp         = [0] * 4
+
+        if self.decrypt:
+            try:
+                sub = decrypt_substructs(raw)
+                species_id   = parse_species(sub)
+                species_name = SPECIES_NAMES.get(species_id, f"#{species_id}")
+                move_ids, pp = parse_moves(sub)
+                move_names   = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in move_ids]
+            except Exception:
+                pass  # decryption failed — Tier 1 data still valid
+
+        return PokemonStatus(
+            slot=slot, level=level, current_hp=current_hp, max_hp=max_hp,
+            status=decode_status(status_word), species_id=species_id,
+            species_name=species_name, move_ids=move_ids, move_names=move_names, pp=pp,
+        )
+
     def read_party(self) -> list[PokemonStatus]:
         party = []
         for slot in range(6):
@@ -113,41 +142,18 @@ class LeafGreenReader:
             # Empty slots have level 0 — skip them (no separate party-count address)
             if raw[0x54] == 0:
                 continue
-
-            # Unencrypted fields — always readable (offsets within party struct)
-            status_word = int.from_bytes(raw[0x50:0x54], "little")
-            level       = raw[0x54]
-            current_hp  = int.from_bytes(raw[0x56:0x58], "little")
-            max_hp      = int.from_bytes(raw[0x58:0x5A], "little")
-
-            species_id, species_name = 0, "Unknown"
-            move_ids   = [0] * 4
-            move_names = [""] * 4
-            pp         = [0] * 4
-
-            if self.decrypt:
-                try:
-                    sub = decrypt_substructs(raw)
-                    species_id   = parse_species(sub)
-                    species_name = SPECIES_NAMES.get(species_id, f"#{species_id}")
-                    move_ids, pp = parse_moves(sub)
-                    move_names   = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in move_ids]
-                except Exception:
-                    pass  # decryption failed — Tier 1 data still valid
-
-            party.append(PokemonStatus(
-                slot=slot,
-                level=level,
-                current_hp=current_hp,
-                max_hp=max_hp,
-                status=decode_status(status_word),
-                species_id=species_id,
-                species_name=species_name,
-                move_ids=move_ids,
-                move_names=move_names,
-                pp=pp,
-            ))
+            party.append(self._decode_mon(raw, slot))
         return party
+
+    def read_enemy_lead(self) -> PokemonStatus | None:
+        """Decode the opponent's active Pokémon (gEnemyParty[0]) — the wild mon or
+        the trainer's current lead. gEnemyParty is a fixed global (not DMA-relocated),
+        600 bytes before gPlayerParty. Returns None if the slot is empty (no battle).
+        Reads truth from memory so we never depend on the model to identify the foe."""
+        raw = self.client.read_range(Addr.ENEMY_PARTY, 100)
+        if len(raw) < 100 or raw[0x54] == 0:
+            return None
+        return self._decode_mon(raw, 0)
 
     def read_key_item_count(self) -> int:
         """Number of occupied key-item slots in the bag. Reward key_item when
