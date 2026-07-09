@@ -68,20 +68,35 @@ class LeafGreenReader:
         cb2 = self.client.read32(Addr.GMAIN_CALLBACK2)
         if cb2 == Addr.CB2_BATTLE:
             return GameContext.IN_BATTLE
-        # Any field menu sets MENU_OPEN — whether it keeps the field callback2
-        # (Start menu) or swaps to its own (Bag/Party/Card/Option/Pokédex). It's
-        # 0 in free-roam, battle, dialog, and transitions, so this cleanly
-        # separates menus from every other context (verified live).
-        if self.client.read8(Addr.MENU_OPEN) != 0:
-            return GameContext.IN_MENU
+
+        # MENU_OPEN (0x03002415) alone is NOT a reliable menu gate: after a
+        # full-screen menu (Pokédex/Bag/…) closes it STAYS 1 even back on the
+        # field, which used to trap the agent in a phantom IN_MENU forever. The
+        # reliable "a menu is on screen right now" signal is SCREEN_FADE
+        # (0x03000F9C) == 1 — it holds while a menu is open but returns to 0 the
+        # moment it closes (also 1 during warp fades). We combine the two:
+        #   MENU_OPEN says a menu is/was open (over-stays, never under-reports);
+        #   SCREEN_FADE says something is on top of the field right now.
+        menu_flag = self.client.read8(Addr.MENU_OPEN) != 0
+        fade      = self.client.read8(Addr.SCREEN_FADE) == 0x01
+
         if cb2 == Addr.CB2_OVERWORLD:
-            if self.client.read8(Addr.SCREEN_FADE) == 0x01:
-                return GameContext.TRANSITIONING
-            # SCRIPT_RAM[0] != 0 while a map script runs (NPC dialog, signs, ...).
+            # On the field callback: overlay menu (Start/Save), a warp fade, a
+            # script dialog, real free-roam, or a stale MENU_OPEN after a menu.
+            if menu_flag and fade:
+                return GameContext.IN_MENU          # overlay menu genuinely open
+            if fade:
+                return GameContext.TRANSITIONING     # warp/map-load fade (no menu)
+            # fade == 0 here, so any lingering MENU_OPEN is stale → treat as field.
             if self.client.read8(Addr.SCRIPT_RAM) != 0:
-                return GameContext.DIALOG_OPEN
+                return GameContext.DIALOG_OPEN       # NPC/sign/script text
             return GameContext.OVERWORLD
-        # Map warps/loads, battle intro/outro, and other non-menu screens.
+
+        # Non-field, non-battle callback: a full-screen menu has its own callback
+        # (Pokédex/Party/Bag/Option/…) AND sets MENU_OPEN; everything else here is
+        # a warp/load/intro screen.
+        if menu_flag:
+            return GameContext.IN_MENU
         return GameContext.TRANSITIONING
 
     def read_party(self) -> list[PokemonStatus]:

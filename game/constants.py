@@ -17,30 +17,39 @@ class Addr:
     #        on-map dialog/scripts, field fades). Returns to this value when a
     #        battle ends — unlike the old flags, which persist after battle.
     #     == CB2_BATTLE    (0x08011101) for essentially the whole battle.
-    #   SCREEN_FADE (0x03000F9C) u8: 1 during a screen fade.
+    #   SCREEN_FADE (0x03000F9C) u8: 1 while a menu is on screen OR during a fade;
+    #     0 in plain free-roam. This is the reliable "something is over the field
+    #     right now" signal — crucially it returns to 0 the instant a menu closes.
+    #   MENU_OPEN   (0x03002415) u8: set when a field menu is/was open. It
+    #     OVER-STAYS: after a full-screen menu (Pokédex/Bag/…) closes it can read 1
+    #     back on the field. So it must never be used alone (that trapped the agent
+    #     in a phantom IN_MENU) — pair it with SCREEN_FADE, which does clear.
     #   SCRIPT_RAM  (0x03000EB0): script-engine block; byte[0] != 0 while a map
     #     script runs (NPC dialog, signs, cutscenes), 0 in free-roam.
     #
     # detect_context():
     #   callback2 == CB2_BATTLE                        -> IN_BATTLE
-    #   callback2 == CB2_OVERWORLD:
-    #       SCREEN_FADE == 1                           -> TRANSITIONING (field fade)
+    #   callback2 == CB2_OVERWORLD:                    (field: overlay menu/fade/dialog/roam)
+    #       MENU_OPEN and SCREEN_FADE                  -> IN_MENU (Start/Save overlay)
+    #       SCREEN_FADE                                -> TRANSITIONING (warp/map fade)
     #       SCRIPT_RAM[0] != 0                         -> DIALOG_OPEN
-    #       else                                       -> OVERWORLD
-    #   otherwise (menus, warps, battle intro/outro)   -> TRANSITIONING
+    #       else                                       -> OVERWORLD (stale MENU_OPEN lands here)
+    #   otherwise:                                     (full-screen menu / warp / intro)
+    #       MENU_OPEN                                  -> IN_MENU (Pokédex/Party/Bag/Option/…)
+    #       else                                       -> TRANSITIONING
     #
     # ROM-version note: the CB2_* target addresses are specific to this LeafGreen
     # build (as are all addresses here); re-derive if OVERWORLD is misdetected.
     GMAIN_CALLBACK2 = 0x030030F4   # u32: gMain.callback2 — live screen dispatcher
     CB2_OVERWORLD   = 0x080565B5   # callback2 value while the field system is active
     CB2_BATTLE      = 0x08011101   # callback2 value during battle
-    SCREEN_FADE     = 0x03000F9C   # u8: 1 during a screen fade AND while a menu is open (check MENU_OPEN first)
+    SCREEN_FADE     = 0x03000F9C   # u8: 1 while a menu is on screen OR mid-fade; clears when the menu closes
     SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
-    # Field-menu-open flag. Verified live to be non-zero for EVERY field menu
-    # (Start, Bag, Party, Trainer Card, Option, and the save prompt) and 0 in
-    # every non-menu state: free-roam, battle (intro & menu), overworld dialog,
-    # screen transitions, and the quest-log recap. A single general signal, so it
-    # also covers menus not yet reachable in early game (Pokédex, Town Map, …).
+    # Field-menu flag. Non-zero for EVERY field menu (Start, Bag, Party, Trainer
+    # Card, Option, Save, Pokédex, …). BUT it OVER-STAYS: after a full-screen menu
+    # closes it can still read 1 back on the field, so it is NOT a standalone gate
+    # — detect_context() pairs it with SCREEN_FADE (which does clear) to avoid a
+    # phantom IN_MENU. Never under-reports (always 1 while a menu is truly open).
     MENU_OPEN       = 0x03002415
 
     # gBattleTypeFlags (real one) — set at battle init, persists after. Verified
