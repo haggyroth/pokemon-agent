@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.11.1]
+
+### Fixed
+- fix: run-feedback nav fixes — `go_to` waypoints match fuzzily ("Viridian
+  Pokemart", "Poké Mart", "Pewter City Gym" now resolve); the building-exit hint
+  points at the functional center door tile (multi-tile doormats where only the
+  middle warps); removed the redundant `set_opponent` tool (opponent is read from
+  memory); system prompt refreshed to the current tools (#55)
+
 ## [0.11.0]
 
 ### Added
@@ -297,6 +306,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.11.1]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.11.1
 [0.11.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.11.0
 [0.10.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.10.0
 [0.9.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.9.0
