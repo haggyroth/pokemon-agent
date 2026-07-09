@@ -38,6 +38,22 @@ def test_read_party_skips_empty_slots_and_decodes():
     assert party[1].status == "paralyzed"
 
 
+def test_read_current_map_uses_dma_block_not_stale_parent():
+    # Regression: the absolute MAP_BANK/MAP_ID stay on the parent outdoor map
+    # (e.g. Pallet Town 3/0) while indoors. read_current_map must report the
+    # TRUE current map from the DMA block at [PLAYER_PTR]+0x04/0x05.
+    fc = FakeClient()
+    stage_overworld(fc)                 # sets both to (3, 0)
+    fc.set8(Addr.MAP_BANK, 3)           # parent stays Pallet Town...
+    fc.set8(Addr.MAP_ID, 0)
+    ptr = fc.read32(Addr.PLAYER_PTR)
+    fc.set8(ptr + Addr.MAP_GROUP_OFFSET, 4)   # ...but we're really in the house
+    fc.set8(ptr + Addr.MAP_NUM_OFFSET, 2)
+    assert make_reader(fc).read_current_map() == (4, 2)
+    assert make_reader(fc).read_state().map_bank == 4
+    assert make_reader(fc).read_state().map_id == 2
+
+
 def test_detect_context_overworld():
     fc = FakeClient()
     stage_overworld(fc)

@@ -78,21 +78,29 @@ class Addr:
     # First 4 bytes are the mapLayout ROM pointer (0x08xxxxxx).
     MAP_HEADER   = 0x02036DFC   # struct MapHeader in EWRAM
 
-    # Map bank/id — these are in the save-warp block, reliable for current map
-    MAP_BANK     = 0x02031DBC   # u8: current map bank
-    MAP_ID       = 0x02031DBD   # u8: current map number
+    # ⚠ These absolute addresses are the PARENT OUTDOOR map, NOT the current map:
+    # they stay on the town (e.g. Pallet 3/0) the whole time you are inside its
+    # buildings, so they misreport every interior. Verified live: reads 3/0 in
+    # both the player's bedroom and Pallet Town. Kept only for diagnostics — the
+    # current map comes from the DMA block below (read_current_map). Do not use
+    # these for context/navigation.
+    MAP_BANK     = 0x02031DBC   # u8: parent outdoor map bank (stale for interiors)
+    MAP_ID       = 0x02031DBD   # u8: parent outdoor map id  (stale for interiors)
 
-    # Live player tile coordinates — always indirect; the target block is
-    # DMA-protected and its address changes on every map transition.
-    # DataCrystal RAM map:
-    #   [0x03005008]+0x000 = Camera X (2b) = player tile X
-    #   [0x03005008]+0x002 = Camera Y (2b) = player tile Y
-    #   [0x03005008]+0x004 = current map number (1b)
-    #   [0x03005008]+0x005 = current map bank (1b)
-    # read_player_pos() in memory_reader.py does: ptr=read32(PLAYER_PTR);
-    # x=read16(ptr); y=read16(ptr+2).
+    # Live player tile coordinates AND current map — always indirect; the target
+    # block is DMA-protected and its address changes on every map transition.
+    # DataCrystal RAM map, relative to [PLAYER_PTR]:
+    #   +0x000 = Camera X (2b) = player tile X
+    #   +0x002 = Camera Y (2b) = player tile Y
+    #   +0x004 = current map GROUP (1b)  — matches the first key in MAP_NAMES
+    #   +0x005 = current map NUM   (1b)  — matches the second key in MAP_NAMES
+    # read_player_pos(): ptr=read32(PLAYER_PTR); x=read16(ptr); y=read16(ptr+2).
+    # read_current_map(): (read8(ptr+0x04), read8(ptr+0x05)) — the TRUE current
+    # map, e.g. (3,0) Pallet Town outdoors vs (4,2) the player's house indoors.
     # DO NOT cache or store the resolved address — it drifts.
-    PLAYER_PTR   = 0x03005008   # IRAM → DMA-protected map data block
+    PLAYER_PTR       = 0x03005008   # IRAM → DMA-protected map data block
+    MAP_GROUP_OFFSET = 0x04         # + [PLAYER_PTR] → current map group (bank)
+    MAP_NUM_OFFSET   = 0x05         # + [PLAYER_PTR] → current map number (id)
 
     # Player sprite object (overworld, 36 bytes). Player is always OW slot 0.
     # Offsets within OW struct (from pokefirered decomp / DataCrystal):
