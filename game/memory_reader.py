@@ -55,8 +55,13 @@ class LeafGreenReader:
     def read_badges(self) -> tuple[int, int]:
         """Returns (badge_count, raw_bitmask).
         badge_count = popcount of the u8 bitmask (0–8).
-        raw_bitmask = the u8 itself — use for bitwise diff to detect which bit flipped."""
-        raw = self.client.read8(Addr.BADGES)
+        raw_bitmask = the u8 itself — use for bitwise diff to detect which bit flipped.
+
+        Read via the live SaveBlock1 pointer: the block is DMA-relocated on map
+        transitions, so a fixed address drifts off the badge byte after a warp and
+        returns garbage (phantom badges / false milestones)."""
+        ptr = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        raw = self.client.read8(ptr + Addr.BADGES_OFFSET)
         return bin(raw).count("1"), raw
 
     def detect_context(self) -> GameContext:

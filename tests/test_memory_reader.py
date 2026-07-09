@@ -11,10 +11,24 @@ def make_reader(fc: FakeClient) -> LeafGreenReader:
 
 def test_read_badges_popcount():
     fc = FakeClient()
-    fc.set8(Addr.BADGES, 0b1011)  # 3 bits set
+    sb = 0x02025540
+    fc.set32(Addr.SAVEBLOCK1_PTR, sb)
+    fc.set8(sb + Addr.BADGES_OFFSET, 0b1011)  # 3 bits set, via the live pointer
     count, bits = make_reader(fc).read_badges()
     assert count == 3
     assert bits == 0b1011
+
+
+def test_read_badges_ignores_stale_fixed_address():
+    # Regression: badges must follow the relocated SaveBlock1, not a fixed addr.
+    # A non-zero byte at the old fixed location must NOT be read as a badge.
+    fc = FakeClient()
+    sb = 0x02025600                       # block relocated away from canonical base
+    fc.set32(Addr.SAVEBLOCK1_PTR, sb)
+    fc.set8(sb + Addr.BADGES_OFFSET, 0)   # true badges = 0
+    fc.set8(Addr.BADGES, 0x04)            # stale garbage at the old fixed address
+    count, bits = make_reader(fc).read_badges()
+    assert (count, bits) == (0, 0)
 
 
 def test_read_party_skips_empty_slots_and_decodes():
@@ -174,9 +188,9 @@ def test_diff_detects_damage_level_and_badges():
     reader = make_reader(fc)
     before = reader.read_state()
 
-    # Take damage + level up + earn a badge.
+    # Take damage + level up + earn a badge (badge via the live SaveBlock1 pointer).
     fc.set_bytes(Addr.PARTY_DATA, build_party_mon(0x1, 0x2, level=6, cur_hp=8, max_hp=22))
-    fc.set8(Addr.BADGES, 0b1)
+    fc.set8(fc.read32(Addr.SAVEBLOCK1_PTR) + Addr.BADGES_OFFSET, 0b1)
     after = reader.read_state()
 
     d = reader.diff(before, after)
