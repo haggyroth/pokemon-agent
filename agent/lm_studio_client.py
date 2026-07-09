@@ -191,12 +191,24 @@ class AgentClient:
                 return last_reasoning, actions
 
             for tc in msg.tool_calls:
-                result = self._execute(tc.function.name, tc.function.arguments)
+                # A malformed/truncated tool call (bad JSON args, missing keys)
+                # must NOT raise out of this loop: the assistant message carrying
+                # tool_calls is already in history, so bailing here would orphan it
+                # and every subsequent API request would 400 (tool_calls without
+                # matching tool responses). Instead, turn any failure into a tool
+                # response the model can see and recover from.
+                try:
+                    result = self._execute(tc.function.name, tc.function.arguments)
+                except Exception as e:
+                    result = f"Tool {tc.function.name} failed: {e}"
                 console.log(f"[cyan]{tc.function.name}[/] → {str(result)[:80]}")
                 self.messages.append({
                     "role": "tool", "tool_call_id": tc.id, "content": str(result)
                 })
-                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                try:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except (json.JSONDecodeError, ValueError):
+                    args = {}
                 if tc.function.name == "press_button":
                     actions.append(f"press:{args.get('button', '?')}")
                 else:
