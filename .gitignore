@@ -19,6 +19,8 @@ game/_mgba_native*.so
 # Personal game data — gitignored, directory preserved via .gitkeep
 logs/*.json
 logs/*.jsonl
+logs/*.log
+logs/*.bak
 
 # Save states (binary, machine-specific)
 saves/*

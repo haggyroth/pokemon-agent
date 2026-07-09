@@ -1,5 +1,7 @@
 import copy
 import json
+import os
+from datetime import datetime
 from pathlib import Path
 from config import PROGRESS_PATH
 
@@ -19,8 +21,25 @@ class LongTermMemory:
 
     def _load(self) -> dict:
         if self.path.exists():
-            with open(self.path) as f:
-                saved = json.load(f)
+            try:
+                with open(self.path) as f:
+                    saved = json.load(f)
+            except (json.JSONDecodeError, ValueError, OSError) as e:
+                # A truncated/corrupt progress file must never crash startup.
+                # Rename it aside (preserving forensics) and start from DEFAULTS.
+                # This is the recovery path for a crash mid-save() before the
+                # atomic-write fix; kept as belt-and-braces afterward.
+                bak = self.path.with_name(
+                    f"{self.path.name}.corrupt-"
+                    f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.bak")
+                try:
+                    os.replace(self.path, bak)
+                    print(f"[long_term] WARNING: {self.path.name} was corrupt ({e}); "
+                          f"moved to {bak.name}, starting fresh.")
+                except OSError:
+                    print(f"[long_term] WARNING: {self.path.name} was corrupt ({e}) "
+                          f"and could not be renamed; starting fresh.")
+                return copy.deepcopy(DEFAULTS)
             # deepcopy so absent keys don't alias DEFAULTS' mutable lists
             data = {**copy.deepcopy(DEFAULTS), **saved}
             # Strip keys removed from the schema (e.g. key_items_obtained).
@@ -34,9 +53,19 @@ class LongTermMemory:
         return copy.deepcopy(DEFAULTS)
 
     def save(self):
+        # Atomic write: serialize to a sibling temp file, fsync, then os.replace
+        # (atomic on POSIX and Windows). A crash/interrupt mid-write can never
+        # leave a truncated progress.json — the old file survives until the
+        # rename completes. progress.json is the only cross-session memory and
+        # save() runs often (every milestone/town/battle end), so a partial write
+        # here previously corrupted it (logs/progress.json.corrupted.bak).
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "w") as f:
+        tmp = self.path.with_name(f".{self.path.name}.tmp")
+        with open(tmp, "w") as f:
             json.dump(self.data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.path)
 
     def add_badge(self, gym_name: str):
         if gym_name not in self.data["gyms_beaten"]:

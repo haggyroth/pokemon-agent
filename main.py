@@ -1,5 +1,6 @@
 from datetime import datetime
-from config import MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS, USE_VISION
+from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
+                    USE_VISION, PROGRESS_PATH)
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -15,9 +16,33 @@ from game.constants import Addr
 from game.pathfinding import door_centers
 from knowledge.battle import battle_summary
 from rich.console import Console
-import time, sys
+from pathlib import Path
+import time, sys, traceback
 
 console = Console()
+
+# Where uncaught per-tick exceptions are recorded (full tracebacks). The console
+# only shows a scrolling summary; this file is the durable record for debugging a
+# run after the fact. Sits alongside progress.json in the logs dir.
+ERRORS_LOG = Path(PROGRESS_PATH).parent / "errors.log"
+
+# Bail out if this many decision ticks fail in a row. A persistent fault (LLM
+# endpoint down, poisoned message history, a coding bug) would otherwise spin
+# forever at ~1 Hz printing the same line; stopping cleanly saves progress and
+# surfaces the failure instead of hiding it.
+MAX_CONSECUTIVE_ERRORS = 30
+
+
+def _log_exception(exc: Exception) -> None:
+    """Append a timestamped full traceback to ERRORS_LOG (best-effort)."""
+    try:
+        ERRORS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(ERRORS_LOG, "a") as f:
+            f.write(f"\n===== {datetime.now().isoformat(timespec='seconds')} "
+                    f"{type(exc).__name__}: {exc} =====\n")
+            traceback.print_exc(file=f)
+    except Exception:
+        pass  # logging must never mask the original error
 
 
 def _frame_chroma(mgba) -> float:
@@ -135,11 +160,17 @@ def main():
 
     # ── Startup badge reconciliation ─────────────────────────────────────────
     # Game RAM is the source of truth for badges — it IS the actual save state.
-    # We never write it. Instead we fold any badges RAM shows into LTM, which is
-    # a monotonic record for reward/milestone tracking. RAM can legitimately
-    # regress when the agent load_state()s to retry a gym, so we must not un-earn
-    # milestones or (worse) fabricate badges by writing LTM's belief back to RAM.
-    _adopted = ltm.reconcile_badges_from_ram(mgba.read8(Addr.BADGES))
+    # We never write the badge byte. Instead we fold any badges RAM shows into
+    # LTM, which is a monotonic record for reward/milestone tracking. RAM can
+    # legitimately regress when the agent load_state()s to retry a gym, so we must
+    # not un-earn milestones or (worse) fabricate badges.
+    #
+    # Read the badge bitmask via the RELOCATION-SAFE reader (deref SAVEBLOCK1_PTR
+    # + BADGES_OFFSET), NOT the fixed Addr.BADGES: SaveBlock1 is DMA-relocated, so
+    # with START_FROM_STATE (a state saved after any warp) the fixed address points
+    # at arbitrary bytes and the monotonic reconciler would permanently adopt
+    # phantom badges/milestones into LTM.
+    _adopted = ltm.reconcile_badges_from_ram(reader.read_badges()[1])
     if _adopted:
         console.print(f"[yellow]Adopted badges from game save into LTM: {', '.join(_adopted)}[/]")
     del _adopted
@@ -156,6 +187,7 @@ def main():
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
     pending_map_name     = ""
     step_count           = 0
+    consecutive_errors   = 0      # ticks that raised in a row (see MAX_CONSECUTIVE_ERRORS)
 
     while True:
         try:
@@ -477,6 +509,12 @@ def main():
             if not in_battle:
                 client._current_opponent = ""
 
+            # A full decision tick completed without raising — reset the
+            # consecutive-error budget. (The transition/blackout `continue` paths
+            # above don't reach here, but they don't raise either, so the counter
+            # simply holds; only a real exception grows it.)
+            consecutive_errors = 0
+
             prev_state = state
             mgba.tick()
 
@@ -492,7 +530,16 @@ def main():
             ltm.save()
             break
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            consecutive_errors += 1
+            _log_exception(e)
+            console.print(f"[red]Error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): "
+                          f"{type(e).__name__}: {e}[/] — see {ERRORS_LOG}")
+            console.print_exception(max_frames=4)
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                console.print(f"[red bold]{consecutive_errors} consecutive errors — "
+                              f"stopping. Full tracebacks in {ERRORS_LOG}.[/]")
+                ltm.save()
+                sys.exit(1)
             time.sleep(1.0)
 
 
