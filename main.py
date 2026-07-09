@@ -360,6 +360,9 @@ def main():
                         obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
+                if tilemap._width and tilemap._height:
+                    obs_parts.append(f"Map size: {tilemap._width}×{tilemap._height} "
+                                     f"(walk_to needs 0≤x<{tilemap._width}, 0≤y<{tilemap._height})")
                 surr = tilemap.surroundings_str(state.player_x, state.player_y)
                 obs_parts.append(f"Tiles: {surr}")
                 travel_dir = get_travel_direction(state)

@@ -56,6 +56,17 @@ TOOLS = [
         }, "required": ["direction"]},
     }},
     {"type": "function", "function": {
+        "name": "go_to",
+        "description": "Travel toward a named map (e.g. 'Viridian City', 'Route 1'). If "
+                       "it's directly connected to the current map, crosses to it; "
+                       "otherwise tells you the adjacent maps so you can head that way "
+                       "one step at a time. Friendlier than go_to_map when you know the "
+                       "destination name.",
+        "parameters": {"type": "object", "properties": {
+            "destination": {"type": "string", "description": "Map name, e.g. 'Viridian City'."},
+        }, "required": ["destination"]},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},
