@@ -109,6 +109,42 @@ class TilemapReader:
         except Exception:
             return []
 
+    # Gen III connection direction codes (gMapHeader.connections).
+    _CONN_DIR = {1: "South", 2: "North", 3: "West", 4: "East", 5: "Dive", 6: "Emerge"}
+
+    def read_connections(self) -> list[dict]:
+        """Adjacent-map connections for the current map: which edge leads where.
+
+        Town/route exits are seamless map connections (walking off the edge loads
+        the neighbour), NOT warp tiles — the tilemap just shows the border, so the
+        agent can't see them without this. Read from gMapHeader.connections:
+          gMapHeader +0x0C -> MapConnections{ s32 count; MapConnection* }.
+          MapConnection (12 bytes): direction(u8 @0), offset(s32 @4),
+                                    mapGroup(u8 @8), mapNum(u8 @9).
+        Returns [{direction, offset, map_bank, map_id}], [] on error / none.
+        """
+        try:
+            conns = self.client.read32(Addr.MAP_HEADER + 0x0C)
+            if not (0x08000000 <= conns < 0x0A000000 or 0x02000000 <= conns < 0x03100000):
+                return []
+            count = self.client.read32(conns + 0)
+            arr   = self.client.read32(conns + 4)
+            out = []
+            for i in range(min(count, 8)):
+                b = arr + i * 12
+                offset = self.client.read32(b + 4)
+                if offset >= 2 ** 31:
+                    offset -= 2 ** 32
+                out.append({
+                    "direction": self._CONN_DIR.get(self.client.read8(b), "?"),
+                    "offset": offset,
+                    "map_bank": self.client.read8(b + 8),
+                    "map_id": self.client.read8(b + 9),
+                })
+            return out
+        except Exception:
+            return []
+
     def passable_directions(self, x: int, y: int) -> dict[str, bool]:
         """Return {N/S/E/W: can_walk} for each cardinal direction from (x, y)."""
         result = {}
