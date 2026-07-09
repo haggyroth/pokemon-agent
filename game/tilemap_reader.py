@@ -109,6 +109,34 @@ class TilemapReader:
         except Exception:
             return []
 
+    def passable_grid(self):
+        """Snapshot the whole map's passability in one bulk read.
+
+        Returns (grid, width, height) where grid[y][x] is True if walkable, or
+        (None, 0, 0) on error. Reading the map[] array once is far cheaper than a
+        per-tile read for A* over a 24×20+ map.
+        """
+        if not self.ready:
+            self.refresh()
+        if self._map_ptr is None:
+            return None, 0, 0
+        w, h = self._width, self._height
+        try:
+            raw = self.client.read_range(self._map_ptr, w * h * 2)
+        except Exception:
+            return None, 0, 0
+        if len(raw) < w * h * 2:
+            return None, 0, 0
+        grid = [[False] * w for _ in range(h)]
+        for y in range(h):
+            row = grid[y]
+            base = y * w * 2
+            for x in range(w):
+                i = base + x * 2
+                elev = ((raw[i] | (raw[i + 1] << 8)) >> 12) & 0xF
+                row[x] = elev == ELEV_FLOOR
+        return grid, w, h
+
     # Gen III connection direction codes (gMapHeader.connections).
     _CONN_DIR = {1: "South", 2: "North", 3: "West", 4: "East", 5: "Dive", 6: "Emerge"}
 
