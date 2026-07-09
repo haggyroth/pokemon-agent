@@ -4,8 +4,15 @@ class Addr:
     # There is no reliable separate party-count address; use level>0 at slot offset 0x54 instead.
     PARTY_DATA   = 0x02024284   # 600 bytes: 6 × 100-byte party structs
 
-    # Progress
-    BADGES       = 0x02025968   # u8 bitmask: popcount = badges earned
+    # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
+    # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
+    # So the badge byte must be read via the live pointer (deref SAVEBLOCK1_PTR +
+    # BADGES_OFFSET), NOT a fixed address — a fixed read drifts off the byte after
+    # a warp and returns a neighbouring byte, which caused phantom badges and
+    # false gym/milestone rewards. The absolute BADGES below is kept only as the
+    # canonical location (base 0x202554c) for reference/diagnostics.
+    BADGES       = 0x02025968   # u8 bitmask at the CANONICAL base only (do not read live)
+    BADGES_OFFSET = 0x41C       # + [SAVEBLOCK1_PTR] → badge bitmask (relocation-safe)
     # Bit order: bit 0=Brock, 1=Misty, 2=Surge, 3=Erika,
     #            4=Koga, 5=Sabrina, 6=Blaine, 7=Giovanni
 
