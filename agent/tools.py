@@ -57,11 +57,11 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "go_to",
-        "description": "Travel toward a named map (e.g. 'Viridian City', 'Route 1'). If "
-                       "it's directly connected to the current map, crosses to it; "
-                       "otherwise tells you the adjacent maps so you can head that way "
-                       "one step at a time. Friendlier than go_to_map when you know the "
-                       "destination name.",
+        "description": "Travel to a named map (e.g. 'Pewter City', 'Route 1'), auto-routing "
+                       "across multiple connected maps — it finds the route and crosses "
+                       "each edge for you. Stops if a wild battle/dialog interrupts or the "
+                       "way is blocked (e.g. a cave), so just call it again to resume. Use "
+                       "this to travel between towns/routes; it's the main overworld tool.",
         "parameters": {"type": "object", "properties": {
             "destination": {"type": "string", "description": "Map name, e.g. 'Viridian City'."},
         }, "required": ["destination"]},
