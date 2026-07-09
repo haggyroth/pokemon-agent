@@ -251,8 +251,11 @@ class AgentClient:
                 x = x - 65536 if x >= 32768 else x
                 y = y - 65536 if y >= 32768 else y
                 tiles.add((x - Addr.OBJECT_COORD_OFFSET, y - Addr.OBJECT_COORD_OFFSET))
-        except Exception:
-            pass
+        except Exception as e:
+            # Don't let a read hiccup crash pathfinding, but surface it — an empty
+            # NPC set silently degrades walk_to into pathing THROUGH NPCs, which
+            # otherwise masquerades as a mysterious "blocked" stall (#73).
+            console.log(f"[dim]NPC read failed ({e}); pathing without NPC avoidance[/]")
         return tiles
 
     _MOVE_DELTA = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}

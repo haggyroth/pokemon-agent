@@ -516,7 +516,9 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     if ltm.add_milestone("starter_chosen", f"chose {starter}"):
                         console.print(f"[green bold]Milestone: starter_chosen ({starter})[/]")
 
-            # Persist reward total every tick (cheap)
+            # Keep the in-memory reward total current; it's written to disk on the
+            # next ltm.save() (battle end / milestone / stop), not every tick — so a
+            # crash loses reward accrued since the last save (acceptably small).
             ltm.data["total_reward"] = round(reward.total, 2)
 
             # ── Build observation string ─────────────────────────────────────

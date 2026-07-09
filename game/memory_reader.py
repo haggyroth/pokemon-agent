@@ -51,6 +51,20 @@ class LeafGreenReader:
     def __init__(self, client: MGBAClient, decrypt: bool = True):
         self.client  = client
         self.decrypt = decrypt
+        # Last-known-good values for the pointer-deref reads. On a title screen,
+        # reset, or mid-transition frame the deref'd SaveBlock1/map pointer can be
+        # 0 or stale; returning the previous good value avoids feeding garbage
+        # (bad positions, or a badge flicker that the badge-increase logic would
+        # misread as newly-earned) into the reward/diff/stuck machinery (#66/#58).
+        self._last_badges: tuple[int, int] = (0, 0)
+        self._last_pos:    tuple[int, int] = (0, 0)
+        self._last_map:    tuple[int, int] = (0, 0)
+
+    @staticmethod
+    def _valid_ewram_ptr(ptr: int) -> bool:
+        """True if `ptr` points into EWRAM, where SaveBlock1 / the DMA map block
+        live. The pointer at 0x03005008 reads 0 or garbage on non-gameplay frames."""
+        return 0x02000000 <= ptr < 0x02040000
 
     def read_badges(self) -> tuple[int, int]:
         """Returns (badge_count, raw_bitmask).
@@ -59,10 +73,15 @@ class LeafGreenReader:
 
         Read via the live SaveBlock1 pointer: the block is DMA-relocated on map
         transitions, so a fixed address drifts off the badge byte after a warp and
-        returns garbage (phantom badges / false milestones)."""
+        returns garbage (phantom badges / false milestones). If the pointer itself
+        is invalid (title/reset/transition), return the last good read rather than
+        a spurious 0 that would flicker and misfire the badge-increase reward."""
         ptr = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(ptr):
+            return self._last_badges
         raw = self.client.read8(ptr + Addr.BADGES_OFFSET)
-        return bin(raw).count("1"), raw
+        self._last_badges = (bin(raw).count("1"), raw)
+        return self._last_badges
 
     def detect_context(self) -> GameContext:
         # gMain.callback2 is the game's live "current screen" dispatcher and the
@@ -159,7 +178,7 @@ class LeafGreenReader:
         """Number of occupied key-item slots in the bag. Reward key_item when
         this increases. Item IDs are cleartext; empty slots read id 0."""
         sb = self.client.read32(Addr.SAVEBLOCK1_PTR)
-        if not (0x02000000 <= sb < 0x02040000):
+        if not self._valid_ewram_ptr(sb):
             return 0
         raw = self.client.read_range(sb + Addr.KEY_ITEMS_OFFSET, Addr.KEY_ITEMS_SLOTS * 4)
         return sum(1 for i in range(0, len(raw), 4)
@@ -171,10 +190,15 @@ class LeafGreenReader:
         DataCrystal: [0x03005008]+0x000 = Camera X (= player tile X),
                      [0x03005008]+0x002 = Camera Y (= player tile Y).
         The block address changes on every map transition — always deref
-        PLAYER_PTR rather than caching the resolved address.
+        PLAYER_PTR rather than caching the resolved address. On a non-gameplay
+        frame the pointer is invalid; return the last good position instead of
+        reading from a bogus address (#66).
         """
         ptr = self.client.read32(Addr.PLAYER_PTR)
-        return self.client.read16(ptr), self.client.read16(ptr + 2)
+        if not self._valid_ewram_ptr(ptr):
+            return self._last_pos
+        self._last_pos = (self.client.read16(ptr), self.client.read16(ptr + 2))
+        return self._last_pos
 
     def read_current_map(self) -> tuple[int, int]:
         """Current (map_bank, map_id) from the live DMA map block.
@@ -183,11 +207,15 @@ class LeafGreenReader:
         and stay on the town while you are inside its buildings, so they report
         e.g. Pallet Town (3,0) even in the player's bedroom. The block behind
         PLAYER_PTR carries the true current map at +0x04 (group) / +0x05 (num),
-        which is what MAP_NAMES is keyed on.
+        which is what MAP_NAMES is keyed on. Returns the last good map when the
+        pointer is invalid (title/reset/transition) rather than a bogus (#66).
         """
         ptr = self.client.read32(Addr.PLAYER_PTR)
-        return (self.client.read8(ptr + Addr.MAP_GROUP_OFFSET),
-                self.client.read8(ptr + Addr.MAP_NUM_OFFSET))
+        if not self._valid_ewram_ptr(ptr):
+            return self._last_map
+        self._last_map = (self.client.read8(ptr + Addr.MAP_GROUP_OFFSET),
+                          self.client.read8(ptr + Addr.MAP_NUM_OFFSET))
+        return self._last_map
 
     def read_state(self) -> GameState:
         context = self.detect_context()
