@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.10.0]
+
+### Added
+- feat: working `use_move(name)` — deterministic battle move selection. Detects
+  the FIGHT menu (`gBattlerControllerFuncs[0]`), writes the target slot to
+  `gMoveSelectionCursor` (0x02023FFC), commits with A, and waits for the turn to
+  RESOLVE before confirming via that move's PP dropping (the missing piece — moves
+  execute after the turn resolves, not on confirm). Verified: correct-slot
+  selection + 3/3 wild battles won. Closes #48
+
 ## [0.9.0]
 
 ### Added
@@ -273,6 +283,7 @@ All notable changes to this project are documented here. Format loosely follows
 - fix: removed unused imports and a duplicate move-type key that silently dropped an entry
 - fix(build): disabled setuptools auto-discovery so the cffi extension builds in CI
 
+[0.10.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.10.0
 [0.9.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.9.0
 [0.8.0]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.8.0
 [0.7.4]: https://github.com/haggyroth/pokemon-agent/releases/tag/v0.7.4
