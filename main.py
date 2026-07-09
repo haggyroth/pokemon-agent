@@ -12,6 +12,7 @@ from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
 from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
 from game.constants import Addr
+from game.pathfinding import door_centers
 from knowledge.battle import battle_summary
 from rich.console import Console
 import time, sys
@@ -377,7 +378,11 @@ def main():
             # Indoors: surface the door/stairs tiles so the agent can leave. The
             # outdoor route is unreachable until it does (see get_route_guidance).
             if tilemap.ready and infer_building_type(state.map_bank, state.map_id) == "interior":
-                warps = tilemap.read_warps()
+                # A door can span several adjacent warp tiles but usually only the
+                # CENTER one actually warps (the side tiles "arrive" without exiting).
+                # Collapse each contiguous run to its middle so we point at the tile
+                # that works (fixes suggesting an off-by-one non-functional door).
+                warps = door_centers(tilemap.read_warps())
                 if warps:
                     px, py = state.player_x, state.player_y
                     nearest = min(warps, key=lambda w: abs(w[0] - px) + abs(w[1] - py))

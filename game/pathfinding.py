@@ -58,3 +58,23 @@ def find_path(start, goal, passable, width, height, max_nodes=8000):
                 came[(nx, ny)] = (cur, name)
                 heapq.heappush(open_heap, (ng + abs(nx - gx) + abs(ny - gy), ng, (nx, ny)))
     return None
+
+
+def door_centers(warps):
+    """Collapse contiguous warp tiles (a multi-tile doormat) to the middle tile of
+    each cluster — usually the only one that actually warps (side tiles just
+    "arrive" without exiting). Single warps pass through unchanged. Pure/testable."""
+    clusters = []
+    for w in warps:
+        for cl in clusters:
+            if any(abs(w[0] - x) <= 1 and abs(w[1] - y) <= 1 for x, y in cl):
+                cl.append(w)
+                break
+        else:
+            clusters.append([w])
+    centers = []
+    for cl in clusters:
+        mx = sorted(x for x, _ in cl)[len(cl) // 2]
+        my = sorted(y for _, y in cl)[len(cl) // 2]
+        centers.append(min(cl, key=lambda t: abs(t[0] - mx) + abs(t[1] - my)))
+    return centers

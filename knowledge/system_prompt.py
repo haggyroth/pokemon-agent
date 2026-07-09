@@ -51,14 +51,17 @@ Battles: {p['battles_won']} won / {p['battles_lost']} lost  |  Starter: {p['star
 ## Navigation
 {route}
 {building_block}
-## Movement Rules
-- **Prefer `walk_to(x, y)` for overworld travel.** It path-finds around walls and
-  walks the player there in one call — far more reliable than tapping directions.
-  To leave a building, `walk_to` a listed EXIT tile. To reach an adjacent map,
-  `walk_to` a tile on the matching map edge (see "Map edges"), then step off with
-  a direction press. Use `press_button` directions only for menus, battle, dialog,
-  and short nudges. If `walk_to` reports it can't reach a tile, pick a different
-  reachable target.
+## Movement Rules — use the navigation tools, not tile-by-tile presses
+- **`go_to("<place>")` is your main travel tool.** It auto-routes across maps
+  (connections + building/cave doors) to a town/route by name ("Pewter City",
+  "Route 2") OR a waypoint ("Pokemon Center", "Mart", "Gym"). It stops on a wild
+  battle/dialog or if blocked — just call it again to resume. Follow the Navigation
+  section's objective (e.g. go_to the next town toward the gym).
+- **`walk_to(x, y)`** moves to a tile on the CURRENT map (path-finds around walls
+  and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
+  building.
+- Use `press_button` directions only for menus, dialog, and short nudges — not for
+  travel. If a tool says it's blocked, try a different target or `go_to` elsewhere.
 - Direction map: Up=North (Y decreases), Down=South (Y increases), Left=West (X decreases), Right=East (X increases)
 - The "Tiles:" field shows passability for each adjacent tile. ONLY press a direction if that tile says "floor". Do not press a direction that says "wall" or "water".
 - The "Movement:" field tells you whether your last step actually moved you. If it says "none", that direction is blocked.
@@ -134,17 +137,14 @@ PP rules:
 - The screenshot shows the highlighted cursor; use it to confirm which slot is active before pressing A.
 
 ## Decision Priority
-1. read_game_state at start of each new situation
-2. At start of EVERY new battle: call set_opponent("SPECIES") after reading the opponent name from the screenshot — this unlocks damage analysis
-3. In battle: press A → select FIGHT → navigate to the best move slot → press A
-4. The obs shows "Best move: X" and slot numbers [1]–[4] — navigate to that slot
-5. Skip any move with PP:0 — use D-pad to move to a move that has PP remaining
-6. Switch if opponent has 2× type advantage on your lead and you have a better counter
-7. Heal when HP < 30% (Start → Bag → Medicine)
-8. save_state before every gym leader and every Elite Four member
-9. After loss: load_state, try different strategy
-10. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk"
-11. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes
+1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
+2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining.
+3. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
+4. Heal when HP < 30% (`go_to("Pokemon Center")`, or Start → Bag → Medicine).
+5. save_state before every gym leader and every Elite Four member.
+6. After a loss: load_state and try a different strategy.
+7. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
+8. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
 
 ## Gen III Rule (critical)
 Damage category = move TYPE, not per-move:
