@@ -23,6 +23,8 @@ class AgentClient:
         self.mgba   = mgba
         self.reader = reader
         self.ltm    = ltm
+        from game.tilemap_reader import TilemapReader
+        self.tilemap = TilemapReader(mgba)   # for walk_to pathfinding
         self.messages: list[dict] = []
         self._current_opponent: str = ""  # set by set_opponent tool call
 
@@ -202,6 +204,53 @@ class AgentClient:
 
         return last_reasoning, actions
 
+    def _walk_to(self, tx: int, ty: int) -> str:
+        """Deterministically walk the player to tile (tx, ty) on the current map
+        via A* over the tilemap. Replans if a step is unexpectedly blocked (an
+        NPC moved) and stops if the map changes (walked onto a warp/edge)."""
+        from game.pathfinding import find_path
+        start_map = self.reader.read_current_map()
+        warps = set(self.tilemap.read_warps())
+        for _attempt in range(8):
+            self.tilemap.refresh()
+            grid, w, h = self.tilemap.passable_grid()
+            if grid is None:
+                return "Cannot read the map to path-find right now."
+            px, py = self.reader.read_player_pos()
+            if (px, py) == (tx, ty):
+                # On a door/stairs tile, stepping onto it isn't enough — you have
+                # to step through. Nudge each direction until the map changes.
+                if (tx, ty) in warps:
+                    for mv in ("Down", "Left", "Right", "Up"):
+                        self.mgba.tap(mv)
+                        if self.reader.read_current_map() != start_map:
+                            nb, ni = self.reader.read_current_map()
+                            return f"Exited through ({tx},{ty}) to map {nb}/{ni} at {self.reader.read_player_pos()}."
+                        # if the nudge moved us off the warp, walk back and retry
+                        if self.reader.read_player_pos() != (tx, ty):
+                            break
+                    else:
+                        return f"Arrived at ({tx},{ty})."
+                    continue   # got nudged off the warp; replan back onto it
+                return f"Arrived at ({tx},{ty})."
+            path = find_path((px, py), (tx, ty),
+                             lambda x, y: grid[y][x], w, h)
+            if path is None:
+                return (f"No walkable path from ({px},{py}) to ({tx},{ty}) — "
+                        f"the target may be blocked or off this map.")
+            for mv in path:
+                before = self.reader.read_player_pos()
+                self.mgba.tap(mv)
+                if self.reader.read_current_map() != start_map:
+                    nb, ni = self.reader.read_current_map()
+                    return f"Entered a new map ({nb}/{ni}) at ({self.reader.read_player_pos()})."
+                if self.reader.read_player_pos() == before:
+                    break   # unexpectedly blocked → replan
+            else:
+                continue    # full path walked without a block; loop re-checks arrival
+        px, py = self.reader.read_player_pos()
+        return f"Stopped at ({px},{py}) while heading to ({tx},{ty})."
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -213,6 +262,8 @@ class AgentClient:
                 for _ in range(times):
                     self.mgba.tap(button)
                 return f"Pressed {button} × {times}"
+            case "walk_to":
+                return self._walk_to(int(args["x"]), int(args["y"]))
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

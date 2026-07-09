@@ -52,6 +52,13 @@ Battles: {p['battles_won']} won / {p['battles_lost']} lost  |  Starter: {p['star
 {route}
 {building_block}
 ## Movement Rules
+- **Prefer `walk_to(x, y)` for overworld travel.** It path-finds around walls and
+  walks the player there in one call — far more reliable than tapping directions.
+  To leave a building, `walk_to` a listed EXIT tile. To reach an adjacent map,
+  `walk_to` a tile on the matching map edge (see "Map edges"), then step off with
+  a direction press. Use `press_button` directions only for menus, battle, dialog,
+  and short nudges. If `walk_to` reports it can't reach a tile, pick a different
+  reachable target.
 - Direction map: Up=North (Y decreases), Down=South (Y increases), Left=West (X decreases), Right=East (X increases)
 - The "Tiles:" field shows passability for each adjacent tile. ONLY press a direction if that tile says "floor". Do not press a direction that says "wall" or "water".
 - The "Movement:" field tells you whether your last step actually moved you. If it says "none", that direction is blocked.

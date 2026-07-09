@@ -371,8 +371,9 @@ def main():
                     toward = ", then ".join(steps) if steps else "you are next to it — step onto it"
                     coords = ", ".join(f"({x},{y})" for x, y in warps[:4])
                     obs_parts.append(
-                        f"EXITS (walk onto a door/stairs tile to leave the building): {coords}. "
-                        f"Nearest is {nearest} — move {toward} onto it.")
+                        f"EXITS (door/stairs tiles): {coords}. To leave the building, "
+                        f"call walk_to{nearest} — it will path there and step through. "
+                        f"(Nearest is {nearest}: {toward}.)")
             # Outdoors: surface map connections (which edge leads to which map).
             # These are seamless — walk off that edge to cross; not warp tiles.
             elif tilemap.ready and state.context == GameContext.OVERWORLD:

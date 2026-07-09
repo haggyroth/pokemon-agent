@@ -31,6 +31,19 @@ TOOLS = [
         }, "required": ["button"]},
     }},
     {"type": "function", "function": {
+        "name": "walk_to",
+        "description": "Walk the player to tile (x, y) on the CURRENT map. Finds a "
+                       "path around walls/obstacles automatically and moves there — "
+                       "use this for overworld navigation instead of pressing "
+                       "direction buttons one at a time. To leave a building, walk_to "
+                       "a door/exit tile. Stops early if the map changes (you crossed "
+                       "an edge or entered a door) or the target can't be reached.",
+        "parameters": {"type": "object", "properties": {
+            "x": {"type": "integer"},
+            "y": {"type": "integer"},
+        }, "required": ["x", "y"]},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},
