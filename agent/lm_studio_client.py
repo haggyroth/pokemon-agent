@@ -11,7 +11,7 @@ from game.mgba_client import MGBAClient
 from memory.long_term import LongTermMemory
 from knowledge.leafgreen_data import MILESTONES
 from knowledge.navigation import get_map_image_path, MAP_NAMES
-from config import LM_STUDIO_BASE, MODEL_NAME, TEMPERATURE, MAX_TOKENS, ENABLE_THINKING, SCREENSHOT_PATH
+from config import LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKENS, ENABLE_THINKING, SCREENSHOT_PATH
 from rich.console import Console
 
 console = Console()
@@ -19,7 +19,7 @@ console = Console()
 
 class AgentClient:
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
-        self.llm    = OpenAI(base_url=LM_STUDIO_BASE, api_key="lm-studio")
+        self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
         self.mgba   = mgba
         self.reader = reader
         self.ltm    = ltm

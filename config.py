@@ -40,7 +40,20 @@ VIEWER_FPS        = int(os.getenv("VIEWER_FPS",   "60"))   # 0 = uncapped
 
 # ── Network (http backend only) ───────────────────────────────────────────────
 MGBA_HTTP_BASE    = os.getenv("MGBA_HTTP_BASE",    "http://localhost:5000")
-LM_STUDIO_BASE    = os.getenv("LM_STUDIO_BASE",    "http://localhost:1234/v1")
+
+# ── LLM endpoint ──────────────────────────────────────────────────────────────
+# The agent uses an OpenAI-compatible client, so it works with LM Studio locally
+# OR any OpenAI-compatible cloud endpoint (OpenAI, OpenRouter, Together, Groq,
+# Anthropic's OpenAI-compat endpoint, …). To use a cloud model, set:
+#   LLM_BASE_URL   e.g. https://api.openai.com/v1  or  https://openrouter.ai/api/v1
+#   LLM_API_KEY    your provider key (kept out of git via .env)
+#   MODEL_NAME     the provider's model id
+# Defaults point at a local LM Studio server with a placeholder key.
+# LM_STUDIO_BASE is kept as a back-compat alias for LLM_BASE_URL.
+LLM_BASE_URL      = os.getenv("LLM_BASE_URL",
+                              os.getenv("LM_STUDIO_BASE", "http://localhost:1234/v1"))
+LM_STUDIO_BASE    = LLM_BASE_URL   # back-compat
+LLM_API_KEY       = os.getenv("LLM_API_KEY", os.getenv("OPENAI_API_KEY", "lm-studio"))
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 # Change MODEL_NAME to match the model loaded in LM Studio exactly.
