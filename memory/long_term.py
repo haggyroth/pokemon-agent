@@ -15,8 +15,10 @@ DEFAULTS = {
 }
 
 class LongTermMemory:
-    def __init__(self):
-        self.path = Path(PROGRESS_PATH)
+    def __init__(self, path=None):
+        # path overrides the default progress.json — the eval harness points it at
+        # a scratch file so a scenario never mutates the real long-term memory.
+        self.path = Path(path or PROGRESS_PATH)
         self.data = self._load()
 
     def _load(self) -> dict:

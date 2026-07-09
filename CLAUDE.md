@@ -79,7 +79,10 @@ Pokemon_LeafGreen.gba
         │                     (or, legacy http backend:)
         │            mGBA GUI → Lua socket → mGBA-http → REST :5000 → game/mgba_client.py
         │
-   main.py                      Main decision loop + run controls (START_FROM_SAVE, MAX_STEPS)
+   main.py                      build_runtime() + run_episode() decision loop; thin main()
+                                (run controls: START_FROM_SAVE, MAX_STEPS, MAX_LLM_CALLS,
+                                 TOKEN_BUDGET). run_episode(goal=…) returns an EpisodeResult;
+                                the eval harness reuses it so eval and real runs never diverge.
    Python Agent
    ├── game/mgba_core.py        NativeMGBAClient — in-process libmgba (default)
    ├── game/mgba_client.py      MGBAClient — legacy REST wrapper (http backend)
@@ -105,6 +108,10 @@ Pokemon_LeafGreen.gba
        │                        (tools/gen_map_graph.py, from the pokefirered decomp)
        ├── battle.py            Battle observation builder (best-move ranking)
        └── system_prompt.py     Dynamic system prompt builder
+   └── evals/                   Eval harness (python -m evals)
+       ├── goals.py             Goal predicates (reach_map/badges_at_least/…) — pure
+       ├── scenarios.py         Scenario registry (start state + goal + step budget)
+       └── runner.py            Runs scenarios via main.run_episode → scorecard JSON/table
 ```
 
 **Module boundaries — never cross these:**
@@ -112,6 +119,7 @@ Pokemon_LeafGreen.gba
 - `agent/` talks only to LM Studio. Interacts with the game only through tool execution.
 - `memory/` reads/writes memory structures only. No network I/O.
 - `knowledge/` is pure data and string construction. Zero I/O.
+- `evals/` — `goals.py`/`scenarios.py` are pure/light (CI-testable); only `runner.py` imports the heavy agent stack (`main`).
 
 ---
 

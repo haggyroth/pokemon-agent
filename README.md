@@ -109,6 +109,38 @@ ruff check .              # lint (real-error rules)
 
 Tests that need the compiled binding or a ROM skip automatically when those aren't present. [CI](.github/workflows/ci.yml) runs the suite on Python 3.11–3.13 and separately builds the native binding against libmgba on macOS.
 
+## Eval harness
+
+Measuring whether a run actually made progress — instead of reading hundreds of
+log lines — is what `evals/` is for. It runs the **real agent loop**
+(`main.run_episode`) from a start state toward a goal with a step budget, and
+scores the episode: pass/fail, steps, reward, **stuck-ratio** (overworld ticks
+with no movement — the signature of a nav skill that can't cross), LLM calls, and
+tokens. Each scenario runs in isolation (its own scratch `progress.json`), so the
+real save is never touched.
+
+```sh
+python -m evals --list            # show scenarios
+python -m evals                   # run all (needs LM Studio/cloud + ROM up, like main.py)
+python -m evals -s reach_pewter -v  # one scenario, streaming output
+```
+
+Results print as a table and are written to `logs/eval/<timestamp>.json`.
+Scenarios live in [`evals/scenarios.py`](evals/scenarios.py); goals (reach a map,
+earn N badges, hit a milestone, …) in [`evals/goals.py`](evals/goals.py). Goals
+and scenarios are pure/light-importing so they unit-test in CI.
+
+A scenario can be marked `xfail=<issue>` to document a known failure — e.g.
+`reach_pewter` (#59: Route 2 is gated by Viridian Forest, and `go_to` walks to the
+sealed north edge instead of warping through). The harness reports it as an
+expected failure, flipping to a loud **XPASS** the day the bug is fixed.
+
+There's also a **Tier-1** deterministic skill check
+([`tests/test_nav_scenarios.py`](tests/test_nav_scenarios.py)) that drives the nav
+skills directly with **no LLM** — a failure there is unambiguously a
+pathfinding/routing bug. It boots a real emulator, so it's opt-in:
+`RUN_NAV_EVALS=1 python -m pytest tests/test_nav_scenarios.py`.
+
 ## Project structure
 
 ```
@@ -131,6 +163,7 @@ Tests that need the compiled binding or a ROM skip automatically when those aren
 │   └── tilemap_reader.py     ROM passability, warps, and connections
 ├── memory/                   Short-term, long-term, and battle-journal memory
 ├── knowledge/                Type chart, gym data, navigation, map_graph, prompts
+├── evals/                    Eval harness — goals, scenarios, runner (python -m evals)
 ├── tools/gen_map_graph.py    Regenerate knowledge/map_graph.py from a pokefirered checkout
 └── tests/                    Hardware-free unit tests
 ```
