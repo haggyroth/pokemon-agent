@@ -308,22 +308,29 @@ class AgentClient:
                         f"the target may be blocked or off this map.")
             for mv in path:
                 before = self.reader.read_player_pos()
-                self.mgba.tap(mv)
-                if self.reader.read_current_map() != start_map:
-                    nb, ni = self.reader.read_current_map()
-                    return f"Entered a new map ({nb}/{ni}) at ({self.reader.read_player_pos()})."
-                # A wild encounter or NPC/script can interrupt mid-walk — stop and
-                # hand control back so the agent deals with it, rather than mashing
-                # movement into a battle/dialog.
-                ctx = self.reader.detect_context()
-                if ctx == GameContext.IN_BATTLE:
-                    return f"A wild battle started while walking (at {self.reader.read_player_pos()})."
-                if ctx == GameContext.DIALOG_OPEN:
-                    return f"A dialog opened while walking (at {self.reader.read_player_pos()})."
+                # Gen III turn-vs-step: the FIRST press of a direction you aren't
+                # facing only TURNS the character (no tile change); the second
+                # steps. So press up to twice before deciding the tile is blocked —
+                # otherwise every corner in the path reads as an obstacle.
+                for _ in range(2):
+                    self.mgba.tap(mv)
+                    if self.reader.read_current_map() != start_map:
+                        nb, ni = self.reader.read_current_map()
+                        return f"Entered a new map ({nb}/{ni}) at ({self.reader.read_player_pos()})."
+                    # A wild encounter or NPC/script can interrupt mid-walk — stop
+                    # and hand control back rather than mashing into a battle/dialog.
+                    ctx = self.reader.detect_context()
+                    if ctx == GameContext.IN_BATTLE:
+                        return f"A wild battle started while walking (at {self.reader.read_player_pos()})."
+                    if ctx == GameContext.DIALOG_OPEN:
+                        return f"A dialog opened while walking (at {self.reader.read_player_pos()})."
+                    if self.reader.read_player_pos() != before:
+                        break   # stepped
                 if self.reader.read_player_pos() == before:
-                    # The step didn't land — something the tilemap can't see is in
-                    # that tile (object event, ledge, cut tree). Mark it blocked so
-                    # the replan routes around it instead of retrying the same path.
+                    # Two presses and still on the same tile → genuinely blocked
+                    # (not just a turn): an obstacle the tilemap can't see (object
+                    # event, ledge, cut tree). Mark it so the replan routes around
+                    # it instead of retrying the identical path and stalling.
                     dx, dy = self._MOVE_DELTA.get(mv, (0, 0))
                     blocked.add((before[0] + dx, before[1] + dy))
                     break   # replan with the obstacle excluded

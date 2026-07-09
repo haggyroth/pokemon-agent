@@ -19,12 +19,14 @@ class FakeWorld:
     """Doubles as mgba + reader + tilemap. `grid[y][x]` is tilemap-passable;
     `mystery` tiles look passable but silently block the step (the hidden
     obstacle). Taps update the simulated player position."""
-    def __init__(self, grid, start, mystery=()):
+    def __init__(self, grid, start, mystery=(), model_turning=False):
         self.grid = grid
         self.h, self.w = len(grid), len(grid[0])
         self.pos = start
         self.mystery = set(mystery)
         self.map = (1, 0)
+        self.model_turning = model_turning   # Gen III turn-then-step
+        self.facing = "Down"
 
     # reader interface
     def read_player_pos(self):
@@ -48,6 +50,10 @@ class FakeWorld:
 
     # mgba interface
     def tap(self, mv):
+        if self.model_turning and mv != self.facing:
+            self.facing = mv             # first press only turns
+            return
+        self.facing = mv
         dx, dy = _DELTA.get(mv, (0, 0))
         nx, ny = self.pos[0] + dx, self.pos[1] + dy
         if (0 <= nx < self.w and 0 <= ny < self.h
@@ -80,6 +86,16 @@ def test_walk_to_straight_path_no_obstacle():
     world = FakeWorld(_open(5, 5), start=(0, 0))
     msg = _client(world)._walk_to(4, 4)
     assert world.pos == (4, 4), msg
+    assert "Arrived" in msg
+
+
+def test_walk_to_completes_path_with_turns_no_false_block():
+    # With the Gen III turn-then-step rule modelled, an L-shaped path changes
+    # direction; walk_to must press twice at each corner and NOT mistake the turn
+    # for a blocked tile (the forest/gate stall regression).
+    world = FakeWorld(_open(4, 4), start=(0, 0), model_turning=True)
+    msg = _client(world)._walk_to(3, 3)
+    assert world.pos == (3, 3), msg
     assert "Arrived" in msg
 
 
