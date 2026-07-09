@@ -68,6 +68,24 @@ def test_read_current_map_uses_dma_block_not_stale_parent():
     assert make_reader(fc).read_state().map_id == 2
 
 
+def test_read_enemy_lead_decodes_opponent():
+    fc = FakeClient()
+    # gEnemyParty[0]: a Pidgey (species 16), L3, 16/16 HP
+    fc.set_bytes(Addr.ENEMY_PARTY,
+                 build_party_mon(0xABCD, 0x1234, level=3, cur_hp=16, max_hp=16,
+                                 species=16, moves=(33, 0, 0, 0), pp=(35, 0, 0, 0)))
+    enemy = make_reader(fc).read_enemy_lead()
+    assert enemy is not None
+    assert enemy.species_id == 16
+    assert enemy.level == 3
+    assert enemy.current_hp == 16 and enemy.max_hp == 16
+
+
+def test_read_enemy_lead_none_when_empty():
+    fc = FakeClient()  # ENEMY_PARTY slot is level 0 → no battle
+    assert make_reader(fc).read_enemy_lead() is None
+
+
 def test_detect_context_overworld():
     fc = FakeClient()
     stage_overworld(fc)

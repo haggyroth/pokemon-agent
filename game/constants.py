@@ -2,7 +2,11 @@ class Addr:
     # Party — read with /core/readrange
     # Note: PARTY_DATA confirmed at 0x02024284 by live decryption (Bulbasaur L6, Tackle+Growl).
     # There is no reliable separate party-count address; use level>0 at slot offset 0x54 instead.
-    PARTY_DATA   = 0x02024284   # 600 bytes: 6 × 100-byte party structs
+    PARTY_DATA   = 0x02024284   # gPlayerParty: 600 bytes, 6 × 100-byte structs
+    # gEnemyParty — same struct as gPlayerParty, 600 bytes immediately before it.
+    # Fixed global (NOT DMA-relocated). slot 0 = the wild mon / trainer's active
+    # lead. Verified live: (0x02024284 - 600) decodes to the wild encounter.
+    ENEMY_PARTY  = 0x0202402C
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
