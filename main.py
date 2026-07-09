@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import MGBA_BACKEND, START_FROM_SAVE, MAX_STEPS, USE_VISION
+from config import MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS, USE_VISION
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -97,9 +97,19 @@ def main():
 
     reader  = LeafGreenReader(mgba, decrypt=True)
 
-    # Optionally boot from a battery save and drive to "Continue" so the agent
-    # starts in real gameplay instead of the new-game intro (native only).
-    if START_FROM_SAVE and MGBA_BACKEND == "native":
+    # Optionally load an mGBA save STATE directly — instant, no title/Continue/
+    # recap. Takes precedence over START_FROM_SAVE (native only).
+    if START_FROM_STATE and MGBA_BACKEND == "native":
+        if mgba.load_state_file(START_FROM_STATE):
+            mgba.tick(30)   # let post-load fade/flags settle before first read
+            s = reader.read_state()
+            console.print(f"[green]Loaded save state: {START_FROM_STATE} "
+                          f"(map {s.map_bank}/{s.map_id}, pos ({s.player_x},{s.player_y}))[/]")
+        else:
+            console.print(f"[red]Could not load save state: {START_FROM_STATE}[/]")
+    # Otherwise, optionally boot from a battery save and drive to "Continue" so the
+    # agent starts in real gameplay instead of the new-game intro (native only).
+    elif START_FROM_SAVE and MGBA_BACKEND == "native":
         if mgba.load_save(START_FROM_SAVE):
             got_control = drive_into_gameplay(mgba, reader)
             where = f"map {mgba.read8(Addr.MAP_BANK)}/{mgba.read8(Addr.MAP_ID)}"
