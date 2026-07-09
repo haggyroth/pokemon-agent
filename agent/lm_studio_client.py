@@ -27,6 +27,15 @@ class AgentClient:
         self.tilemap = TilemapReader(mgba)   # for walk_to pathfinding
         self.messages: list[dict] = []
         self._current_opponent: str = ""  # set by set_opponent tool call
+        # Cumulative LLM usage for spend tracking (#64). resp.usage may be absent
+        # on some endpoints, so token totals are best-effort; call count is exact.
+        self.llm_calls = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.total_prompt_tokens + self.total_completion_tokens
 
     MAX_HISTORY = 20  # keep last ~10 user/assistant turns (text only for old turns)
     MAX_TOOL_ROUNDS = 6  # cap model tool-call rounds per decision step, then re-observe
@@ -174,6 +183,11 @@ class AgentClient:
                 tools=TOOLS, tool_choice="auto",
                 temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
             )
+            self.llm_calls += 1
+            usage = getattr(resp, "usage", None)
+            if usage:
+                self.total_prompt_tokens     += getattr(usage, "prompt_tokens", 0) or 0
+                self.total_completion_tokens += getattr(usage, "completion_tokens", 0) or 0
             msg = resp.choices[0].message
 
             # Split thinking from the actual response BEFORE storing in history.
@@ -528,11 +542,15 @@ class AgentClient:
                     "pos": [s.player_x, s.player_y],
                 })
             case "save_state":
-                self.mgba.save_state(args.get("slot", 0))
-                return "State saved."
+                slot = args.get("slot", 0)
+                ok = self.mgba.save_state(slot)
+                return f"State saved to slot {slot}." if ok else \
+                       f"Save to slot {slot} FAILED (state not written)."
             case "load_state":
-                self.mgba.load_state(args.get("slot", 0))
-                return "State loaded."
+                slot = args.get("slot", 0)
+                ok = self.mgba.load_state(slot)
+                return f"State loaded from slot {slot}." if ok else \
+                       f"Load from slot {slot} FAILED — no saved state in that slot yet."
             case "wait_frames":
                 # Advance the emulator. The native backend only progresses when
                 # frames are stepped, so a real-time sleep would leave the game

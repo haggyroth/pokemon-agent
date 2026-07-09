@@ -1,6 +1,7 @@
 from datetime import datetime
 from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
-                    USE_VISION, PROGRESS_PATH)
+                    USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
+                    LLM_BASE_URL)
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -43,6 +44,13 @@ def _log_exception(exc: Exception) -> None:
             traceback.print_exc(file=f)
     except Exception:
         pass  # logging must never mask the original error
+
+
+def _run_summary(reward, client, steps: int) -> str:
+    """One-line end-of-run tally: steps, reward, and LLM usage (spend visibility)."""
+    return (f"steps={steps}  reward={reward.total:.1f}  "
+            f"llm_calls={client.llm_calls}  tokens={client.total_tokens} "
+            f"(prompt={client.total_prompt_tokens}, completion={client.total_completion_tokens})")
 
 
 def _frame_chroma(mgba) -> float:
@@ -121,6 +129,15 @@ def main():
         sys.exit(1)
     console.print(f"[green]Connected ({MGBA_BACKEND}): {mgba.get_game_title()} ({mgba.get_game_code()})")
 
+    # Warn on the one config that can run up real money: a non-local LLM endpoint
+    # with no stopping condition at all. The run still proceeds (the user may want
+    # it), but the cost exposure should be explicit rather than silent.
+    _is_local = any(h in LLM_BASE_URL for h in ("localhost", "127.0.0.1", "::1"))
+    if not _is_local and not (MAX_STEPS or MAX_LLM_CALLS or TOKEN_BUDGET):
+        console.print(f"[yellow]⚠ Cloud endpoint ({LLM_BASE_URL}) with no run cap "
+                      f"(MAX_STEPS / MAX_LLM_CALLS / TOKEN_BUDGET all unset) — this "
+                      f"loop is unbounded and will keep spending until interrupted.[/]")
+
     reader  = LeafGreenReader(mgba, decrypt=True)
 
     # Optionally load an mGBA save STATE directly — instant, no title/Continue/
@@ -188,6 +205,7 @@ def main():
     pending_map_name     = ""
     step_count           = 0
     consecutive_errors   = 0      # ticks that raised in a row (see MAX_CONSECUTIVE_ERRORS)
+    blackout_active      = False  # inside a blackout (all fainted); reset on recovery
 
     while True:
         try:
@@ -473,14 +491,32 @@ def main():
             console.print(f"[yellow]OBS:[/] {obs[:140]}")
 
             # ── Blackout check ───────────────────────────────────────────────
-            if state.party and all(p.current_hp == 0 for p in state.party):
-                console.print("[red bold]BLACKOUT — all party fainted, loading save state[/]")
-                reward.reward("loss")
-                ltm.save()
-                mgba.load_state(0)
-                mgba.tick(60)
-                prev_state = None
-                battle_was_active = False
+            party_wiped = bool(state.party) and all(p.current_hp == 0 for p in state.party)
+            if not party_wiped:
+                blackout_active = False   # recovered (respawn/heal) → re-arm
+            if party_wiped:
+                # Fire the loss penalty ONCE per blackout, not every tick while the
+                # party stays fainted (that double-counted the penalty indefinitely).
+                if not blackout_active:
+                    blackout_active = True
+                    console.print("[red bold]BLACKOUT — all party fainted[/]")
+                    reward.reward("loss")
+                    ltm.save()
+                # Try to reload the pre-fight state. If none was saved this session
+                # the load FAILS (slot file missing) — don't pretend it worked and
+                # spin; let the game's own whiteout sequence carry the player to the
+                # last Pokémon Center by advancing its dialog with A.
+                if mgba.load_state(0):
+                    console.print("[green]Loaded slot 0 after blackout[/]")
+                    mgba.tick(60)
+                    prev_state = None
+                    battle_was_active = False
+                    blackout_active = False   # recovered via reload
+                else:
+                    console.print("[yellow]No save state in slot 0 — letting the game "
+                                  "respawn at the last Pokémon Center[/]")
+                    mgba.tap("A")             # advance the whiteout dialog
+                    mgba.tick(30)
                 continue
 
             # ── LLM decision step ────────────────────────────────────────────
@@ -521,12 +557,25 @@ def main():
             step_count += 1
             if MAX_STEPS and step_count >= MAX_STEPS:
                 console.print(f"[green]Reached MAX_STEPS={MAX_STEPS} — stopping. "
-                              f"Total reward: {reward.total:.1f}[/]")
+                              f"{_run_summary(reward, client, step_count)}[/]")
+                ltm.save()
+                break
+            # Spend guards (matter for cloud endpoints; 0 = unlimited). Stop
+            # cleanly, same as MAX_STEPS, so an unattended run can't run up an
+            # unbounded bill.
+            if MAX_LLM_CALLS and client.llm_calls >= MAX_LLM_CALLS:
+                console.print(f"[green]Reached MAX_LLM_CALLS={MAX_LLM_CALLS} — stopping. "
+                              f"{_run_summary(reward, client, step_count)}[/]")
+                ltm.save()
+                break
+            if TOKEN_BUDGET and client.total_tokens >= TOKEN_BUDGET:
+                console.print(f"[green]Reached TOKEN_BUDGET={TOKEN_BUDGET} — stopping. "
+                              f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
                 break
 
         except KeyboardInterrupt:
-            console.print("\n[red]Stopped.")
+            console.print(f"\n[red]Stopped.[/] {_run_summary(reward, client, step_count)}")
             ltm.save()
             break
         except Exception as e:
@@ -537,7 +586,8 @@ def main():
             console.print_exception(max_frames=4)
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 console.print(f"[red bold]{consecutive_errors} consecutive errors — "
-                              f"stopping. Full tracebacks in {ERRORS_LOG}.[/]")
+                              f"stopping. Full tracebacks in {ERRORS_LOG}. "
+                              f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
                 sys.exit(1)
             time.sleep(1.0)

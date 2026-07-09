@@ -78,6 +78,16 @@ TEMPERATURE       = float(os.getenv("TEMPERATURE", "0.6"))
 MAX_TOKENS        = int(os.getenv("MAX_TOKENS",    "4096"))
 ENABLE_THINKING   = os.getenv("ENABLE_THINKING",   "false").lower() == "true"
 
+# ── Spend controls (matter once LLM_BASE_URL points at a paid cloud endpoint) ──
+# The main loop is otherwise unbounded (MAX_STEPS=0) and issues up to 6 completions
+# per decision step, each carrying a screenshot + history — free against local LM
+# Studio, real money against OpenAI/OpenRouter. These caps end the run cleanly (same
+# path as MAX_STEPS) once hit. 0 = unlimited.
+#   MAX_LLM_CALLS: stop after this many chat-completion API calls.
+#   TOKEN_BUDGET:  stop once cumulative (prompt+completion) tokens reach this.
+MAX_LLM_CALLS     = int(os.getenv("MAX_LLM_CALLS", "0"))
+TOKEN_BUDGET      = int(os.getenv("TOKEN_BUDGET",  "0"))
+
 # ── Timing ────────────────────────────────────────────────────────────────────
 BUTTON_TAP_DELAY  = float(os.getenv("BUTTON_TAP_DELAY",  "0.10"))
 DECISION_INTERVAL = float(os.getenv("DECISION_INTERVAL", "1.00"))
