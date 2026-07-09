@@ -131,11 +131,20 @@ class Addr:
     #   +0x1C, +0x20 = sub-tile pixel offsets (not tile coords — do not use for navigation)
     OW_PLAYER    = 0x02036E38   # struct OW[0], 36 bytes
 
-    # ⚠ MEMORY.md correction: 0x0202402C is gFrameCount (frame counter),
-    # NOT the enemy party data.  Do not read battle Pokémon from this address.
-    # Enemy battle data lives in gBattleMons (unencrypted, 88 bytes/slot);
-    # exact EWRAM address requires the pokefirered linker map — pending research.
-    # ENEMY_PARTY  = 0x0202402C   # ← WRONG: this is gFrameCount
+    # (Removed an incorrect note claiming 0x0202402C is gFrameCount. Verified live:
+    # u32@0x0202402C is STABLE across frames during battle (a frame counter would
+    # increment) and decodes to the on-screen wild/lead Pokémon — it IS gEnemyParty
+    # (see ENEMY_PARTY above). read_enemy_lead uses it and IDs opponents correctly.)
+
+    # Object events (NPCs) currently loaded: gObjectEvents[16], 36-byte stride,
+    # base = OW_PLAYER (slot 0 is the player). Used to route walk_to around NPCs.
+    #   +0x00 bit0 = active;  +0x01 bit5 = invisible;  +0x02 bit0 = isPlayer
+    #   +0x10 s16 currentCoords.x, +0x12 s16 currentCoords.y  (grid coord + 7)
+    # Only on-screen NPCs are loaded here (far ones aren't).
+    OBJECT_EVENTS       = 0x02036E38
+    OBJECT_EVENT_STRIDE = 0x24
+    OBJECT_EVENT_COUNT  = 16
+    OBJECT_COORD_OFFSET = 7
 
 
 # Gen III character encoding (for nickname decoding)

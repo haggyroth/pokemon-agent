@@ -204,6 +204,31 @@ class AgentClient:
 
         return last_reasoning, actions
 
+    def _npc_tiles(self) -> set:
+        """Grid coords of on-screen NPCs (loaded object events, excluding the
+        player and invisible ones) so walk_to can path around them. Only nearby
+        NPCs are loaded; far ones aren't in gObjectEvents."""
+        from game.constants import Addr
+        tiles = set()
+        try:
+            for i in range(Addr.OBJECT_EVENT_COUNT):
+                b = Addr.OBJECT_EVENTS + i * Addr.OBJECT_EVENT_STRIDE
+                flags0 = self.mgba.read8(b)
+                if not (flags0 & 1):            # not active
+                    continue
+                if self.mgba.read8(b + 2) & 1:  # isPlayer
+                    continue
+                if (self.mgba.read8(b + 1) >> 5) & 1:  # invisible
+                    continue
+                x = self.mgba.read16(b + 0x10)
+                y = self.mgba.read16(b + 0x12)
+                x = x - 65536 if x >= 32768 else x
+                y = y - 65536 if y >= 32768 else y
+                tiles.add((x - Addr.OBJECT_COORD_OFFSET, y - Addr.OBJECT_COORD_OFFSET))
+        except Exception:
+            pass
+        return tiles
+
     def _walk_to(self, tx: int, ty: int) -> str:
         """Deterministically walk the player to tile (tx, ty) on the current map
         via A* over the tilemap. Replans if a step is unexpectedly blocked (an
@@ -234,8 +259,15 @@ class AgentClient:
                         return f"Arrived at ({tx},{ty})."
                     continue   # got nudged off the warp; replan back onto it
                 return f"Arrived at ({tx},{ty})."
-            path = find_path((px, py), (tx, ty),
-                             lambda x, y: grid[y][x], w, h)
+            # Passable if floor, minus tiles occupied by loaded NPCs (route around
+            # them). The goal itself is always allowed: door/stairs warp tiles sit
+            # on "wall" tiles but are steppable-onto from a passable neighbour.
+            npcs = self._npc_tiles()   # refresh each attempt — NPCs move
+            def _passable(x, y):
+                if (x, y) == (tx, ty):
+                    return True
+                return grid[y][x] and (x, y) not in npcs
+            path = find_path((px, py), (tx, ty), _passable, w, h)
             if path is None:
                 return (f"No walkable path from ({px},{py}) to ({tx},{ty}) — "
                         f"the target may be blocked or off this map.")
@@ -272,51 +304,70 @@ class AgentClient:
                   "north": "North", "south": "South", "east": "East", "west": "West",
                   "up": "North", "down": "South", "left": "West", "right": "East"}
 
-    def _go_to(self, destination: str) -> str:
-        """Travel toward a named map (e.g. "Viridian City", "Route 1"), auto-routing
-        across multiple map connections. BFS the connection graph for a route, then
-        cross each edge in turn. Stops (so the agent can act, then re-call to resume)
-        if a wild battle/dialog interrupts or a hop is blocked (e.g. a cave splits
-        the map — connections are map-adjacency, not proof the map is walkable)."""
-        from game.state import GameContext
-        from knowledge.map_graph import bfs_route
+    # Waypoint keywords → a map "kind" in the graph (nearest one is routed to).
+    _WAYPOINT_KIND = {
+        "pokemon center": "pokecenter", "poke center": "pokecenter", "pokecenter": "pokecenter",
+        "pokécenter": "pokecenter", "pokémon center": "pokecenter", "center": "pokecenter",
+        "pc": "pokecenter", "heal": "pokecenter", "healing": "pokecenter",
+        "mart": "mart", "poke mart": "mart", "pokemart": "mart", "shop": "mart", "store": "mart",
+        "gym": "gym",
+    }
+
+    def _resolve_destination(self, destination: str):
+        """Resolve a go_to destination string to (target_map, name). Accepts a map
+        name (exact/partial) or a waypoint keyword (pokemon center / mart / gym),
+        routing waypoints to the nearest such map from the current location."""
+        from knowledge.map_graph import nearest_of_kind
         dest = str(destination).strip().lower()
+        cur = self.reader.read_current_map()
+        kind = self._WAYPOINT_KIND.get(dest)
+        if kind:
+            found = nearest_of_kind(cur, kind)
+            if not found:
+                return None, f"No {dest} reachable from here."
+            target_map = found[0]
+            return target_map, MAP_NAMES.get(target_map, dest.title())
         matches = [(k, v) for k, v in MAP_NAMES.items()
                    if v.lower() == dest or dest in v.lower()]
         if not matches:
-            return f"Unknown destination '{destination}'."
+            return None, f"Unknown destination '{destination}'."
         exact = [(k, v) for k, v in matches if v.lower() == dest]
         target_map, target_name = (exact or matches)[0]
-        cur = self.reader.read_current_map()
-        if cur == target_map:
-            return f"Already at {target_name}."
+        return target_map, target_name
 
-        route = bfs_route(cur, target_map)
-        if route is None:
-            # No connection route (needs a building/cave warp, or unmapped). Fall
-            # back to live adjacency so the agent at least gets a useful pointer.
-            self.tilemap.refresh()
-            conns = self.tilemap.read_connections()
-            for cn in conns:
-                if (cn["map_bank"], cn["map_id"]) == target_map:
-                    return self._go_to_map(cn["direction"])
-            adj = ", ".join(f"{cn['direction']}→{MAP_NAMES.get((cn['map_bank'], cn['map_id']), '?')}"
-                            for cn in conns) or "none"
-            return (f"No overworld route to {target_name} from here (it likely needs a "
-                    f"building/cave). Adjacent maps: {adj}.")
+    def _go_to(self, destination: str) -> str:
+        """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
+        Center", "Mart", "Gym"), auto-routing across map connections AND building/
+        cave warps. Re-routes from the current map after each hop (robust to
+        interrupts). Stops — resumably — on a wild battle/dialog, or if a hop is
+        blocked (e.g. a cave splits the map so the far edge isn't walkable)."""
+        from game.state import GameContext
+        from knowledge.map_graph import route_to
+        target_map, target_name = self._resolve_destination(destination)
+        if target_map is None:
+            return target_name   # error message
 
-        for direction, next_map in route:
-            before = self.reader.read_current_map()
-            res = self._go_to_map(direction)
+        for _hop in range(16):
+            cur = self.reader.read_current_map()
+            if cur == target_map:
+                return f"Arrived at {target_name}."
+            route = route_to(cur, target_map)
+            if not route:
+                return (f"No route to {target_name} from {MAP_NAMES.get(cur, cur)} "
+                        f"(it may be behind a locked/blocked area).")
+            kind_step, arg, next_map = route[0]
+            before = cur
+            if kind_step == "connection":
+                res = self._go_to_map(arg)
+            else:   # warp: walk onto the door/stairs tile (walk_to steps through)
+                res = self._walk_to(arg[0], arg[1])
             if self.reader.detect_context() == GameContext.IN_BATTLE:
                 return f"A wild battle started en route to {target_name}. Handle it, then go_to({target_name!r}) again."
             after = self.reader.read_current_map()
-            if after == target_map:
-                return f"Arrived at {target_name}."
             if after == before:
                 here = MAP_NAMES.get(before, before)
-                return (f"Heading to {target_name}: reached {here} but couldn't continue "
-                        f"{direction} ({res}). May need a building/cave, or try again.")
+                return (f"Heading to {target_name}: stuck at {here} ({res}). "
+                        f"It may need something first (a cave/HM), or try again.")
         here = MAP_NAMES.get(self.reader.read_current_map(), "?")
         return f"Stopped at {here} en route to {target_name}."
 
