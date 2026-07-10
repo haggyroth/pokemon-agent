@@ -281,14 +281,22 @@ def get_route_guidance(state: GameState, milestones: list[str]) -> str:
     phase    = derive_phase(state, milestones)
 
     # Indoors, the outdoor route ("go north to Route 1") is unreachable until you
-    # leave the building — lead with the exit instead of the town-level objective.
+    # leave the building — lead with the exit, but also state the objective to
+    # pursue once outside so the agent has a destination the moment it leaves
+    # (otherwise it lingers/loops indoors, e.g. re-challenging a beaten gym).
     if infer_building_type(state.map_bank, state.map_id) == "interior":
-        return "\n".join([
+        lines = [
             f"Current location: indoors (map {state.map_bank}/{state.map_id})",
             f"Phase: {phase}",
             "You are INSIDE a building. Leave it first: walk onto a door/exit tile "
             "(see 'Exits' in the observation), then resume the route outside.",
-        ])
+        ]
+        matching = [(o, h, d) for (m, o, h, d) in STORY_PATH if state.badges >= m]
+        if matching:
+            obj, hint, _d = matching[-1]
+            lines.append(f"Once outside, your objective: {obj}")
+            lines.append(f"Route: {hint}")
+        return "\n".join(lines)
 
     location = MAP_NAMES.get(map_key, f"unknown area (bank={state.map_bank}, id={state.map_id})")
     lines = [f"Current location: {location}", f"Phase: {phase}"]
