@@ -6,15 +6,15 @@ the agent runs frames, the window is smooth during actions/animations and holds
 the last frame still while the LLM is thinking.
 
 Playback is paced to `VIEWER_FPS` so it's watchable at roughly game speed rather
-than the emulator's raw multi-hundred-fps burst. Closing the window raises
-KeyboardInterrupt so main.py exits cleanly (saving progress).
+than the emulator's raw multi-hundred-fps burst.
+
+Closing the window (or pressing Esc) tears the window down but does NOT stop the
+run — the agent keeps playing headless. This is deliberate: a backgrounded pygame
+window on macOS gets spurious QUIT events, and it used to raise a KeyboardInterrupt
+that killed long runs ~minutes in. To stop the run, Ctrl-C the terminal.
 """
 import time
 from config import VIEWER_SCALE, VIEWER_FPS
-
-
-class ViewerClosed(KeyboardInterrupt):
-    """Raised when the user closes the window — treated as a clean stop."""
 
 
 class PygameViewer:
@@ -26,13 +26,17 @@ class PygameViewer:
         self.scale = scale
         self.min_frame_dt = (1.0 / fps) if fps > 0 else 0.0
         self._last = 0.0
+        self._closed = False
 
         pygame.init()
         pygame.display.set_caption("Pokemon LeafGreen — LLM Agent")
         self.screen = pygame.display.set_mode((width * scale, height * scale))
 
     def render(self, buf) -> None:
-        """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present."""
+        """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present.
+        No-op once the window has been closed (the run continues headless)."""
+        if self._closed:
+            return
         pg = self._pg
         # Interpret the raw RGBX bytes as a surface. .convert() remaps it to the
         # display's native pixel format — without it, scaling straight into the
@@ -46,13 +50,14 @@ class PygameViewer:
 
     def _pump(self) -> None:
         for event in self._pg.event.get():
-            if event.type == self._pg.QUIT:
+            if event.type == self._pg.QUIT or (
+                    event.type == self._pg.KEYDOWN and event.key == self._pg.K_ESCAPE):
+                # Close the window but DON'T raise — a spurious QUIT (common when
+                # the process is backgrounded on macOS) must not kill the run. The
+                # run continues headless; Ctrl-C the terminal to actually stop.
                 self.close()
-                raise ViewerClosed()
-            if (event.type == self._pg.KEYDOWN
-                    and event.key == self._pg.K_ESCAPE):
-                self.close()
-                raise ViewerClosed()
+                self._closed = True
+                return
 
     def _pace(self) -> None:
         if self.min_frame_dt <= 0:

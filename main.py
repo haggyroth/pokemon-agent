@@ -12,7 +12,9 @@ from memory.long_term import LongTermMemory
 from memory.battle_journal import BattleJournal, BattleRecord
 from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
-from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
+from knowledge.leafgreen_data import (BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES,
+                                      GYM_LEADER_APPROACH)
+from knowledge.map_graph import MAP_KIND
 from game.constants import Addr
 from game.pathfinding import door_centers
 from knowledge.battle import battle_summary
@@ -571,6 +573,20 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                         obs_parts.append("WILD battle — you may flee_battle() to escape "
                                          "if you're just passing through or HP is low.")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
+            # Inside a gym: point the agent at the Leader. go_to is useless here —
+            # you have to WALK UP to them. Give the exact approach tile when known.
+            if (not in_battle and state.context == GameContext.OVERWORLD
+                    and MAP_KIND.get((state.map_bank, state.map_id)) == "gym"):
+                approach = GYM_LEADER_APPROACH.get((state.map_bank, state.map_id))
+                if approach:
+                    obs_parts.append(
+                        f"GYM: the Leader is at the top. To battle them, call "
+                        f"walk_to{approach} — walking up to them starts the fight. "
+                        f"Do NOT use go_to inside a gym.")
+                else:
+                    obs_parts.append(
+                        "GYM: the Leader is at the TOP (low Y). walk_to a top-center "
+                        "tile (or press Up) to reach them — do NOT use go_to in a gym.")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
                 if tilemap._width and tilemap._height:
                     obs_parts.append(f"Map size: {tilemap._width}×{tilemap._height} "

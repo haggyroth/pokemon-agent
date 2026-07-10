@@ -1,6 +1,16 @@
 # Pure game data for Pokemon LeafGreen (FireRed/LeafGreen US v1.0).
 # No I/O. Zero imports. All data sourced from CLAUDE.md.
 
+# ── Gym-leader approach tiles ─────────────────────────────────────────────────
+# Inside a gym, go_to is useless (you're already there) — the agent has to WALK
+# UP to the Leader, who stands near the top. This maps a gym's (map_bank, map_id)
+# to the tile just below the Leader: walk_to it and the Leader's line of sight
+# starts the battle. Positions verified against the pokefirered decomp.
+# (Populate more gyms as the agent reaches them.)
+GYM_LEADER_APPROACH: dict[tuple[int, int], tuple[int, int]] = {
+    (6, 2): (6, 6),   # Pewter Gym — Brock at (6,5); approach from directly below
+}
+
 # ── Gyms ──────────────────────────────────────────────────────────────────────
 # badge_bit: the bit index in the BADGES bitmask (0x02025968)
 # bit 0=Brock, 1=Misty, 2=Surge, 3=Erika, 4=Koga, 5=Sabrina, 6=Blaine, 7=Giovanni
