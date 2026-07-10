@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.15.0]
+
+### Added
+- feat: `heal()` skill — travels to the nearest Pokémon Center (resumable), walks
+  to Nurse Joy, and advances the heal dialogue until the party is at full HP (talk
+  tile (7,4) across the counter; YES/NO defaults to YES). A `⚠ Lead HP low` obs
+  nudge below 40% outside battle and a system-prompt rule tell the model when to
+  call it. Blackout/Nurse-Joy recovery now advances the whiteout dialogue several
+  A-presses per pass (was one) and stops as soon as the party revives (#84)
+
 ## [0.14.4]
 
 ### Fixed
