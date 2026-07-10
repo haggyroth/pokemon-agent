@@ -70,7 +70,7 @@ def test_scenarios_registry_wellformed():
     assert by_name("does_not_exist") is None
 
 
-def test_pewter_scenario_marked_xfail_for_issue_59():
-    # The Route 2 crossing is a known bug (#59); the scenario documents it so a
-    # future fix shows up as an unexpected PASS rather than silent.
-    assert by_name("reach_pewter").xfail == "#59"
+def test_pewter_scenario_no_longer_xfail():
+    # #59 is fixed and a full LLM run reached Pewter (XPASS), so the scenario is a
+    # normal (probabilistic) pass now — not an expected failure.
+    assert by_name("reach_pewter").xfail == ""
