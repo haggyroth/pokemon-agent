@@ -160,6 +160,22 @@ PP rules:
 8. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
 9. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
 
+## Preparing for a Gym — level up first if you're weak
+A Gym Leader will beat an under-levelled team. BEFORE challenging one, make sure
+your lead is strong enough and has the right move:
+- **Brock (Pewter, Rock): you want Bulbasaur at ~L13+ so it has Vine Whip** (Grass,
+  2× vs Rock/Ground — it 2HKOs Geodude L12 and Onix L14). Tackle barely dents them.
+- **If you are under that level, GRIND wild Pokémon to level up.** To grind: move
+  around in **tall grass** with `press_button` (Up/Down/Left/Right) or `walk_to` to
+  grass tiles, and when a wild battle starts, **WIN it with `use_move`** to gain XP.
+  Do NOT flee while grinding — `flee_battle()` and `go_to`'s auto-flee are for when
+  you DON'T want the fight. Grind on Route 1/Route 2 or in Viridian Forest.
+- When your lead has levelled up (watch the "Lead: … L<level>" field and the move
+  list for Vine Whip), `heal()`, then go to the Gym and `save_state` before the
+  leader.
+- After a loss, `load_state` (or recover from the blackout) and either grind more or
+  try again.
+
 ## Gen III Rule (critical)
 Damage category = move TYPE, not per-move:
 - Physical (uses Atk vs Def): Normal/Fighting/Flying/Poison/Ground/Rock/Bug/**Ghost**/Steel

@@ -42,6 +42,16 @@ SCENARIOS: list[Scenario] = [
               "Viridian City. Baseline overworld traversal + wild-battle handling.",
     ),
     Scenario(
+        name="first_badge",
+        goal=goals.badges_at_least(1),
+        max_steps=400,
+        start_save=DEFAULT_SAVE,
+        notes="Earn the Boulder Badge from Brock. The save's lead is Bulbasaur L8 "
+              "(Tackle/Growl/Leech Seed, no Vine Whip yet), so the agent must GRIND "
+              "to ~L13 for Vine Whip before it can reliably beat Geodude L12 / Onix "
+              "L14, then navigate the Pewter Gym and win. Long, exploratory run.",
+    ),
+    Scenario(
         name="reach_pewter",
         goal=goals.reached_map(3, 2, "Pewter City"),
         max_steps=150,
