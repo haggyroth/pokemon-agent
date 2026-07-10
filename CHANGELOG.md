@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.18.1]
+
+### Added
+- feat: `grind(target_level)` skill — while standing in tall grass, wanders to trigger
+  wild battles and auto-fights each one (best damaging move) until the lead reaches the
+  target level, orbiting the last encounter tile to stay in the patch and pausing at
+  <35% HP. Turns the LLM's ~1 level / 15 min manual grind into ~1 level / ~10 s. Use
+  `grind(13)` to get Vine Whip before Brock (#90)
+
 ## [0.18.0]
 
 ### Added
