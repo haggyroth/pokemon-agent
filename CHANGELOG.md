@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.17.0]
+
+### Added
+- feat: `go_to` auto-flees wild battles while travelling (#81) — it flees wild
+  encounters itself and keeps going, so one `go_to` walks through a whole
+  route/forest/cave instead of handing every battle back to the model (the ~27-min
+  Viridian Forest crossing collapses). It stops only on a TRAINER battle (win first),
+  when the lead's HP drops below 30% after a fight (heal() first), on a failed
+  escape, or if blocked. Verified Pallet → Viridian in one call, zero wild battles
+  punted. Deliberate catching will come via a dedicated `catch()` skill (#88)
+
 ## [0.16.1]
 
 ### Changed
