@@ -552,8 +552,8 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                         and state.context == GameContext.OVERWORLD):
                     obs_parts.append(
                         f"⚠ Lead is L{lead.level} — under-levelled for Brock (want ~L13 "
-                        f"for Vine Whip). GRIND wild Pokémon (fight with use_move, don't "
-                        f"flee) to level up before the Pewter Gym")
+                        f"for Vine Whip). Stand in tall grass and call grind(13) to level "
+                        f"up before the Pewter Gym")
                 if in_battle:
                     move_names = [m for m in lead.move_names if m]
                     lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())

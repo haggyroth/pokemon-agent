@@ -656,6 +656,124 @@ class AgentClient:
         return ("Couldn't get away (the escape failed or the foe is faster) — "
                 "try flee_battle again, or use_move to fight.")
 
+    @staticmethod
+    def _best_damaging_move(mon) -> str | None:
+        """The mon's highest-power move that still has PP, or (if none has listed
+        power) the first move with PP. None only if every move is out of PP."""
+        from knowledge.leafgreen_data import MOVE_POWER
+        best, best_pow = None, 0
+        for name, pp in zip(mon.move_names, mon.pp):
+            if not name or pp <= 0:
+                continue
+            pw = MOVE_POWER.get(name, 0)
+            if pw > best_pow:
+                best, best_pow = name, pw
+        if best is not None:
+            return best
+        for name, pp in zip(mon.move_names, mon.pp):   # fallback: any move with PP
+            if name and pp > 0:
+                return name
+        return None
+
+    def _auto_fight(self) -> None:
+        """Fight the current battle to the end with the best damaging move each turn."""
+        from game.state import GameContext
+        for _ in range(24):
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                return
+            party = self.reader.read_party()
+            if not party:
+                return
+            mv = self._best_damaging_move(party[0])
+            if mv:
+                self._use_move(mv)
+            else:
+                self._battle_press("A")   # no PP → Struggle / advance
+
+    _OPPOSITE = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
+
+    def _wander_step(self) -> bool:
+        """Take one overworld step to seek a wild encounter, PACING back and forth so
+        we stay in the local (grassy) patch instead of drifting out of it. Keeps a
+        heading, reverses when blocked, and rotates axis if fully boxed in. Returns
+        True if a battle started."""
+        from game.state import GameContext
+        heading = getattr(self, "_wander_dir", "Up")
+        # Try the current heading, then its reverse, then the other axis.
+        order = [heading, self._OPPOSITE[heading]]
+        for d in ("Up", "Down", "Left", "Right"):
+            if d not in order:
+                order.append(d)
+        for mv in order:
+            before = self.reader.read_player_pos()
+            self.mgba.tap(mv)
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                self._wander_dir = mv
+                return True
+            if self.reader.read_player_pos() != before:
+                self._wander_dir = mv   # keep pacing this way until blocked
+                return False
+        return False
+
+    _GRIND_HP_FLOOR = 0.35
+
+    def _grind(self, target_level: int) -> str:
+        """Grind wild battles until the lead reaches target_level. Wanders the
+        current area to trigger encounters and auto-fights each with the best
+        damaging move — the LLM doesn't drive each battle. Call while standing in
+        TALL GRASS (a route or Viridian Forest). Stops at the target level, when
+        the lead's HP gets low (heal, then grind again), or after a step budget."""
+        from game.state import GameContext
+        party = self.reader.read_party()
+        if not party:
+            return "No Pokémon to grind with."
+        target_level = max(1, min(int(target_level), 100))
+        start = party[0].level
+        if start >= target_level:
+            return f"Lead is already L{start} (target L{target_level}) — no need to grind."
+        battles = 0
+        dry_steps = 0        # consecutive overworld steps with no encounter
+        last_grass = None    # tile an encounter last triggered on (= tall grass)
+        for _ in range(400):
+            party = self.reader.read_party()
+            if not party:
+                break
+            lvl = party[0].level
+            if lvl >= target_level:
+                return (f"Grinded L{start}→L{lvl} in {battles} battles. "
+                        f"heal(), then head to the gym.")
+            if party[0].max_hp and party[0].hp_percent < self._GRIND_HP_FLOOR:
+                return (f"Grinding paused at L{lvl} — lead HP low "
+                        f"({party[0].hp_percent:.0%}). Call heal(), then grind({target_level}) again.")
+            ctx = self.reader.detect_context()
+            if ctx == GameContext.IN_BATTLE:
+                last_grass = self.reader.read_player_pos()   # standing on grass
+                self._auto_fight()
+                battles += 1
+                dry_steps = 0
+            elif ctx == GameContext.OVERWORLD:
+                # Orbit the last grass tile so we farm the patch instead of drifting
+                # off it (there's no grass-vs-floor read, so the last encounter tile
+                # is our anchor).
+                if (last_grass is not None and dry_steps >= 4
+                        and self.reader.read_player_pos() != last_grass):
+                    self._walk_to(*last_grass)
+                else:
+                    self._wander_step()
+                dry_steps += 1
+                # Fail fast if we clearly aren't in an encounter zone — let the
+                # model reposition rather than pace an empty patch for ages.
+                if dry_steps >= 40 and battles == 0:
+                    return ("No wild battles here — you're not in tall grass. Walk "
+                            "into a TALL-GRASS patch (a route or Viridian Forest), "
+                            f"then call grind({target_level}) again.")
+            else:
+                self.mgba.tap("A")        # advance a dialog/transition
+                self.mgba.tick()
+        party = self.reader.read_party()
+        lvl = party[0].level if party else start
+        return f"Grinded L{start}→L{lvl} in {battles} battles. Call grind({target_level}) again to continue."
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -687,6 +805,8 @@ class AgentClient:
                 return self._use_move(args["move"])
             case "flee_battle":
                 return self._flee_battle()
+            case "grind":
+                return self._grind(int(args.get("level", 0)))
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [
