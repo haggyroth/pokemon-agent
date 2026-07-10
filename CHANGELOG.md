@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.0]
+
+### Added
+- feat: gym-leader approach navigation — inside a gym `go_to` is a no-op, so the
+  observation and prompt now point the agent at the tile just below the Leader
+  (`GYM_LEADER_APPROACH`, e.g. Pewter (6,2)→(6,6) below Brock) and say to `walk_to`
+  up to them, not `go_to` (#91)
+
+### Fixed
+- fix: the live viewer window no longer kills the run — a backgrounded pygame window
+  on macOS emits spurious QUIT events that (as a KeyboardInterrupt subclass) stopped
+  long runs minutes in. Closing the window now tears it down but the run continues
+  headless; Ctrl-C the terminal to stop (#91)
+
 ## [0.18.1]
 
 ### Added
