@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.1]
+
+### Fixed
+- fix: `go_to` traverses trainer-filled dungeons (#81) — a trainer spotting the
+  player leaves the game in an engagement state that reads as IN_MENU, where
+  walk_to/go_to can't move, so the agent was pinned inside Viridian Forest despite a
+  clear path to the exit. `go_to` now advances a dialog/menu/engagement into
+  overworld-or-battle before routing (trainer → the model fights it, wild → auto-flee),
+  and treats a hop that moved the player as progress rather than "stuck". Verified:
+  Pallet → Pewter now crosses the forest deterministically. Generalizes to Mt. Moon,
+  Rock Tunnel, and the game's other trainer-heavy mazes
+
 ## [0.19.0]
 
 ### Added
