@@ -38,7 +38,7 @@ class PokemonStatus:
 class GameState:
     context:       GameContext
     badges:        int          # popcount of badge_bits (0–8), for display
-    badge_bits:    int          # raw u8 bitmask from 0x02025968, for bitwise diff
+    badge_bits:    int          # raw u8 badge bitmask (SaveBlock1+0xFE4), for bitwise diff
     party:         list[PokemonStatus]
     party_count:   int
     map_bank:      int
