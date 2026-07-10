@@ -32,11 +32,17 @@ class Addr:
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
     # So the badge byte must be read via the live pointer (deref SAVEBLOCK1_PTR +
     # BADGES_OFFSET), NOT a fixed address — a fixed read drifts off the byte after
-    # a warp and returns a neighbouring byte, which caused phantom badges and
-    # false gym/milestone rewards. The absolute BADGES below is kept only as the
-    # canonical location (base 0x202554c) for reference/diagnostics.
-    BADGES       = 0x02025968   # u8 bitmask at the CANONICAL base only (do not read live)
-    BADGES_OFFSET = 0x41C       # + [SAVEBLOCK1_PTR] → badge bitmask (relocation-safe)
+    # a warp and returns a neighbouring byte, which caused phantom badges.
+    #
+    # BADGES_OFFSET derivation (pokefirered global.h + constants/flags.h): badges
+    # are SYS_FLAGS, stored in SaveBlock1.flags[] at struct offset 0xEE0.
+    # FLAG_BADGE01_GET = SYS_FLAGS(0x800)+0x20 = 0x820, so the badge byte is
+    # flags[0x820>>3] = 0xEE0 + 0x104 = 0xFE4, bit0=Boulder..bit7=Earth. (The old
+    # 0x41C was wrong — it landed in the bag-items region, so read_badges returned
+    # bag data and NO run ever registered a badge. Cross-checked: key items at
+    # +0x3B8 matches this same struct base, confirming the offset frame.)
+    BADGES       = 0x02026530   # canonical base(0x202554c)+0xFE4; reference only (do not read live)
+    BADGES_OFFSET = 0xFE4       # + [SAVEBLOCK1_PTR] → badge bitmask (relocation-safe)
     # Bit order: bit 0=Brock, 1=Misty, 2=Surge, 3=Erika,
     #            4=Koga, 5=Sabrina, 6=Blaine, 7=Giovanni
 
