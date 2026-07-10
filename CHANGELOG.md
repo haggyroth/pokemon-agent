@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.16.1]
+
+### Changed
+- chore: the `reach_pewter` eval reached Pewter City end-to-end with the real LLM
+  (XPASS: goal, steps=27, stuck_ratio=6%, ~27 min) — the Route 2 / Viridian Forest
+  gauntlet is solved by #59 region routing plus `heal()`/`flee_battle()` to survive
+  and skip wild encounters. Dropped the scenario's `xfail=#59` (closes #59)
+
 ## [0.16.0]
 
 ### Added
