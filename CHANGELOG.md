@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.7]
+
+### Fixed
+- fix: the agent no longer loops re-challenging a Gym Leader it already beat. A new
+  `GYM_MAP_LEADER` map lets the obs tell a beaten gym from an unbeaten one — beaten
+  gyms now say "ALREADY BEATEN, leave and head to your next objective" instead of
+  nudging `challenge_leader()`. Building-interior guidance also names the badge-gated
+  next objective (so it has a destination on exit), and the system prompt gained an
+  "Advancing objectives" rule against re-doing finished goals (#100)
+
 ## [0.19.6]
 
 ### Fixed
