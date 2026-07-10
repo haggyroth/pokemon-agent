@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.18.0]
+
+### Added
+- feat: `first_badge` (Brock) eval scenario + gym-prep/grinding guidance — the save's
+  Bulbasaur is L8 with no Vine Whip, so the system prompt now tells the model to grind
+  wild Pokémon to ~L13 before Brock (fight in tall grass with use_move, don't flee),
+  and the observation nudges when the lead is under-levelled for the first gym (#89)
+
 ## [0.17.0]
 
 ### Added
