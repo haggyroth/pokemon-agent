@@ -411,19 +411,30 @@ class AgentClient:
         target_map, target_name = (exact or matches)[0]
         return target_map, target_name
 
+    # Below this lead-HP fraction, go_to stops travelling after a battle so the
+    # model can heal() before walking into more wild grass (avoids a spiral to a
+    # blackout, which would warp the player all the way back to a Pokémon Center).
+    _TRAVEL_HP_FLOOR = 0.30
+
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
         Center", "Mart", "Gym"), auto-routing across map connections AND building/
-        cave warps. Re-routes from the current map after each hop (robust to
-        interrupts). Stops — resumably — on a wild battle/dialog, or if a hop is
-        blocked (e.g. a cave splits the map so the far edge isn't walkable)."""
+        cave warps. Re-routes from the current map after each hop.
+
+        Wild battles en route are auto-fled so travelling through a route/forest/
+        cave is one call, not dozens of round-trips (this is what makes Viridian
+        Forest fast). It stops — resumably — on a TRAINER battle (can't flee), when
+        the lead's HP drops low (so you can heal), if it can't escape a wild battle,
+        or if a hop is blocked (e.g. a cave splits the map so the far edge isn't
+        walkable)."""
         from game.state import GameContext
+        from game.constants import Addr
         from knowledge.map_graph import route_to, node_for
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
 
-        for _hop in range(16):
+        for _hop in range(30):   # higher budget: auto-fled battles each cost a hop
             cur = self.reader.read_current_map()
             if cur == target_map:
                 return f"Arrived at {target_name}."
@@ -441,15 +452,33 @@ class AgentClient:
                 res = self._go_to_map(arg)
             else:   # warp: walk onto the door/stairs tile (walk_to steps through)
                 res = self._walk_to(arg[0], arg[1])
+
+            # Handle a battle that interrupted this hop.
             if self.reader.detect_context() == GameContext.IN_BATTLE:
-                return f"A wild battle started en route to {target_name}. Handle it, then go_to({target_name!r}) again."
+                if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
+                    return (f"A trainer battle started en route to {target_name}. "
+                            f"You can't flee it — win with use_move (or switch), "
+                            f"then go_to({target_name!r}) again.")
+                # Wild battle while just travelling → flee and keep going.
+                flee = self._flee_battle()
+                if "Got away" not in flee:
+                    return (f"A wild battle started en route to {target_name} and the "
+                            f"escape failed — fight it with use_move, then "
+                            f"go_to({target_name!r}) again.")
+                party = self.reader.read_party()
+                if party and party[0].max_hp and party[0].hp_percent < self._TRAVEL_HP_FLOOR:
+                    return (f"Fled a wild battle en route to {target_name}, but your "
+                            f"lead's HP is low ({party[0].hp_percent:.0%}) — call "
+                            f"heal(), then go_to({target_name!r}) again.")
+                continue   # escaped; resume travelling
+
             after = self.reader.read_current_map()
             if after == before:
                 here = MAP_NAMES.get(before, before)
                 return (f"Heading to {target_name}: stuck at {here} ({res}). "
                         f"It may need something first (a cave/HM), or try again.")
         here = MAP_NAMES.get(self.reader.read_current_map(), "?")
-        return f"Stopped at {here} en route to {target_name}."
+        return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
 
     # Nurse Joy stands at (7,2) in the shared Pokémon Center interior, behind the
     # counter at (7,3). The player stands one tile below the counter, at (7,4), and
