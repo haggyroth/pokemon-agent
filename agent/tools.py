@@ -73,6 +73,14 @@ TOOLS = [
         }, "required": ["destination"]},
     }},
     {"type": "function", "function": {
+        "name": "challenge_leader",
+        "description": "Start the battle with the Gym Leader. Call this when you're "
+                       "inside the gym and ready (healed, save_state'd) — it walks up "
+                       "to the Leader and talks to them to begin the fight. Then "
+                       "attack with use_move (e.g. Vine Whip vs Brock).",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "heal",
         "description": "Fully restore the party's HP (and cure status) at a Pokémon "
                        "Center. Travels to the nearest Center if you're not already "
