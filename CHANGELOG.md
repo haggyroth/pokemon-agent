@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.6]
+
+### Fixed
+- fix: the live viewer now paces playback to `VIEWER_FPS` (default 60→120, ≈2× GBA
+  speed) by sleeping in `render()` instead of frame-skipping the draw while the
+  emulator ran full-speed — motion no longer flashes by incomprehensibly. Pacing is
+  scoped to windowed mode only, so headless runs stay full speed (#99)
+
 ## [0.19.5]
 
 ### Fixed
