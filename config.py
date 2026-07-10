@@ -36,7 +36,7 @@ USE_VISION        = os.getenv("USE_VISION", "true").lower() == "true"
 # Show a window rendering the game as the agent plays. Requires pygame.
 SHOW_WINDOW       = os.getenv("SHOW_WINDOW",  "false").lower() == "true"
 VIEWER_SCALE      = int(os.getenv("VIEWER_SCALE", "3"))    # 240x160 -> 720x480
-VIEWER_FPS        = int(os.getenv("VIEWER_FPS",   "60"))   # 0 = uncapped
+VIEWER_FPS        = int(os.getenv("VIEWER_FPS",   "120"))  # playback pace cap; 0 = uncapped
 
 # ── Network (http backend only) ───────────────────────────────────────────────
 MGBA_HTTP_BASE    = os.getenv("MGBA_HTTP_BASE",    "http://localhost:5000")

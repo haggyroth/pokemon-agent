@@ -5,8 +5,11 @@ each frame and blits it to a scaled window. Because the game only advances when
 the agent runs frames, the window is smooth during actions/animations and holds
 the last frame still while the LLM is thinking.
 
-Playback is paced to `VIEWER_FPS` so it's watchable at roughly game speed rather
-than the emulator's raw multi-hundred-fps burst.
+Playback is paced to `VIEWER_FPS` so it's watchable: while the window is open,
+`render()` sleeps so emulated frames are presented at up to VIEWER_FPS (default
+120 ≈ 2× real GBA speed) instead of the emulator's raw multi-hundred-fps burst,
+which flashed by incomprehensibly. This pacing only happens when a window exists —
+headless runs never construct a viewer, so real (unwatched) runs stay full speed.
 
 Closing the window (or pressing Esc) tears the window down but does NOT stop the
 run — the agent keeps playing headless. This is deliberate: a backgrounded pygame
@@ -36,18 +39,19 @@ class PygameViewer:
         """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present.
         No-op once the window has been closed (the run continues headless).
 
-        `VIEWER_FPS` caps the DISPLAY refresh rate by frame-SKIPPING — if too little
-        wall-clock time has passed since the last actual draw, we skip this frame
-        entirely and return immediately. Crucially this does NOT sleep, so the
-        emulator keeps running at full speed (grind/battles run thousands of frames;
-        drawing every one throttled the whole run). fps=0 draws every frame."""
+        `VIEWER_FPS` PACES playback: if less than 1/fps has passed since the last
+        frame, we sleep the remainder before drawing so emulated motion plays at a
+        watchable ~VIEWER_FPS (default 120 ≈ 2× GBA speed) instead of the raw burst.
+        Cadence tracks actual draw times (no catch-up bursts). This sleep only runs
+        while a window is open; headless runs never build a viewer, so they stay
+        full speed. fps=0 disables pacing (draw every frame as fast as they come)."""
         if self._closed:
             return
         if self.min_frame_dt > 0:
-            now = time.perf_counter()
-            if now - self._last < self.min_frame_dt:
-                return   # too soon to redraw — skip, don't slow the emulator
-            self._last = now
+            wait = self._last + self.min_frame_dt - time.perf_counter()
+            if wait > 0:
+                time.sleep(wait)   # pace the emulator so motion is watchable
+            self._last = time.perf_counter()
         pg = self._pg
         # Interpret the raw RGBX bytes as a surface. .convert() remaps it to the
         # display's native pixel format — without it, scaling straight into the
