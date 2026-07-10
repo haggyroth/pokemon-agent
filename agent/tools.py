@@ -61,8 +61,11 @@ TOOLS = [
                        "('Pokemon Center', 'Mart', 'Gym'), auto-routing across map "
                        "connections and building/cave doors — it finds the route and "
                        "walks/crosses each step for you. Waypoints go to the nearest one. "
-                       "Stops if a battle/dialog interrupts or the way is blocked, so just "
-                       "call it again to resume. The main overworld travel tool.",
+                       "It AUTO-FLEES wild battles along the way so travelling through a "
+                       "route/forest/cave is one call (the fast way through Viridian "
+                       "Forest). It stops — call again to resume — on a TRAINER battle "
+                       "(win it first), when your HP gets low (heal() first), or if the "
+                       "way is blocked. The main overworld travel tool.",
         "parameters": {"type": "object", "properties": {
             "destination": {"type": "string",
                             "description": "Map name (e.g. 'Viridian City') or waypoint "

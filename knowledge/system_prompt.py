@@ -54,9 +54,12 @@ Battles: {p['battles_won']} won / {p['battles_lost']} lost  |  Starter: {p['star
 ## Movement Rules — use the navigation tools, not tile-by-tile presses
 - **`go_to("<place>")` is your main travel tool.** It auto-routes across maps
   (connections + building/cave doors) to a town/route by name ("Pewter City",
-  "Route 2") OR a waypoint ("Pokemon Center", "Mart", "Gym"). It stops on a wild
-  battle/dialog or if blocked — just call it again to resume. Follow the Navigation
-  section's objective (e.g. go_to the next town toward the gym).
+  "Route 2") OR a waypoint ("Pokemon Center", "Mart", "Gym"), and **auto-flees wild
+  battles** as it goes — so one `go_to` walks through a whole route/forest/cave (it's
+  the fast way through Viridian Forest). It stops — just call it again to resume —
+  only on a TRAINER battle (win it first), when your HP is low (call `heal()` first),
+  or if the way is blocked. Follow the Navigation section's objective (e.g. go_to the
+  next town toward the gym).
 - **`walk_to(x, y)`** moves to a tile on the CURRENT map (path-finds around walls
   and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
   building.
