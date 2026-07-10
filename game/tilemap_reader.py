@@ -38,9 +38,10 @@ class TileInfo:
 class TilemapReader:
     def __init__(self, client: MGBAClient):
         self.client = client
-        self._map_ptr:  int | None = None
-        self._width:    int | None = None
-        self._height:   int | None = None
+        self._map_ptr:    int | None = None
+        self._layout_ptr: int | None = None
+        self._width:      int | None = None
+        self._height:     int | None = None
 
     def refresh(self) -> bool:
         """
@@ -51,6 +52,7 @@ class TilemapReader:
             layout_ptr = self.client.read32(Addr.MAP_HEADER)
             if not (0x08000000 <= layout_ptr < 0x0A000000):
                 return False
+            self._layout_ptr = layout_ptr
             self._width   = self.client.read32(layout_ptr)
             self._height  = self.client.read32(layout_ptr + 4)
             self._map_ptr = self.client.read32(layout_ptr + 0x0C)
@@ -61,6 +63,50 @@ class TilemapReader:
     @property
     def ready(self) -> bool:
         return self._map_ptr is not None
+
+    # Metatile behavior (MB_*) — tells tall grass (MB_TALL_GRASS=0x02) apart from
+    # plain floor. Structs (pokefirered global.fieldmap.h): MapLayout +0x10/+0x14 =
+    # primary/secondary Tileset; Tileset +0x14 = metatileAttributes (u32 array);
+    # metatile id = map[] entry & 0x3FF; ids <640 use the primary tileset, else the
+    # secondary (id-640). Behavior is the low bits of the u32 attribute.
+    _TALL_GRASS = 0x02
+
+    def metatile_behavior(self, x: int, y: int) -> int | None:
+        """MB_* behavior of tile (x, y), or None on error / out of bounds."""
+        if self._layout_ptr is None or self._map_ptr is None:
+            return None
+        if not (0 <= x < self._width and 0 <= y < self._height):
+            return None
+        try:
+            mid = self.client.read16(self._map_ptr + (y * self._width + x) * 2) & 0x3FF
+            if mid < 640:
+                tileset = self.client.read32(self._layout_ptr + 0x10)
+                idx = mid
+            else:
+                tileset = self.client.read32(self._layout_ptr + 0x14)
+                idx = mid - 640
+            if not (0x08000000 <= tileset < 0x0A000000):
+                return None
+            attr_arr = self.client.read32(tileset + 0x14)   # metatileAttributes
+            if not (0x08000000 <= attr_arr < 0x0A000000):
+                return None
+            return self.client.read32(attr_arr + idx * 4) & 0x1FF   # behavior bits
+        except Exception:
+            return None
+
+    def is_tall_grass(self, x: int, y: int) -> bool:
+        return self.metatile_behavior(x, y) == self._TALL_GRASS
+
+    def grass_tiles(self) -> list[tuple[int, int]]:
+        """All tall-grass tiles on the current map (for grind to walk to/stay on)."""
+        if self._width is None or self._height is None:
+            return []
+        out = []
+        for y in range(self._height):
+            for x in range(self._width):
+                if self.metatile_behavior(x, y) == self._TALL_GRASS:
+                    out.append((x, y))
+        return out
 
     def read_tile(self, x: int, y: int) -> TileInfo | None:
         """Return TileInfo for map tile (x, y), or None on error / out-of-bounds."""
