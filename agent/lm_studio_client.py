@@ -599,6 +599,34 @@ class AgentClient:
                 self.mgba.hold("A", 18)
         return f"Could not use {name} — the battle menu did not respond as expected."
 
+    def _flee_battle(self) -> str:
+        """Run from a WILD battle. Drives the action menu to RUN (writes the action
+        cursor, like use_move does for the move cursor) and confirms escape by the
+        battle ending. Trainer battles can't be fled. The escape roll can fail (the
+        foe is faster) — this retries across turns, and reports if it can't get
+        away so the caller can fight instead."""
+        from game.state import GameContext
+        from game.constants import Addr
+        if self.reader.detect_context() != GameContext.IN_BATTLE:
+            return "Not in a battle — nothing to flee."
+        if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
+            return "Can't run from a trainer battle — win it or switch Pokémon."
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        for _ in range(20):
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                return "Got away safely — fled the wild battle."
+            if idle:
+                idle()
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) == Addr.CTRL_CHOOSE_ACTION:
+                self.mgba.write8(Addr.ACTION_CURSOR, Addr.ACTION_RUN)   # select RUN
+                self.mgba.hold("A", 20)                                 # commit
+            else:
+                self._battle_press("A")   # advance intro / result / escape text
+        if self.reader.detect_context() != GameContext.IN_BATTLE:
+            return "Got away safely — fled the wild battle."
+        return ("Couldn't get away (the escape failed or the foe is faster) — "
+                "try flee_battle again, or use_move to fight.")
+
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
@@ -628,6 +656,8 @@ class AgentClient:
                 return self._heal()
             case "use_move":
                 return self._use_move(args["move"])
+            case "flee_battle":
+                return self._flee_battle()
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

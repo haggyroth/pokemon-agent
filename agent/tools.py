@@ -90,6 +90,17 @@ TOOLS = [
         }, "required": ["move"]},
     }},
     {"type": "function", "function": {
+        "name": "flee_battle",
+        "description": "Run away from a WILD battle to keep moving. Use when you're "
+                       "just travelling through a route/forest/cave and don't need "
+                       "the fight, or when your HP is low and you'd rather escape "
+                       "than risk fainting. Drives the RUN option for you. You "
+                       "CANNOT flee a trainer battle (win or switch instead); the "
+                       "escape can occasionally fail, so it may take a couple of "
+                       "tries.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},

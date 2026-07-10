@@ -555,6 +555,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     enemy = reader.read_enemy_lead()
                     if enemy:
                         obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
+                    # Tell the model whether it can flee (wild) or must fight (trainer).
+                    if battle_is_trainer:
+                        obs_parts.append("TRAINER battle — you cannot flee; win or switch.")
+                    else:
+                        obs_parts.append("WILD battle — you may flee_battle() to escape "
+                                         "if you're just passing through or HP is low.")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
                 if tilemap._width and tilemap._height:

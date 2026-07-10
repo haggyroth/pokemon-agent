@@ -15,11 +15,18 @@ class Addr:
     # (player = battler 0). NOTE: the display var 4 bytes earlier (0x02023FF8) is
     # NOT the one A reads — must use this address.
     MOVE_CURSOR  = 0x02023FFC
+    # gActionSelectionCursor[0] — the FIGHT/BAG/POKEMON/RUN action menu cursor,
+    # the u8 array adjacent to the move cursor (this is the "red herring" seen
+    # during use_move RE — it's the ACTION cursor, not the move one). Indices:
+    # 0=FIGHT 1=BAG 2=POKEMON 3=RUN. flee_battle writes 3 then presses A.
+    ACTION_CURSOR = 0x02023FF8
+    ACTION_RUN    = 3
     # gBattlerControllerFuncs[0] — player battler's controller callback. Equals
-    # CTRL_CHOOSE_MOVE while the FIGHT move menu is open (reliable across turns).
-    # The action-select value varies, so only positively detect the move menu.
-    BATTLE_CTRL_FUNC = 0x03004FE0
-    CTRL_CHOOSE_MOVE = 0x0802EA11   # HandleInputChooseMove — move menu is up
+    # CTRL_CHOOSE_MOVE while the FIGHT move menu is open, CTRL_CHOOSE_ACTION while
+    # the FIGHT/BAG/POKEMON/RUN action menu is open (both live-verified).
+    BATTLE_CTRL_FUNC   = 0x03004FE0
+    CTRL_CHOOSE_MOVE   = 0x0802EA11   # HandleInputChooseMove — move menu is up
+    CTRL_CHOOSE_ACTION = 0x08030611   # HandleInputChooseAction — action menu is up
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
