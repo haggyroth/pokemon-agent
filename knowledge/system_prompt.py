@@ -173,11 +173,10 @@ your lead is strong enough and has the right move:
   DON'T want the fight.)
 - When your lead reaches the target (watch the "Lead: … L<level>" field), `heal()`,
   then go to the Gym and `save_state` before the leader.
-- **Inside the gym, `go_to` does nothing (you're already there) — the Leader stands
-  near the TOP. Reach them with `walk_to` (the observation gives the exact tile as
-  "GYM: … walk_to(x,y)"), or press Up to walk toward them.** Walking up to the Leader
-  starts the battle; then attack with `use_move` (Vine Whip vs Brock). If you faint,
-  `load_state` and grind a little more.
+- **Inside the gym, `go_to` does nothing — to fight the Leader, call
+  `challenge_leader()`.** It walks up to the Leader and talks to them to start the
+  battle (don't just press Up — you have to talk to them). Then attack with
+  `use_move` (Vine Whip vs Brock). If you faint, `load_state` and grind a bit more.
 - After a loss, `load_state` (or recover from the blackout) and either grind more or
   try again.
 

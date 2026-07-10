@@ -520,6 +520,37 @@ class AgentClient:
         here = MAP_NAMES.get(self.reader.read_current_map(), "?")
         return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
 
+    def _challenge_leader(self) -> str:
+        """Start the fight with the current gym's Leader. Walks to the tile below
+        the Leader (GYM_LEADER_APPROACH) and TALKS to them (face up + A) — the model
+        kept facing the Leader without pressing A, so this does the interaction
+        deterministically. Once the battle starts, attack with use_move."""
+        from game.state import GameContext
+        from knowledge.map_graph import MAP_KIND
+        from knowledge.leafgreen_data import GYM_LEADER_APPROACH
+        cur = self.reader.read_current_map()
+        if self.reader.detect_context() == GameContext.IN_BATTLE:
+            return "Already in a battle — attack with use_move."
+        if MAP_KIND.get(cur) != "gym":
+            return "You're not in a gym. go_to the gym first."
+        approach = GYM_LEADER_APPROACH.get(cur)
+        if not approach:
+            return ("I don't have this gym's Leader position — walk_to the Leader at "
+                    "the top of the gym and press A to challenge them.")
+        self._walk_to(*approach)
+        # Face the Leader (they stand just NORTH of the approach tile) and talk.
+        for _ in range(5):
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                return "The Gym Leader battle started — attack with use_move (Vine Whip vs Brock)."
+            self.mgba.tap("Up")     # face the Leader
+            self.mgba.tap("A")      # talk → challenge
+            self.mgba.tick(15)
+            self._advance_to_control()   # advance the pre-battle dialogue
+        if self.reader.detect_context() == GameContext.IN_BATTLE:
+            return "The Gym Leader battle started — attack with use_move."
+        return ("Approached the Leader but the battle didn't start — make sure you're "
+                f"at {approach} facing them, then press A.")
+
     # Nurse Joy stands at (7,2) in the shared Pokémon Center interior, behind the
     # counter at (7,3). The player stands one tile below the counter, at (7,4), and
     # presses A facing up — the counter metatile forwards the interaction to the
@@ -841,6 +872,8 @@ class AgentClient:
                 return self._go_to(args["destination"])
             case "heal":
                 return self._heal()
+            case "challenge_leader":
+                return self._challenge_leader()
             case "use_move":
                 return self._use_move(args["move"])
             case "flee_battle":
