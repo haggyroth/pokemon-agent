@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.3]
+
+### Added
+- feat: `challenge_leader()` skill — starts the gym-leader battle deterministically
+  (walk to the tile below the Leader, face them, press A to talk → battle). The model
+  reached Brock's tile but kept pressing Up without ever pressing A; this closes that
+  gap. Obs + prompt now say to call `challenge_leader()` inside a gym (#96)
+
 ## [0.19.2]
 
 ### Fixed
