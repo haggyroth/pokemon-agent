@@ -12,12 +12,18 @@ import heapq
 _MOVES = (("Up", 0, -1), ("Down", 0, 1), ("Left", -1, 0), ("Right", 1, 0))
 
 
-def find_path(start, goal, passable, width, height, max_nodes=8000):
+def find_path(start, goal, passable, width, height, max_nodes=8000, ledge=None):
     """Shortest 4-connected path from start to goal over passable tiles.
 
     Returns a list of direction strings, [] if already at goal, or None if no
     path exists (or the search exceeds max_nodes). The goal tile must itself be
     passable. start is assumed reachable/standable (the player is on it).
+
+    `ledge(x, y) -> "Up"/"Down"/"Left"/"Right"/None` optionally identifies one-way
+    ledge tiles: a ledge is not standable, but moving INTO it in its facing
+    direction hops 2 tiles across (a single D-pad press) to the tile beyond, if
+    that landing tile is passable. This lets A* use downhill ledges that plain
+    passability treats as walls (the Route 1 top-of-map trap).
     """
     if start == goal:
         return []
@@ -50,13 +56,21 @@ def find_path(start, goal, passable, width, height, max_nodes=8000):
             nx, ny = cx + dx, cy + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if not passable(nx, ny):
+            if passable(nx, ny):
+                step = (nx, ny)
+            elif ledge is not None and ledge(nx, ny) == name:
+                # Hop the ledge: land two tiles along, must be in-bounds/passable.
+                lx, ly = cx + 2 * dx, cy + 2 * dy
+                if not (0 <= lx < width and 0 <= ly < height) or not passable(lx, ly):
+                    continue
+                step = (lx, ly)
+            else:
                 continue
             ng = g + 1
-            if ng < best.get((nx, ny), 1 << 30):
-                best[(nx, ny)] = ng
-                came[(nx, ny)] = (cur, name)
-                heapq.heappush(open_heap, (ng + abs(nx - gx) + abs(ny - gy), ng, (nx, ny)))
+            if ng < best.get(step, 1 << 30):
+                best[step] = ng
+                came[step] = (cur, name)
+                heapq.heappush(open_heap, (ng + abs(step[0] - gx) + abs(step[1] - gy), ng, step))
     return None
 
 

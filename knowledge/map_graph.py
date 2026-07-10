@@ -655,3 +655,35 @@ def nearest_of_kind(start, kind):
                 return (nb[:2], path + [step])
             q.append((nb, path + [step]))
     return None
+
+
+# Maps that carry tall grass — grind relocates to the nearest of these when it's
+# invoked somewhere with no reachable grass (e.g. the model called grind() while
+# standing in a city). Routes + Viridian Forest; the runtime grass check filters
+# any that turn out to be all-water, so this stays a superset, not a hand audit.
+GRASS_MAPS: frozenset = frozenset({(1, 0), *((3, i) for i in range(19, 44))})
+
+
+def nearest_grass(start, exclude_current: bool = False):
+    """Route to the nearest grass-bearing map (a Route or Viridian Forest).
+    Returns (goal_map, steps) or None. Region-aware, mirrors nearest_of_kind. Set
+    exclude_current to skip the map you're already on (when you're on grass you
+    can't reach and need a fresh entry elsewhere)."""
+    from collections import deque
+    if not exclude_current and start[:2] in GRASS_MAPS:
+        return (start[:2], [])
+    q = deque([(start, [])])
+    seen = {start}
+    while q:
+        cur, path = q.popleft()
+        neighbours = [("connection", d, m) for d, m in sorted(_A_CONN.get(cur, {}).items())]
+        neighbours += [("warp", (x, y), m) for (x, y, m) in _A_WARP.get(cur, [])]
+        for step in neighbours:
+            nb = step[2]
+            if nb in seen:
+                continue
+            seen.add(nb)
+            if nb[:2] in GRASS_MAPS:
+                return (nb[:2], path + [step])
+            q.append((nb, path + [step]))
+    return None

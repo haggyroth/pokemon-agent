@@ -315,7 +315,14 @@ class AgentClient:
                 if (x, y) == (tx, ty):
                     return True
                 return grid[y][x] and (x, y) not in npcs and (x, y) not in blocked
-            path = find_path((px, py), (tx, ty), _passable, w, h)
+            # One-way ledges: A* may hop a ledge in its facing direction (Route 1's
+            # downhill trap). Exclude any ledge a prior jump failed on (marked
+            # blocked) so a mistimed hop replans instead of retrying forever.
+            def _ledge(x, y):
+                if (x, y) in blocked:
+                    return None
+                return self.tilemap.ledge_dir(x, y)
+            path = find_path((px, py), (tx, ty), _passable, w, h, ledge=_ledge)
             if path is None:
                 # Could be a genuinely blocked target, or a transient (an NPC on
                 # the only corridor, a not-yet-settled map). Settle and retry a few
@@ -797,6 +804,24 @@ class AgentClient:
         px, py = self.reader.read_player_pos()
         return min(tiles, key=lambda t: abs(t[0] - px) + abs(t[1] - py))
 
+    def _relocate_to_grass(self, exclude_current: bool = False) -> bool:
+        """Deterministically travel to the nearest grass route so grind has grass to
+        work with, instead of handing a 'go find grass' message back to the model
+        (which it tends to ignore). Returns True if we end up somewhere with grass."""
+        from knowledge.map_graph import nearest_grass
+        bank, mid = self.reader.read_current_map()
+        found = nearest_grass((bank, mid), exclude_current=exclude_current)
+        if found is None:
+            return False
+        goal_map = found[0]
+        if goal_map == (bank, mid):
+            return self._nearest_grass() is not None
+        name = MAP_NAMES.get(goal_map)
+        if not name:
+            return False
+        self._go_to(name)                       # resumable; may stop on battle/dialog
+        return self._nearest_grass() is not None
+
     _GRIND_HP_FLOOR = 0.35
 
     def _grind(self, target_level: int) -> str:
@@ -815,14 +840,16 @@ class AgentClient:
         if start >= target_level:
             return f"Lead is already L{start} (target L{target_level}) — no need to grind."
 
-        # No grass on this map ⇒ can't grind here. Tell the model to relocate.
-        if self._nearest_grass() is None:
-            return ("No tall grass on this map — grind only works in a grass patch. "
-                    "go_to a route with grass (e.g. 'Route 1'/'Route 2' or Viridian "
-                    f"Forest), then call grind({target_level}) again.")
+        # No grass on this map ⇒ travel to the nearest grass route ourselves rather
+        # than bouncing a "go find grass" message off the model (it ignores it).
+        if self._nearest_grass() is None and not self._relocate_to_grass():
+            return ("No tall grass reachable from here — go_to a route with grass "
+                    "(e.g. 'Route 1'/'Route 2' or Viridian Forest), then call "
+                    f"grind({target_level}) again.")
 
         battles = 0
-        dry_steps = 0        # consecutive overworld steps not on grass / no encounter
+        stuck_steps = 0      # overworld steps that couldn't reach grass
+        relocations = 0      # deterministic grass-route relocations spent
         for _ in range(400):
             party = self.reader.read_party()
             if not party:
@@ -838,27 +865,29 @@ class AgentClient:
             if ctx == GameContext.IN_BATTLE:
                 self._auto_fight()
                 battles += 1
-                dry_steps = 0
+                stuck_steps = 0
             elif ctx == GameContext.OVERWORLD:
                 px, py = self.reader.read_player_pos()
                 if self.tilemap.is_tall_grass(px, py):
                     # On grass — pace back and forth to trigger encounters.
                     self._wander_step()
-                    dry_steps = 0
+                    stuck_steps = 0
                 else:
-                    # Drifted off (or started off) grass — route back onto the patch.
+                    # Off grass — route back onto the patch (walk_to is ledge-aware,
+                    # so downhill-ledge patches like Route 1's are reachable now).
                     target = self._nearest_grass()
-                    if target is None:
-                        return ("Lost the grass patch and can't find another on this "
-                                f"map. go_to a grassy route, then grind({target_level}) again.")
-                    self._walk_to(*target)
-                    dry_steps += 1
-                    # A patch we can never actually stand on (walled off) — bail so
-                    # the model repositions rather than shuffling forever.
-                    if dry_steps >= 30 and battles == 0:
-                        return ("Couldn't reach tall grass from here. Walk into a "
-                                "grass patch yourself (or go_to a grassy route), then "
-                                f"call grind({target_level}) again.")
+                    if target is not None:
+                        self._walk_to(*target)
+                    stuck_steps += 1
+                    # Can't reach any grass on this map (walled off / none) — try a
+                    # deterministic relocation to another grass route before giving up.
+                    if stuck_steps >= 25:
+                        if relocations < 2 and self._relocate_to_grass(exclude_current=True):
+                            relocations += 1
+                            stuck_steps = 0
+                        else:
+                            return ("Couldn't reach tall grass to grind. go_to a grassy "
+                                    f"route yourself, then call grind({target_level}) again.")
             else:
                 self.mgba.tap("A")        # advance a dialog/transition
                 self.mgba.tick()
