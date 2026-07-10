@@ -48,6 +48,9 @@ class FakeWorld:
     def read_warps(self):
         return []
 
+    def ledge_dir(self, x, y):
+        return None
+
     # mgba interface
     def tap(self, mv):
         if self.model_turning and mv != self.facing:
