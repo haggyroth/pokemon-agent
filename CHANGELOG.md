@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.16.0]
+
+### Added
+- feat: `flee_battle()` skill — runs from a WILD battle by driving the action menu
+  to RUN (detect `gBattlerControllerFuncs[0]==0x08030611`; write action cursor
+  `0x02023FF8=3`, hold A; confirm the battle ends). Guards trainer battles, retries
+  across turns if the escape roll fails. The battle observation now says whether you
+  can flee (wild) or must fight (trainer), and a system-prompt rule steers the model
+  to flee encounters when just travelling (the fast way through Viridian Forest, #81)
+  or when HP is low. Hardware-verified 4/4 wild flees (#85)
+
 ## [0.15.0]
 
 ### Added
