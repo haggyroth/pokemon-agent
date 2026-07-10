@@ -416,6 +416,40 @@ class AgentClient:
     # blackout, which would warp the player all the way back to a Pokémon Center).
     _TRAVEL_HP_FLOOR = 0.30
 
+    def _handle_travel_battle(self, target_name: str):
+        """A battle interrupted travel. Trainer → return so the model fights it;
+        wild → auto-flee and keep going (return None), unless the escape fails or HP
+        is low. Returns a message to stop go_to, or None to continue travelling."""
+        from game.constants import Addr
+        if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
+            return (f"A trainer battle started en route to {target_name}. You can't "
+                    f"flee it — win with use_move (or switch), then "
+                    f"go_to({target_name!r}) again.")
+        flee = self._flee_battle()
+        if "Got away" not in flee:
+            return (f"A wild battle started en route to {target_name} and the escape "
+                    f"failed — fight it with use_move, then go_to({target_name!r}) again.")
+        party = self.reader.read_party()
+        if party and party[0].max_hp and party[0].hp_percent < self._TRAVEL_HP_FLOOR:
+            return (f"Fled a wild battle en route to {target_name}, but your lead's HP "
+                    f"is low ({party[0].hp_percent:.0%}) — call heal(), then "
+                    f"go_to({target_name!r}) again.")
+        return None   # escaped; keep travelling
+
+    def _advance_to_control(self, tries: int = 10):
+        """Press A to advance a dialog / menu / trainer-engagement into either
+        overworld control or a battle. Dungeons are full of trainers whose spotting
+        animation reads as IN_MENU (menu flag + fade on the field callback); without
+        this, walk_to/go_to can't act and the agent is pinned. Returns the context."""
+        from game.state import GameContext
+        for _ in range(tries):
+            ctx = self.reader.detect_context()
+            if ctx in (GameContext.OVERWORLD, GameContext.IN_BATTLE):
+                return ctx
+            self.mgba.tap("A")
+            self.mgba.tick(10)
+        return self.reader.detect_context()
+
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
         Center", "Mart", "Gym"), auto-routing across map connections AND building/
@@ -428,13 +462,24 @@ class AgentClient:
         or if a hop is blocked (e.g. a cave splits the map so the far edge isn't
         walkable)."""
         from game.state import GameContext
-        from game.constants import Addr
         from knowledge.map_graph import route_to, node_for
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
 
-        for _hop in range(30):   # higher budget: auto-fled battles each cost a hop
+        for _hop in range(40):   # higher budget: auto-fled battles each cost a hop
+            # A trainer spotting us, post-battle text, or a stray menu leaves the
+            # game non-walkable (often misreads as IN_MENU). Advance it to overworld
+            # or a battle before trying to route — otherwise we're pinned in a maze.
+            ctx = self.reader.detect_context()
+            if ctx not in (GameContext.OVERWORLD, GameContext.IN_BATTLE):
+                ctx = self._advance_to_control()
+            if ctx == GameContext.IN_BATTLE:
+                stop = self._handle_travel_battle(target_name)
+                if stop:
+                    return stop
+                continue   # fled; resume travelling
+
             cur = self.reader.read_current_map()
             if cur == target_map:
                 return f"Arrived at {target_name}."
@@ -448,6 +493,7 @@ class AgentClient:
                         f"(it may be behind a locked/blocked area).")
             kind_step, arg, next_map = route[0]
             before = cur
+            before_pos = (px, py)
             if kind_step == "connection":
                 res = self._go_to_map(arg)
             else:   # warp: walk onto the door/stairs tile (walk_to steps through)
@@ -455,25 +501,19 @@ class AgentClient:
 
             # Handle a battle that interrupted this hop.
             if self.reader.detect_context() == GameContext.IN_BATTLE:
-                if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
-                    return (f"A trainer battle started en route to {target_name}. "
-                            f"You can't flee it — win with use_move (or switch), "
-                            f"then go_to({target_name!r}) again.")
-                # Wild battle while just travelling → flee and keep going.
-                flee = self._flee_battle()
-                if "Got away" not in flee:
-                    return (f"A wild battle started en route to {target_name} and the "
-                            f"escape failed — fight it with use_move, then "
-                            f"go_to({target_name!r}) again.")
-                party = self.reader.read_party()
-                if party and party[0].max_hp and party[0].hp_percent < self._TRAVEL_HP_FLOOR:
-                    return (f"Fled a wild battle en route to {target_name}, but your "
-                            f"lead's HP is low ({party[0].hp_percent:.0%}) — call "
-                            f"heal(), then go_to({target_name!r}) again.")
+                stop = self._handle_travel_battle(target_name)
+                if stop:
+                    return stop
                 continue   # escaped; resume travelling
 
             after = self.reader.read_current_map()
             if after == before:
+                # Map didn't change — but in a big maze/dungeon one walk_to hop only
+                # gets PART of the way to the exit warp. If the player still moved,
+                # that's progress: re-route and keep going. Only give up when we're
+                # truly pinned (same map AND didn't move at all this hop).
+                if self.reader.read_player_pos() != before_pos:
+                    continue
                 here = MAP_NAMES.get(before, before)
                 return (f"Heading to {target_name}: stuck at {here} ({res}). "
                         f"It may need something first (a cave/HM), or try again.")
