@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.5]
+
+### Fixed
+- fix: ledge-aware pathfinding + deterministic grind grass-relocation — closes the
+  Route 1 self-trap from the badge run. `walk_to`/`find_path` now hop one-way ledges
+  (`MB_JUMP_*` 0x38–0x3B) in their facing direction (a single D-pad press lands 2
+  tiles across) instead of treating them as walls, and `grind()` travels to the
+  nearest grass route itself (`map_graph.nearest_grass`) when no grass is reachable
+  rather than bouncing a "go find grass" message the model ignored (#98)
+
 ## [0.19.4]
 
 ### Added
