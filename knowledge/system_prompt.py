@@ -165,14 +165,14 @@ A Gym Leader will beat an under-levelled team. BEFORE challenging one, make sure
 your lead is strong enough and has the right move:
 - **Brock (Pewter, Rock): you want Bulbasaur at ~L13+ so it has Vine Whip** (Grass,
   2× vs Rock/Ground — it 2HKOs Geodude L12 and Onix L14). Tackle barely dents them.
-- **If you are under that level, GRIND wild Pokémon to level up.** To grind: move
-  around in **tall grass** with `press_button` (Up/Down/Left/Right) or `walk_to` to
-  grass tiles, and when a wild battle starts, **WIN it with `use_move`** to gain XP.
-  Do NOT flee while grinding — `flee_battle()` and `go_to`'s auto-flee are for when
-  you DON'T want the fight. Grind on Route 1/Route 2 or in Viridian Forest.
-- When your lead has levelled up (watch the "Lead: … L<level>" field and the move
-  list for Vine Whip), `heal()`, then go to the Gym and `save_state` before the
-  leader.
+- **If you are under that level, GRIND to level up: stand in TALL GRASS (Route 1/
+  Route 2 or Viridian Forest) and call `grind(13)`.** It wanders to trigger wild
+  battles and auto-fights each one for you until your lead hits the target level —
+  you do NOT fight them one at a time. It pauses if HP gets low; then `heal()` and
+  `grind(13)` again. (Do not `flee_battle()` while levelling — that's for when you
+  DON'T want the fight.)
+- When your lead reaches the target (watch the "Lead: … L<level>" field), `heal()`,
+  then go to the Gym and `save_state` before the leader.
 - After a loss, `load_state` (or recover from the blackout) and either grind more or
   try again.
 

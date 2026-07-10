@@ -93,6 +93,19 @@ TOOLS = [
         }, "required": ["move"]},
     }},
     {"type": "function", "function": {
+        "name": "grind",
+        "description": "Level up your lead Pokémon by grinding wild battles. Stand in "
+                       "TALL GRASS (a route or Viridian Forest) and call grind(level) — "
+                       "it wanders to trigger wild battles and auto-fights each one for "
+                       "you until your lead reaches the target level (no need to fight "
+                       "them one at a time yourself). Use it to prepare for a gym, e.g. "
+                       "grind(13) so Bulbasaur learns Vine Whip before Brock. It pauses "
+                       "if HP gets low (then heal() and grind again).",
+        "parameters": {"type": "object", "properties": {
+            "level": {"type": "integer", "description": "target lead level, e.g. 13"},
+        }, "required": ["level"]},
+    }},
+    {"type": "function", "function": {
         "name": "flee_battle",
         "description": "Run away from a WILD battle to keep moving. Use when you're "
                        "just travelling through a route/forest/cave and don't need "
