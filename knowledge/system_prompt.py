@@ -140,7 +140,12 @@ PP rules:
 1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
 2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining.
 3. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
-4. Heal when HP < 30% (`go_to("Pokemon Center")`, or Start → Bag → Medicine).
+4. **When your lead's HP is low (below ~40%) and you are NOT in a battle, call `heal()`.**
+   It travels to the nearest Pokémon Center and fully restores the whole party
+   (and cures status) for you — do NOT try to drive the Bag or Pokémon Center
+   menus by hand. If a wild battle interrupts the trip, deal with it, then call
+   `heal()` again. Heal BEFORE pushing into a long area (a cave, a forest, a gym)
+   if you're below full.
 5. save_state before every gym leader and every Elite Four member.
 6. After a loss: load_state and try a different strategy.
 7. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".

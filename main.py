@@ -539,6 +539,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     f"Lead: {lead.species_name or '?'} L{lead.level} "
                     f"HP={lead.current_hp}/{lead.max_hp} ({lead.status})"
                 )
+                # Proactive heal nudge: low HP outside battle → recommend heal().
+                if (not in_battle and lead.max_hp and lead.hp_percent < 0.40
+                        and state.context == GameContext.OVERWORLD):
+                    obs_parts.append(
+                        f"⚠ Lead HP low ({lead.hp_percent:.0%}) — call heal() to "
+                        f"restore the party at the nearest Pokémon Center")
                 if in_battle:
                     move_names = [m for m in lead.move_names if m]
                     lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
@@ -654,10 +660,18 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     battle_was_active = False
                     blackout_active = False   # recovered via reload
                 else:
-                    console.print("[yellow]No save state in slot 0 — letting the game "
-                                  "respawn at the last Pokémon Center[/]")
-                    mgba.tap("A")             # advance the whiteout dialog
-                    mgba.tick(30)
+                    console.print("[yellow]No save state in slot 0 — advancing the "
+                                  "whiteout/Nurse-Joy recovery to the Pokémon Center[/]")
+                    # The blackout plays a multi-box sequence (out of Pokémon →
+                    # scurried to a Center → warp → auto-heal) that only advances on
+                    # A. Press it several times per pass (not once) so recovery
+                    # actually progresses instead of crawling one box per tick.
+                    for _ in range(6):
+                        mgba.tap("A")
+                        mgba.tick(12)
+                        if bool(reader.read_party()) and any(
+                                p.current_hp > 0 for p in reader.read_party()):
+                            break   # auto-heal landed — party revived
                 continue
 
             # ── LLM decision step ────────────────────────────────────────────

@@ -70,6 +70,16 @@ TOOLS = [
         }, "required": ["destination"]},
     }},
     {"type": "function", "function": {
+        "name": "heal",
+        "description": "Fully restore the party's HP (and cure status) at a Pokémon "
+                       "Center. Travels to the nearest Center if you're not already "
+                       "inside, walks to Nurse Joy, and completes the heal for you. "
+                       "Call this when your lead/party HP is low (e.g. below ~40%) and "
+                       "you are NOT in a battle. Resumable if a wild battle interrupts "
+                       "the trip — just call it again.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "use_move",
         "description": "In battle, use one of your lead Pokémon's moves by name. Drives "
                        "the battle menu for you — advances intro/result text, opens FIGHT, "

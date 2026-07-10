@@ -451,6 +451,55 @@ class AgentClient:
         here = MAP_NAMES.get(self.reader.read_current_map(), "?")
         return f"Stopped at {here} en route to {target_name}."
 
+    # Nurse Joy stands at (7,2) in the shared Pokémon Center interior, behind the
+    # counter at (7,3). The player stands one tile below the counter, at (7,4), and
+    # presses A facing up — the counter metatile forwards the interaction to the
+    # nurse behind it. The heal is a pure dialogue: greeting → YES/NO (defaults to
+    # YES) → heal → "restored". So we advance with A and confirm success by the
+    # party returning to full HP.
+    _NURSE_TILE = (7, 4)
+
+    def _party_full_hp(self) -> bool:
+        party = self.reader.read_party()
+        return bool(party) and all(m.current_hp == m.max_hp for m in party)
+
+    def _heal(self) -> str:
+        """Heal the whole party at a Pokémon Center. Travels to the nearest one if
+        not already inside, walks to Nurse Joy, and advances the heal dialogue
+        until the party is at full HP. Resumable: if a wild battle/dialog interrupts
+        the trip, it stops and reports so the caller can resume."""
+        from game.state import GameContext
+        from knowledge.map_graph import MAP_KIND
+        if self._party_full_hp():
+            return "Party is already at full HP — no need to heal."
+        # Get inside a Pokémon Center first (resumable travel).
+        if MAP_KIND.get(self.reader.read_current_map()) != "pokecenter":
+            res = self._go_to("Pokemon Center")
+            if MAP_KIND.get(self.reader.read_current_map()) != "pokecenter":
+                return f"On the way to a Pokémon Center to heal: {res}"
+        # Walk to the nurse's counter and face her.
+        nx, ny = self._NURSE_TILE
+        self._walk_to(nx, ny)
+        if self.reader.read_player_pos() != (nx, ny):
+            return (f"Couldn't reach Nurse Joy's counter at {self._NURSE_TILE} "
+                    f"(at {self.reader.read_player_pos()}). Try walk_to it, then talk.")
+        self.mgba.tap("Up")            # face the nurse across the counter
+        # Advance greeting → YES/NO (YES is default) → heal → closing. A-mash and
+        # watch for full HP; nudge Up before confirming so the cursor sits on YES.
+        for _ in range(40):
+            if self._party_full_hp():
+                for _ in range(4):     # clear the "restored to full health" line
+                    self.mgba.tap("A")
+                    self.mgba.tick(6)
+                return "Healed the party to full HP at the Pokémon Center."
+            self.mgba.tap("Up")        # keep the YES/NO cursor on YES if it's up
+            self.mgba.tap("A")
+            self.mgba.tick(12)
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                return "A battle started while healing — handle it, then heal again."
+        return ("Talked to Nurse Joy but couldn't confirm a full heal — "
+                "try heal again, or check you're facing her at the counter.")
+
     def _go_to_map(self, direction: str) -> str:
         """Cross the map connection on the given edge (walk to the edge gap, then
         step off). direction is a compass word/letter (N/S/E/W)."""
@@ -575,6 +624,8 @@ class AgentClient:
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "heal":
+                return self._heal()
             case "use_move":
                 return self._use_move(args["move"])
             case "read_game_state":
