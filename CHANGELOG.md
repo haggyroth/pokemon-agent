@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.8]
+
+### Fixed
+- fix: **badges now register** — `read_badges()` read `SaveBlock1 + 0x41C` (the bag-items
+  region), so a Gym win never counted and `badges_earned` was 0 across every run ever.
+  Corrected to the decomp-derived badge-flag byte `SaveBlock1 + 0xFE4`
+  (`flags[]@0xEE0` + `FLAG_BADGE01_GET(0x820)>>3`), bit0=Boulder..bit7=Earth. Verified
+  on hardware; cross-checked against the known-good key-items offset. This is why the
+  agent looped at Pewter after beating Brock — the badge never registered (#101)
+
 ## [0.19.7]
 
 ### Fixed
