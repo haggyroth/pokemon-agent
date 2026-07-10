@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.4]
+
+### Added
+- feat: real tall-grass detection — `TilemapReader.metatile_behavior()` reads
+  `MapLayout → Tileset → metatileAttributes` (`MB_TALL_GRASS=0x02`), verified on
+  hardware (grass=0x2, path=0x0). `grind()` now routes the player onto the nearest
+  real grass tile and only paces while actually standing on grass, instead of
+  guessing the patch from the last encounter tile and drifting off it (#97)
+
 ## [0.19.3]
 
 ### Added
