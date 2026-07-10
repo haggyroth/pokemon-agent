@@ -786,14 +786,26 @@ class AgentClient:
                 return False
         return False
 
+    def _nearest_grass(self) -> tuple[int, int] | None:
+        """Closest tall-grass tile to the player on the current map (Manhattan), or
+        None if the map has no grass. Uses the metatile-behavior reader so grind can
+        route the player onto a real patch instead of guessing from encounters."""
+        self.tilemap.refresh()
+        tiles = self.tilemap.grass_tiles()
+        if not tiles:
+            return None
+        px, py = self.reader.read_player_pos()
+        return min(tiles, key=lambda t: abs(t[0] - px) + abs(t[1] - py))
+
     _GRIND_HP_FLOOR = 0.35
 
     def _grind(self, target_level: int) -> str:
         """Grind wild battles until the lead reaches target_level. Wanders the
         current area to trigger encounters and auto-fights each with the best
-        damaging move — the LLM doesn't drive each battle. Call while standing in
-        TALL GRASS (a route or Viridian Forest). Stops at the target level, when
-        the lead's HP gets low (heal, then grind again), or after a step budget."""
+        damaging move — the LLM doesn't drive each battle. Routes the player onto
+        tall grass first (real metatile detection), so it works even if called from
+        a path tile. Stops at the target level, when the lead's HP gets low (heal,
+        then grind again), or if the current map has no grass at all."""
         from game.state import GameContext
         party = self.reader.read_party()
         if not party:
@@ -802,9 +814,15 @@ class AgentClient:
         start = party[0].level
         if start >= target_level:
             return f"Lead is already L{start} (target L{target_level}) — no need to grind."
+
+        # No grass on this map ⇒ can't grind here. Tell the model to relocate.
+        if self._nearest_grass() is None:
+            return ("No tall grass on this map — grind only works in a grass patch. "
+                    "go_to a route with grass (e.g. 'Route 1'/'Route 2' or Viridian "
+                    f"Forest), then call grind({target_level}) again.")
+
         battles = 0
-        dry_steps = 0        # consecutive overworld steps with no encounter
-        last_grass = None    # tile an encounter last triggered on (= tall grass)
+        dry_steps = 0        # consecutive overworld steps not on grass / no encounter
         for _ in range(400):
             party = self.reader.read_party()
             if not party:
@@ -818,26 +836,29 @@ class AgentClient:
                         f"({party[0].hp_percent:.0%}). Call heal(), then grind({target_level}) again.")
             ctx = self.reader.detect_context()
             if ctx == GameContext.IN_BATTLE:
-                last_grass = self.reader.read_player_pos()   # standing on grass
                 self._auto_fight()
                 battles += 1
                 dry_steps = 0
             elif ctx == GameContext.OVERWORLD:
-                # Orbit the last grass tile so we farm the patch instead of drifting
-                # off it (there's no grass-vs-floor read, so the last encounter tile
-                # is our anchor).
-                if (last_grass is not None and dry_steps >= 4
-                        and self.reader.read_player_pos() != last_grass):
-                    self._walk_to(*last_grass)
-                else:
+                px, py = self.reader.read_player_pos()
+                if self.tilemap.is_tall_grass(px, py):
+                    # On grass — pace back and forth to trigger encounters.
                     self._wander_step()
-                dry_steps += 1
-                # Fail fast if we clearly aren't in an encounter zone — let the
-                # model reposition rather than pace an empty patch for ages.
-                if dry_steps >= 40 and battles == 0:
-                    return ("No wild battles here — you're not in tall grass. Walk "
-                            "into a TALL-GRASS patch (a route or Viridian Forest), "
-                            f"then call grind({target_level}) again.")
+                    dry_steps = 0
+                else:
+                    # Drifted off (or started off) grass — route back onto the patch.
+                    target = self._nearest_grass()
+                    if target is None:
+                        return ("Lost the grass patch and can't find another on this "
+                                f"map. go_to a grassy route, then grind({target_level}) again.")
+                    self._walk_to(*target)
+                    dry_steps += 1
+                    # A patch we can never actually stand on (walled off) — bail so
+                    # the model repositions rather than shuffling forever.
+                    if dry_steps >= 30 and battles == 0:
+                        return ("Couldn't reach tall grass from here. Walk into a "
+                                "grass patch yourself (or go_to a grassy route), then "
+                                f"call grind({target_level}) again.")
             else:
                 self.mgba.tap("A")        # advance a dialog/transition
                 self.mgba.tick()
