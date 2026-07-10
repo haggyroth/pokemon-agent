@@ -48,11 +48,11 @@ SCENARIOS: list[Scenario] = [
         start_save=DEFAULT_SAVE,
         notes="The gauntlet: Route 2 is split by Viridian Forest's gate buildings, "
               "so go_to must WARP through the forest rather than walk to the sealed "
-              "north edge. #59 fixed this with region-aware routing (verified: the "
-              "agent now enters the forest); a full Pallet→Pewter traversal wasn't "
-              "hardware-confirmed end-to-end, so this stays xfail until a run turns "
-              "it into an XPASS.",
-        xfail="#59",
+              "north edge. Solved end-to-end (#59 region routing + heal()/flee_battle "
+              "to survive and skip wild encounters): a full LLM run reached Pewter "
+              "(XPASS, steps=27, stuck=6%). Forest traversal is stochastic, so this "
+              "is a probabilistic pass — go_to-through-forest autonomy (#81) would "
+              "make it faster/more reliable.",
     ),
 ]
 

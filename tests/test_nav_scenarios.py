@@ -68,11 +68,11 @@ def test_go_to_viridian_from_pallet(runtime):
     assert cur == (3, 1), f"expected Viridian City (3,1), got {cur} — {msg}"
 
 
-@pytest.mark.xfail(reason="#59: region-aware routing now sends go_to through "
-                          "Viridian Forest (fixed); a full no-LLM traversal still "
-                          "usually skips on the forest's wild battles, so this stays "
-                          "xfail until it turns into an XPASS end-to-end",
+@pytest.mark.xfail(reason="the no-LLM drive helper can't fight/flee the forest's "
+                          "wild battles, so it usually skips; the full LLM eval "
+                          "(python -m evals -s reach_pewter) is what confirms Pewter "
+                          "is reachable end-to-end (it XPASSed)",
                    strict=False)
 def test_go_to_pewter_crosses_viridian_forest(runtime):
     cur, _msg = _drive_go_to(runtime, "Pewter City", tries=10)
-    assert cur == (3, 2), "reached Pewter City — #59 fix confirmed end-to-end!"
+    assert cur == (3, 2), "reached Pewter City"
