@@ -34,9 +34,20 @@ class PygameViewer:
 
     def render(self, buf) -> None:
         """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present.
-        No-op once the window has been closed (the run continues headless)."""
+        No-op once the window has been closed (the run continues headless).
+
+        `VIEWER_FPS` caps the DISPLAY refresh rate by frame-SKIPPING — if too little
+        wall-clock time has passed since the last actual draw, we skip this frame
+        entirely and return immediately. Crucially this does NOT sleep, so the
+        emulator keeps running at full speed (grind/battles run thousands of frames;
+        drawing every one throttled the whole run). fps=0 draws every frame."""
         if self._closed:
             return
+        if self.min_frame_dt > 0:
+            now = time.perf_counter()
+            if now - self._last < self.min_frame_dt:
+                return   # too soon to redraw — skip, don't slow the emulator
+            self._last = now
         pg = self._pg
         # Interpret the raw RGBX bytes as a surface. .convert() remaps it to the
         # display's native pixel format — without it, scaling straight into the
@@ -46,7 +57,6 @@ class PygameViewer:
         self.screen.blit(scaled, (0, 0))
         pg.display.flip()
         self._pump()
-        self._pace()
 
     def _pump(self) -> None:
         for event in self._pg.event.get():
@@ -58,15 +68,6 @@ class PygameViewer:
                 self.close()
                 self._closed = True
                 return
-
-    def _pace(self) -> None:
-        if self.min_frame_dt <= 0:
-            return
-        now = time.perf_counter()
-        wait = self.min_frame_dt - (now - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        self._last = time.perf_counter()
 
     def close(self) -> None:
         try:
