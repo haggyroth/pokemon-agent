@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.2]
+
+### Fixed
+- fix: the live viewer (`SHOW_WINDOW=true`) no longer throttles the run — `VIEWER_FPS`
+  now caps the display refresh by frame-skipping instead of pacing the emulator, so
+  the emulator runs full speed (grind/battles are thousands of frames) while the
+  window redraws at ~VIEWER_FPS. Watching a run is now roughly as fast as headless (#95)
+
 ## [0.19.1]
 
 ### Fixed
