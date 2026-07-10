@@ -37,6 +37,13 @@ def test_flee_refuses_trainer_battle():
     assert "trainer battle" in msg.lower()
 
 
+def test_handle_travel_battle_returns_on_trainer():
+    # A trainer battle mid-travel must stop go_to so the model fights it (can't flee).
+    c = _client(GameContext.IN_BATTLE, flags=Addr.BATTLE_TYPE_TRAINER)
+    msg = c._handle_travel_battle("Pewter City")
+    assert msg is not None and "trainer battle" in msg.lower()
+
+
 def test_action_cursor_constants():
     # RUN is index 3 in the FIGHT/BAG/POKEMON/RUN grid; cursor is the u8 adjacent
     # to the move cursor.
