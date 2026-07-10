@@ -139,17 +139,23 @@ PP rules:
 ## Decision Priority
 1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
 2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining.
-3. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
-4. **When your lead's HP is low (below ~40%) and you are NOT in a battle, call `heal()`.**
+3. **In a WILD battle you don't need, call `flee_battle()` to escape and keep moving** —
+   when you're just travelling through a route/forest/cave toward a destination, or
+   your HP is low and you'd rather not risk fainting. This is the fast way through
+   Viridian Forest and other wild areas: flee the encounters instead of fighting
+   every one. You CANNOT flee a TRAINER battle (win it or switch). Fight wild
+   battles only when you want the experience.
+4. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
+5. **When your lead's HP is low (below ~40%) and you are NOT in a battle, call `heal()`.**
    It travels to the nearest Pokémon Center and fully restores the whole party
    (and cures status) for you — do NOT try to drive the Bag or Pokémon Center
    menus by hand. If a wild battle interrupts the trip, deal with it, then call
    `heal()` again. Heal BEFORE pushing into a long area (a cave, a forest, a gym)
    if you're below full.
-5. save_state before every gym leader and every Elite Four member.
-6. After a loss: load_state and try a different strategy.
-7. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
-8. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
+6. save_state before every gym leader and every Elite Four member.
+7. After a loss: load_state and try a different strategy.
+8. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
+9. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
 
 ## Gen III Rule (critical)
 Damage category = move TYPE, not per-move:
