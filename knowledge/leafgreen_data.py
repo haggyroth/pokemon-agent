@@ -11,6 +11,22 @@ GYM_LEADER_APPROACH: dict[tuple[int, int], tuple[int, int]] = {
     (6, 2): (6, 6),   # Pewter Gym — Brock at (6,5); approach from directly below
 }
 
+# Gym-interior (map_bank, map_id) → Leader name. Lets the obs tell a gym you've
+# ALREADY beaten apart from one you still owe, so it stops nudging challenge_leader()
+# after a win (the agent looped in/out of Pewter Gym re-talking to Brock). Leader
+# strings match GYMS[*]["leader"] / long_term gyms_beaten. Map ids from the
+# pokefirered map_groups.json (same set as map_graph MAP_KIND == "gym").
+GYM_MAP_LEADER: dict[tuple[int, int], str] = {
+    (6, 2):  "Brock",      # Pewter City Gym
+    (7, 5):  "Misty",      # Cerulean City Gym
+    (9, 6):  "Lt. Surge",  # Vermilion City Gym
+    (10, 16): "Erika",     # Celadon City Gym
+    (11, 3): "Koga",       # Fuchsia City Gym
+    (14, 3): "Sabrina",    # Saffron City Gym
+    (12, 0): "Blaine",     # Cinnabar Island Gym
+    (5, 1):  "Giovanni",   # Viridian City Gym
+}
+
 # ── Gyms ──────────────────────────────────────────────────────────────────────
 # badge_bit: the bit index in the BADGES bitmask (0x02025968)
 # bit 0=Brock, 1=Misty, 2=Surge, 3=Erika, 4=Koga, 5=Sabrina, 6=Blaine, 7=Giovanni

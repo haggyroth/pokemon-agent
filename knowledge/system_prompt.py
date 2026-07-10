@@ -46,6 +46,17 @@ Towns visited: {', '.join(p['towns_visited']) or 'none'}
 {ms_block}
 Battles: {p['battles_won']} won / {p['battles_lost']} lost  |  Starter: {p['starter'] or 'not chosen yet'}
 
+## Advancing objectives — do NOT get stuck on a finished goal
+When you accomplish something, MOVE ON to the next objective in the Navigation
+section — don't repeat the thing you just finished.
+- **A Gym Leader you've already beaten (see "Gyms beaten" above) is DONE. Never
+  re-enter that gym or talk to that Leader again** — you already have the badge.
+  Leave the town and travel toward the NEXT gym/objective.
+- After earning a badge, the next objective and route appear in the Navigation
+  section (they update automatically from your badge count). Follow them.
+- If you catch yourself re-entering the same building or re-talking to the same
+  NPC with nothing changing, STOP: leave and `go_to` the next destination instead.
+
 {lessons}
 
 ## Navigation

@@ -12,7 +12,7 @@ from memory.long_term import LongTermMemory
 from memory.battle_journal import BattleJournal, BattleRecord
 from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
-from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, POKEMON_TYPES
+from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, GYM_MAP_LEADER, POKEMON_TYPES
 from knowledge.map_graph import MAP_KIND
 from game.constants import Addr
 from game.pathfinding import door_centers
@@ -572,14 +572,23 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                         obs_parts.append("WILD battle — you may flee_battle() to escape "
                                          "if you're just passing through or HP is low.")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
-            # Inside a gym: point the agent at the Leader. go_to is useless here —
-            # you have to WALK UP to them. Give the exact approach tile when known.
+            # Inside a gym: point the agent at the Leader — UNLESS this Leader is
+            # already beaten, in which case say so and tell it to leave (the agent
+            # looped in/out of Pewter Gym re-challenging Brock). go_to is useless
+            # here; you have to WALK UP to the Leader.
             if (not in_battle and state.context == GameContext.OVERWORLD
                     and MAP_KIND.get((state.map_bank, state.map_id)) == "gym"):
-                obs_parts.append(
-                    "GYM: to fight the Leader, call challenge_leader() — it walks up "
-                    "to them and starts the battle. (heal() and save_state first.) "
-                    "Do NOT use go_to inside a gym.")
+                gym_leader = GYM_MAP_LEADER.get((state.map_bank, state.map_id))
+                if gym_leader and gym_leader in ltm.data["gyms_beaten"]:
+                    obs_parts.append(
+                        f"GYM ALREADY BEATEN: you already defeated {gym_leader} here — "
+                        "do NOT challenge them again. LEAVE the gym (walk_to the exit "
+                        "door) and head to your NEXT objective in the Navigation section.")
+                else:
+                    obs_parts.append(
+                        "GYM: to fight the Leader, call challenge_leader() — it walks up "
+                        "to them and starts the battle. (heal() and save_state first.) "
+                        "Do NOT use go_to inside a gym.")
             if state.context == GameContext.OVERWORLD and tilemap.ready:
                 if tilemap._width and tilemap._height:
                     obs_parts.append(f"Map size: {tilemap._width}×{tilemap._height} "
