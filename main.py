@@ -545,6 +545,15 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     obs_parts.append(
                         f"⚠ Lead HP low ({lead.hp_percent:.0%}) — call heal() to "
                         f"restore the party at the nearest Pokémon Center")
+                # Under-levelled-for-Brock nudge: no badges yet and lead below the
+                # ~L13 Vine Whip breakpoint → grind before challenging the gym.
+                if (not in_battle and ltm.data["badges_earned"] == 0
+                        and lead.level and lead.level < 13
+                        and state.context == GameContext.OVERWORLD):
+                    obs_parts.append(
+                        f"⚠ Lead is L{lead.level} — under-levelled for Brock (want ~L13 "
+                        f"for Vine Whip). GRIND wild Pokémon (fight with use_move, don't "
+                        f"flee) to level up before the Pewter Gym")
                 if in_battle:
                     move_names = [m for m in lead.move_names if m]
                     lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
