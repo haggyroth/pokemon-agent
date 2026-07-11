@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.22.0]
+
+### Added
+- feat: status-aware battle observation — shows the opponent's status
+  ("Opponent: CATERPIE [Bug] — ASLEEP"), flags status-inflicting moves as
+  "WON'T STICK (already statused)", and steers to a damaging move when the foe
+  already has a major status (fixes the Sleep Powder spam loop). New
+  `STATUS_INFLICTING_MOVES`; prompt says use one status move at most.
+- feat: `tools/reset_journal.py` — resets `progress.json` to the battery save's
+  pre-game state (keeping starter/parcel) and clears `battles.jsonl`, so the
+  journal can't drift ahead of the cartridge save (startup reconcile only adds badges).
+
+### Fixed
+- fix: Leech Seed (and other over-time moves) are no longer ranked as the "Best
+  move" — they deal no direct damage (added to `STATUS_MOVES`) (#106)
+
 ## [0.21.0]
 
 ### Added
