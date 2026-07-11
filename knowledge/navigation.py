@@ -221,7 +221,7 @@ ROUTE_GUIDE: dict[tuple[int, int], dict[str, str]] = {
         "pre_brock": "Navigate NORTH through the maze. Fight bug trainers for easy XP. Catch a Pikachu if you see one (rare). Exit at the north gate onto Route 2 north → Pewter.",
     },
     (3, 2): {  # Pewter City
-        "pre_brock":             "Gym is NORTH-WEST (gray building with spikes). Brock uses Geodude L12 and Onix L14 — Vine Whip 2HKOs both. Heal at the Pokemon Center (SE) and stock Potions at the Mart before entering.",
+        "pre_brock":             "Gym is NORTH-WEST (gray building with spikes). Brock uses Geodude L12 and Onix L14 — Vine Whip 2HKOs both. Heal at the Pokemon Center (SE) and stock Potions at the Mart before entering. NOTE: the EAST exit to Route 3 is BLOCKED by a guard until you beat Brock — don't try to leave east yet; beat Brock first.",
         "post_brock_heading_east": "Exit Pewter EAST through the gate onto Route 3. Mt. Moon is at the east end of Route 3.",
     },
     (3, 21): {  # Route 3

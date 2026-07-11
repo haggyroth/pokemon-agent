@@ -284,13 +284,21 @@ def build_runtime(*, backend: str = MGBA_BACKEND,
         f"Milestones: {len(ltm.data['milestones'])}")
 
     # ── Startup badge reconciliation ─────────────────────────────────────────
-    # Fold any badges RAM shows into LTM (monotonic mirror for reward/milestone
-    # tracking; never un-earned). Read via the RELOCATION-SAFE reader.read_badges()
-    # — NOT the fixed Addr.BADGES, which drifts off the badge byte after a DMA
-    # relocation and would fabricate phantom badges into LTM.
-    _adopted = ltm.reconcile_badges_from_ram(reader.read_badges()[1])
-    if _adopted:
-        say(f"[yellow]Adopted badges from game save into LTM: {', '.join(_adopted)}[/]")
+    # Sync LTM to EXACTLY match the loaded cartridge's badges (the ground truth for
+    # this run) — adopting any the save has AND dropping any the journal claims but
+    # the save doesn't. A journal left ahead of the save (e.g. testing an older save,
+    # or an in-memory gym win that never hit the cartridge) otherwise deadlocks the
+    # agent: it thinks a gym is beaten, heads on, and the game's guard NPC marches it
+    # back. Read via the RELOCATION-SAFE reader.read_badges() (NOT the fixed
+    # Addr.BADGES). Mid-session stays monotonic so a load_state retry can't un-earn.
+    _sync = ltm.reconcile_badges_authoritative(reader.read_badges()[1])
+    if _sync["dropped"]:
+        say(f"[red bold]⚠ Journal was AHEAD of the save — dropped "
+            f"{', '.join(_sync['dropped'])} to match the cartridge "
+            f"(badges now {ltm.data['badges_earned']}/8). "
+            f"Use `python -m tools.reset_journal` for a full reset.[/]")
+    if _sync["adopted"]:
+        say(f"[yellow]Adopted from the save into LTM: {', '.join(_sync['adopted'])}[/]")
 
     return AgentRuntime(mgba=mgba, reader=reader, client=client, ltm=ltm,
                         stm=stm, journal=journal, reward=reward, tilemap=tilemap)
