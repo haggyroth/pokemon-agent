@@ -13,6 +13,7 @@ from memory.battle_journal import BattleJournal, BattleRecord
 from knowledge.system_prompt import build_system_prompt
 from knowledge.navigation import get_travel_direction, DIRECTION_BUTTON, MAP_NAMES, infer_building_type
 from knowledge.leafgreen_data import BADGE_BIT_MILESTONE, GYMS, GYM_MAP_LEADER, POKEMON_TYPES
+from knowledge.shopping import shopping_summary
 from knowledge.map_graph import MAP_KIND
 from game.constants import Addr
 from game.pathfinding import door_centers
@@ -572,6 +573,21 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                         obs_parts.append("WILD battle — you may flee_battle() to escape "
                                          "if you're just passing through or HP is low.")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
+            # Money + key consumables (for heal/catch/shopping decisions). Cheap
+            # reads; only meaningful outside battle transitions.
+            if not in_battle and state.context in (GameContext.OVERWORLD, GameContext.IN_MENU):
+                money = reader.read_money()
+                bag = reader.read_bag()
+                balls = sum(bag.get(b, 0) for b in (1, 2, 3, 4))   # any Poké Ball type
+                potions = sum(bag.get(p, 0) for p in (13, 22, 21, 20, 19))
+                obs_parts.append(
+                    f"Bag: ¥{money} | Poké Balls: {balls} | Potions/heals: {potions}")
+                # At a Mart: recommend a badge-gated, par-level restock the agent can afford.
+                if MAP_KIND.get((state.map_bank, state.map_id)) == "mart":
+                    rec = shopping_summary(bag, ltm.data["badges_earned"], money)
+                    if rec:
+                        obs_parts.append(
+                            "MART — " + rec + ". Talk to the clerk (walk up + A) and buy these.")
             # Inside a gym: point the agent at the Leader — UNLESS this Leader is
             # already beaten, in which case say so and tell it to leave (the agent
             # looped in/out of Pewter Gym re-challenging Brock). go_to is useless
