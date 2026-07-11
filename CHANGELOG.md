@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.21.0]
+
+### Added
+- feat: `catch()` skill — throws a Poké Ball at a wild Pokémon deterministically
+  (opens the battle Bag, switches to the Balls pocket, throws, reports the outcome).
+  Reliability came from driving the bag across the turn-varying action-menu handler,
+  a self-verifying throw (press A until a ball is consumed), and resolving via
+  `gBattleOutcome` (`0x02023E8A`, =7 CAUGHT) rather than the laggy party count.
+  Stress-verified live (3 caught / 2 broke free / 0 stranded). The obs flags a NEW
+  SPECIES worth catching; weaken first for a better rate; buy balls with `shop()`.
+  Completes the Shopping→Catching workstream (#105)
+
 ## [0.20.1]
 
 ### Added
