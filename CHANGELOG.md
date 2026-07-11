@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.20.1]
+
+### Added
+- feat: deterministic `shop()` skill — travels to a Poké Mart, talks to the clerk,
+  and buys the badge-gated par-level restock automatically (no model menu-driving).
+  Driven through `sShopData` (`0x02039934`): navigates the item list via
+  `itemList[scrollOffset+selectedRow]`, dials quantity by watching `itemPrice`, and
+  confirms each purchase by the bag count rising, retrying through fade/text drops.
+  Verified live at Viridian Mart (5 Balls + 6 Potions + 2 Antidotes, ¥3000) (#104)
+
 ## [0.20.0]
 
 ### Added
