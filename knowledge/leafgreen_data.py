@@ -204,6 +204,18 @@ STATUS_MOVES: frozenset[str] = frozenset({
     "Tickle", "Cosmic Power", "Bulk Up", "Calm Mind", "Dragon Dance",
     "Follow Me", "Helping Hand", "Yawn", "Odor Sleuth", "Foresight",
     "Psych Up", "Splash", "String Shot", "Poison Powder", "Sand Attack",
+    # Non-damaging on use (drains/seeds/traps over time) — not a "best damage" pick.
+    "Leech Seed", "Ingrain", "Curse", "Pain Split",
+})
+
+# Moves that inflict a MAJOR status condition (sleep / poison / paralysis / burn).
+# A Pokémon can only carry ONE major status at a time, so using any of these on a
+# target that's already statused just WASTES the turn (the agent spammed Sleep
+# Powder on an already-asleep foe). Subset of STATUS_MOVES; used by the battle obs.
+STATUS_INFLICTING_MOVES: frozenset[str] = frozenset({
+    "Sleep Powder", "Spore", "Hypnosis", "Sing", "Lovely Kiss", "Grass Whistle",
+    "Yawn", "Poison Powder", "Poison Gas", "Toxic", "Thunder Wave", "Stun Spore",
+    "Glare", "Will-O-Wisp",
 })
 
 # Gen III base powers for damaging moves (used to rank the "Best move" hint by

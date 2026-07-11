@@ -47,3 +47,26 @@ def test_all_status_moves_gives_no_best_move():
 def test_low_hp_warning_still_present():
     out = battle_summary(["Tackle"], "RATTATA", 0.2, pp_list=[35])
     assert "consider healing" in out
+
+
+def test_already_statused_opponent_warns_off_status_move():
+    # Opponent asleep → status moves must be flagged and the model steered to attack.
+    out = battle_summary(["Sleep Powder", "Vine Whip"], "CATERPIE", 0.9,
+                         pp_list=[10, 20], opponent_status="asleep (2 turns)")
+    assert "ASLEEP" in out
+    assert "WON'T STICK" in out                 # Sleep Powder flagged in the move list
+    assert "do NOT use a status move" in out
+    assert "Vine Whip" in out                   # steered to the damaging move
+
+
+def test_healthy_opponent_no_status_warning():
+    out = battle_summary(["Sleep Powder", "Vine Whip"], "CATERPIE", 0.9,
+                         pp_list=[10, 20], opponent_status="healthy")
+    assert "WON'T STICK" not in out
+    assert "already" not in out.lower()
+
+
+def test_leech_seed_not_recommended_as_best_damage():
+    # Leech Seed deals no direct damage — must never be the "Best move" pick.
+    out = battle_summary(["Leech Seed", "Vine Whip"], "RATTATA", 1.0, pp_list=[10, 20])
+    assert "Best move: Vine Whip" in out

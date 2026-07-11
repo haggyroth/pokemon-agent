@@ -559,11 +559,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                 if in_battle:
                     move_names = [m for m in lead.move_names if m]
                     lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
+                    enemy = reader.read_enemy_lead()
                     bsummary = battle_summary(move_names, current_enemy,
                                               lead.hp_percent, lead.pp,
-                                              attacker_types=lead_types)
+                                              attacker_types=lead_types,
+                                              opponent_status=enemy.status if enemy else "")
                     obs_parts.append(bsummary)
-                    enemy = reader.read_enemy_lead()
                     if enemy:
                         obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
                     # Tell the model whether it can flee (wild) or must fight (trainer).
