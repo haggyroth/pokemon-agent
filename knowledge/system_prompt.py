@@ -152,7 +152,7 @@ PP rules:
 
 ## Decision Priority
 1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
-2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining.
+2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining. A status move (Sleep Powder, Poison Powder, Thunder Wave, Growl, …) deals NO damage — use ONE at most, and NEVER a status move when the opponent already shows a status (the obs flags "already ASLEEP/POISONED…" and "WON'T STICK"); attack instead. Don't win by chip damage (Leech Seed/Growl) when a strong attack is available.
 3. **In a WILD battle you don't need, call `flee_battle()` to escape and keep moving** —
    when you're just travelling through a route/forest/cave toward a destination, or
    your HP is low and you'd rather not risk fainting. This is the fast way through
