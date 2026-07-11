@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.23.0]
+
+### Added
+- feat: move-forget decision policy (`knowledge/movelearn.py`) — decides which move
+  to forget on a level-up, never dropping the last damaging move and never stacking a
+  second status move (correctly declines Poison/Sleep Powder for Bulbasaur, keeping
+  Tackle). Plus `Addr.MOVE_TO_LEARN` (`0x02024022`, derived+verified). The
+  foundation for the deterministic in-battle move-learn handler (follow-up: the
+  decline press is timing-sensitive on back-to-back same-level prompts) (#109)
+
 ## [0.22.2]
 
 ### Fixed
