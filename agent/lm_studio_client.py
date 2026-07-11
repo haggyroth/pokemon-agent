@@ -895,6 +895,19 @@ class AgentClient:
             waiter()
         self.mgba.hold(button, 20)
 
+    def _battle_truly_over(self) -> bool:
+        """Distinguish a real battle end from a transient non-IN_BATTLE state — a Gym
+        Leader's fainted Pokémon being replaced by its next one briefly reads as a
+        menu/transition. gBattleOutcome is 0 all through a battle (including send-outs)
+        and non-zero only at the true end; OVERWORLD also means it's over. (Without
+        this, use_move declared victory after only Brock's Geodude, so the agent left
+        the gym at 0 badges and got stuck at the Pewter guard.)"""
+        from game.constants import Addr
+        from game.state import GameContext
+        if self.reader.detect_context() == GameContext.OVERWORLD:
+            return True
+        return self.mgba.read8(Addr.BATTLE_OUTCOME) != 0
+
     def _use_move(self, name: str) -> str:
         """Use a move by name in battle, deterministically.
 
@@ -922,7 +935,12 @@ class AgentClient:
 
         for _ in range(20):
             if self.reader.detect_context() != GameContext.IN_BATTLE:
-                return "Battle is over."
+                if self._battle_truly_over():
+                    return "Battle is over."
+                # Transient (a fainted foe being replaced by the Leader's next
+                # Pokémon reads as a brief menu/transition) — advance, don't bail.
+                self._battle_press("A")
+                continue
             if hasattr(self.mgba, "wait_until_idle"):
                 self.mgba.wait_until_idle()
             if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) != Addr.CTRL_CHOOSE_MOVE:
@@ -933,13 +951,13 @@ class AgentClient:
             self.mgba.write8(Addr.MOVE_CURSOR, slot)
             self.mgba.hold("A", 20)       # A edge → commits gMoveSelectionCursor
             # Let the turn resolve — advance result text until OUR move's PP drops,
-            # the battle ends, or the next action menu appears.
+            # the battle truly ends, or the next action menu appears.
             for _ in range(24):
                 after = self.reader.read_party()
-                if not after or self.reader.detect_context() != GameContext.IN_BATTLE:
+                if after and after[0].pp[slot] < pp_before:
+                    return f"Used {move_label}."          # our move landed
+                if self.reader.detect_context() != GameContext.IN_BATTLE and self._battle_truly_over():
                     return f"Used {move_label} (battle ended)."
-                if after[0].pp[slot] < pp_before:
-                    return f"Used {move_label}."
                 if hasattr(self.mgba, "wait_until_idle"):
                     self.mgba.wait_until_idle()
                 self.mgba.hold("A", 18)
