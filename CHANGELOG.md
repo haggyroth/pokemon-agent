@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.22.2]
+
+### Fixed
+- fix: startup badge reconciliation is now authoritative to the cartridge — it drops
+  badges the journal claims but the save doesn't have (with a warning), not just adds.
+  A journal left ahead of the save deadlocked the agent (it thought a gym was beaten,
+  headed on, and the Pewter guard NPC marched it back) — this was the real cause of the
+  "city-edge loop". Mid-session stays monotonic so a load_state retry can't un-earn.
+  Pewter guidance notes the east exit is guarded until Brock is beaten (#108)
+
 ## [0.22.1]
 
 ### Fixed
