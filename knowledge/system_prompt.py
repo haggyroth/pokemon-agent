@@ -159,21 +159,26 @@ PP rules:
    Viridian Forest and other wild areas: flee the encounters instead of fighting
    every one. You CANNOT flee a TRAINER battle (win it or switch). Fight wild
    battles only when you want the experience.
-4. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
-5. **When your lead's HP is low (below ~40%) and you are NOT in a battle, call `heal()`.**
+4. **To CATCH a wild Pokémon that would help your team, call `catch()`** — it throws
+   a Poké Ball for you. Do it for a NEW species you don't own yet (the observation
+   flags these). Weaken the foe first with `use_move` (low HP — or a status like
+   sleep/paralysis — greatly raises the rate); it may break free, so `catch()` again.
+   You need Poké Balls (buy them with `shop()`). You can't catch a trainer's Pokémon.
+5. Switch if the opponent has a 2× type advantage on your lead and you have a better counter.
+6. **When your lead's HP is low (below ~40%) and you are NOT in a battle, call `heal()`.**
    It travels to the nearest Pokémon Center and fully restores the whole party
    (and cures status) for you — do NOT try to drive the Bag or Pokémon Center
    menus by hand. If a wild battle interrupts the trip, deal with it, then call
    `heal()` again. Heal BEFORE pushing into a long area (a cave, a forest, a gym)
    if you're below full.
-6. **Keep supplies stocked: call `shop()` at a town with a Poké Mart when the "Bag:"
+7. **Keep supplies stocked: call `shop()` at a town with a Poké Mart when the "Bag:"
    line shows you're low on Poké Balls or Potions** (and you're not mid-dungeon). It
    travels to the Mart and buys the right items for your badge count automatically —
    you don't drive the shop menu. Do this before a gym or a long route.
-7. save_state before every gym leader and every Elite Four member.
-8. After a loss: load_state and try a different strategy.
-9. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
-10. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
+8. save_state before every gym leader and every Elite Four member.
+9. After a loss: load_state and try a different strategy.
+10. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
+11. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
 
 ## Preparing for a Gym — level up first if you're weak
 A Gym Leader will beat an under-levelled team. BEFORE challenging one, make sure

@@ -26,7 +26,17 @@ class Addr:
     # the FIGHT/BAG/POKEMON/RUN action menu is open (both live-verified).
     BATTLE_CTRL_FUNC   = 0x03004FE0
     CTRL_CHOOSE_MOVE   = 0x0802EA11   # HandleInputChooseMove — move menu is up
-    CTRL_CHOOSE_ACTION = 0x08030611   # HandleInputChooseAction — action menu is up
+    CTRL_CHOOSE_ACTION = 0x08030611   # HandleInputChooseAction — action menu (turn 1)
+    # The action-menu controller value VARIES by turn: 0x08030611 on the first
+    # action, 0x0802E439 on later turns (live-verified). Both mean "the FIGHT/BAG/
+    # POKEMON/RUN menu is up and waiting for input".
+    CTRL_CHOOSE_ACTION_ALT = 0x0802E439
+    # gBattleOutcome (u8) — 0 during battle, set at the end: 1=WON, 4=RAN(fled),
+    # 6=enemy fled, 7=CAUGHT. Derived + verified live (0 in-battle, 4 after flee).
+    # The definitive "was it caught?" signal (party count lags; action-menu value
+    # varies), used by catch().
+    BATTLE_OUTCOME     = 0x02023E8A
+    B_OUTCOME_CAUGHT   = 7
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
