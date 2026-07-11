@@ -292,17 +292,26 @@ class AgentClient:
                 self.mgba.tick(15)
                 continue
             if (px, py) == (tx, ty):
-                # On a door/stairs tile, stepping onto it isn't enough — you have
-                # to step through. Nudge each direction until the map changes.
+                # On a door/stairs tile, stepping onto it isn't enough — you have to
+                # step through (usually Down, the exit direction). Nudge each way, but
+                # WAIT for the warp: it starts a screen fade and the map changes ~30
+                # frames later, so checking immediately abandons an in-progress warp
+                # (which left the agent needing a second go_to to leave a Poké Center).
                 if (tx, ty) in warps:
                     for mv in ("Down", "Left", "Right", "Up"):
                         self.mgba.tap(mv)
-                        if self.reader.read_current_map() != start_map:
-                            nb, ni = self.reader.read_current_map()
-                            return f"Exited through ({tx},{ty}) to map {nb}/{ni} at {self.reader.read_player_pos()}."
-                        # if the nudge moved us off the warp, walk back and retry
-                        if self.reader.read_player_pos() != (tx, ty):
-                            break
+                        warped = False
+                        for _ in range(12):
+                            self.mgba.tick(6)
+                            if self.reader.read_current_map() != start_map:
+                                nb, ni = self.reader.read_current_map()
+                                return (f"Exited through ({tx},{ty}) to map {nb}/{ni} "
+                                        f"at {self.reader.read_player_pos()}.")
+                            if self.reader.read_player_pos() != (tx, ty):
+                                warped = True   # nudged off the warp — wrong direction
+                                break
+                        if warped:
+                            break   # got nudged off; replan back onto the warp
                     else:
                         return f"Arrived at ({tx},{ty})."
                     continue   # got nudged off the warp; replan back onto it
@@ -525,7 +534,7 @@ class AgentClient:
             if kind_step == "connection":
                 res = self._go_to_map(arg)
             else:   # warp: walk onto the door/stairs tile (walk_to steps through)
-                res = self._walk_to(arg[0], arg[1])
+                res = self._walk_to(*self._warp_exit_tile(arg))
 
             # Handle a battle that interrupted this hop.
             if self.reader.detect_context() == GameContext.IN_BATTLE:
@@ -547,6 +556,26 @@ class AgentClient:
                         f"It may need something first (a cave/HM), or try again.")
         here = MAP_NAMES.get(self.reader.read_current_map(), "?")
         return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
+
+    def _warp_exit_tile(self, warp: tuple[int, int]) -> tuple[int, int]:
+        """Snap a routed warp tile to the DOOR CENTER of its doormat. A door spans
+        several adjacent warp tiles but usually only the middle one actually warps —
+        the map graph may list a side tile (the Poké Center exit lists (6,8) but only
+        (7,8) warps), which walk_to can reach but never triggers, stalling forever.
+        Returns the nearest door-center in the same cluster, or the tile unchanged."""
+        from game.pathfinding import door_centers
+        try:
+            self.tilemap.refresh()
+            centers = door_centers(self.tilemap.read_warps())
+        except Exception:
+            return warp
+        if not centers:
+            return warp
+        wx, wy = warp
+        cx, cy = min(centers, key=lambda c: max(abs(c[0] - wx), abs(c[1] - wy)))
+        # Only snap within the same doormat cluster (Chebyshev ≤ 1); otherwise the
+        # graph tile is a standalone warp we should target directly.
+        return (cx, cy) if max(abs(cx - wx), abs(cy - wy)) <= 1 else warp
 
     def _challenge_leader(self) -> str:
         """Start the fight with the current gym's Leader. Walks to the tile below
