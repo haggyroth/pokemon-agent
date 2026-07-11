@@ -37,6 +37,12 @@ class Addr:
     # varies), used by catch().
     BATTLE_OUTCOME     = 0x02023E8A
     B_OUTCOME_CAUGHT   = 7
+    # gMoveToLearn (u16) — the move the game is offering the lead on a level-up, set
+    # while the "Delete a move to make room?" prompt is up. Derived + verified live
+    # (=77 Poison Powder at Bulbasaur's L15 prompt). Stale between prompts (holds the
+    # last learned move), so treat it as a real prompt only when it's a valid move id
+    # the lead does NOT already know. 0 handling is caller-side.
+    MOVE_TO_LEARN      = 0x02024022
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
