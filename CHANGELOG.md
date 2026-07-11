@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.22.1]
+
+### Fixed
+- fix: Poké Center / building exit stall — `go_to` out of a Center looped forever
+  ("stuck at (5,4)"). The exit doormat spans 3 warp tiles but only the center warps;
+  routing picked a side tile. Now warp hops snap to the door-center, and `walk_to`'s
+  warp-nudge waits for the fade to complete (it was abandoning the in-progress warp).
+  Verified: heal → route → Center → route all complete in one call each (#107)
+
 ## [0.22.0]
 
 ### Added
