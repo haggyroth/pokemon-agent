@@ -404,6 +404,11 @@ class AgentClient:
         px, py = self.reader.read_player_pos()
         cur = node_for(bank, mid, px, py)
         kind = self._waypoint_kind(dest)
+        if kind == "gym":
+            # Story-aware: the "gym" waypoint means the NEXT gym you owe, not the
+            # nearest one. Nearest routed the agent back into a just-beaten gym, or
+            # to Viridian's gym (locked until 7 badges), instead of onward (#92).
+            return self._resolve_next_gym()
         if kind:
             found = nearest_of_kind(cur, kind)
             if not found:
@@ -417,6 +422,22 @@ class AgentClient:
         exact = [(k, v) for k, v in matches if v.lower() == dest]
         target_map, target_name = (exact or matches)[0]
         return target_map, target_name
+
+    def _resolve_next_gym(self):
+        """Resolve the 'gym' waypoint to the next gym the agent still owes — the
+        first GYMS entry whose Leader isn't in gyms_beaten — routing to that gym's
+        interior map. Story order (Brock→Misty→…→Giovanni) means Viridian's
+        gym (locked until 7 badges) is never picked until it's actually next."""
+        from knowledge.leafgreen_data import GYMS, GYM_MAP_LEADER
+        beaten = set(self.ltm.data.get("gyms_beaten", []))
+        nxt = next((g for g in GYMS if g["leader"] not in beaten), None)
+        if nxt is None:
+            return None, "All 8 Gym Leaders beaten — head to the Pokémon League (Route 22/23)."
+        gym_map = next((m for m, leader in GYM_MAP_LEADER.items()
+                        if leader == nxt["leader"]), None)
+        if gym_map is None:
+            return None, f"Don't know the map for {nxt['leader']}'s gym yet."
+        return gym_map, f"{nxt['city']} Gym ({nxt['leader']})"
 
     # Below this lead-HP fraction, go_to stops travelling after a battle so the
     # model can heal() before walking into more wild grass (avoids a spiral to a
