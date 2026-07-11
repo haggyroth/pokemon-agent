@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.20.0]
+
+### Added
+- feat: shopping foundation — the agent reads its money and consumable inventory
+  (`read_money`/`read_bag`, decrypting FRLG's XOR-obfuscated money + item quantities
+  via `gSaveBlock2->encryptionKey`) and a badge-gated purchase policy
+  (`knowledge/shopping.py`) with par levels: Poké→Great(≥3)→Ultra(≥5) balls,
+  Potion→Super(≥3)→Hyper(≥5), status cures→Full Heal(≥4), Revive(≥4). The obs now
+  shows money/balls/potions and, at a Mart, an affordable restock recommendation.
+  Deterministic `buy` skill + wild-catching land next (#103)
+
 ## [0.19.9]
 
 ### Fixed
