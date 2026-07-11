@@ -59,3 +59,38 @@ def test_reconcile_persists(monkeypatch, tmp_path):
     reloaded = lt.LongTermMemory()
     assert reloaded.data["badges_earned"] == 1
     assert "Brock" in reloaded.data["gyms_beaten"]
+
+
+# ── Authoritative startup sync (journal must not get ahead of the cartridge) ──
+
+def test_authoritative_drops_badges_the_save_lacks(monkeypatch, tmp_path):
+    ltm = make_ltm(monkeypatch, tmp_path)
+    # Journal claims Brock beaten (from a prior run) ...
+    ltm.data["gyms_beaten"] = ["Brock"]
+    ltm.data["badges_earned"] = 1
+    ltm.data["milestones"] = ["starter_chosen", "beat_brock"]
+    # ... but the loaded cartridge has 0 badges.
+    res = ltm.reconcile_badges_authoritative(0)
+    assert ltm.data["badges_earned"] == 0
+    assert ltm.data["gyms_beaten"] == []
+    assert "beat_brock" not in ltm.data["milestones"]
+    assert "starter_chosen" in ltm.data["milestones"]   # non-gym milestone kept
+    assert "Brock" in res["dropped"] and "beat_brock" in res["dropped"]
+
+
+def test_authoritative_adopts_and_reports(monkeypatch, tmp_path):
+    ltm = make_ltm(monkeypatch, tmp_path)
+    res = ltm.reconcile_badges_authoritative(0b1)   # save has Boulder
+    assert ltm.data["badges_earned"] == 1
+    assert "Brock" in ltm.data["gyms_beaten"]
+    assert "Brock" in res["adopted"]
+
+
+def test_authoritative_noop_when_in_sync(monkeypatch, tmp_path):
+    ltm = make_ltm(monkeypatch, tmp_path)
+    ltm.data["gyms_beaten"] = ["Brock"]
+    ltm.data["badges_earned"] = 1
+    ltm.data["milestones"] = ["beat_brock"]
+    res = ltm.reconcile_badges_authoritative(0b1)
+    assert res == {"adopted": [], "dropped": []}
+    assert ltm.data["badges_earned"] == 1

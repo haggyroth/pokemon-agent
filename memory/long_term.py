@@ -101,6 +101,48 @@ class LongTermMemory:
             self.save()
         return adopted
 
+    def reconcile_badges_authoritative(self, badge_bits: int) -> dict:
+        """Sync LTM's badge state to EXACTLY match the live save's bitmask — adopting
+        badges the save has that LTM is missing AND dropping any LTM claims that the
+        save does NOT back up. Use ONLY at STARTUP: a journal from a prior run can get
+        ahead of the cartridge you're now testing with, and the agent then deadlocks
+        (it thinks a gym is beaten, heads for the next town, but the game's guard NPC
+        blocks it and marches it back to the un-beaten gym). Non-gym milestones
+        (starter_chosen, …) are untouched. Returns {'adopted': [...], 'dropped': [...]}.
+
+        Mid-session, keep using the monotonic reconcile_badges_from_ram so a
+        load_state() retry (RAM regresses) never un-earns a real badge.
+        """
+        from knowledge.leafgreen_data import badges_in_bitmask, BADGE_BIT_MILESTONE
+        live = badges_in_bitmask(badge_bits)
+        live_leaders = [leader for _b, leader, _m in live if leader]
+        live_milestones = {m for _b, _l, m in live if m}
+        gym_milestones = set(BADGE_BIT_MILESTONE.values())
+
+        adopted: list[str] = []
+        dropped: list[str] = []
+        # Drop gym progress the cartridge doesn't back up.
+        for leader in list(self.data["gyms_beaten"]):
+            if leader not in live_leaders:
+                self.data["gyms_beaten"].remove(leader)
+                dropped.append(leader)
+        for ms in list(self.data["milestones"]):
+            if ms in gym_milestones and ms not in live_milestones:
+                self.data["milestones"].remove(ms)
+                dropped.append(ms)
+        # Adopt anything the cartridge has that we're missing.
+        for _b, leader, ms in live:
+            if leader and leader not in self.data["gyms_beaten"]:
+                self.data["gyms_beaten"].append(leader)
+                adopted.append(leader)
+            if ms and ms not in self.data["milestones"]:
+                self.data["milestones"].append(ms)
+                adopted.append(ms)
+        self.data["badges_earned"] = len(self.data["gyms_beaten"])
+        if adopted or dropped:
+            self.save()
+        return {"adopted": adopted, "dropped": dropped}
+
     def add_milestone(self, name: str, note: str = "") -> bool:
         if name in self.data["milestones"]:
             return False

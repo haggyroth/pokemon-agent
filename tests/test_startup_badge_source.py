@@ -11,14 +11,19 @@ from pathlib import Path
 MAIN = Path(__file__).resolve().parent.parent / "main.py"
 
 
+# Either startup reconciler is acceptable — both must be fed from the relocation-safe
+# reader, never the fixed Addr.BADGES.
+_RECONCILE_METHODS = {"reconcile_badges_from_ram", "reconcile_badges_authoritative"}
+
+
 def _reconcile_call() -> ast.Call:
     tree = ast.parse(MAIN.read_text())
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "reconcile_badges_from_ram"):
+                and node.func.attr in _RECONCILE_METHODS):
             return node
-    raise AssertionError("no reconcile_badges_from_ram() call found in main.py")
+    raise AssertionError("no startup badge-reconcile call found in main.py")
 
 
 def test_reconcile_is_fed_from_reader_read_badges():
