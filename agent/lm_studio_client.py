@@ -944,6 +944,139 @@ class AgentClient:
         return ("Couldn't get away (the escape failed or the foe is faster) — "
                 "try flee_battle again, or use_move to fight.")
 
+    # ── Catching ──────────────────────────────────────────────────────────────
+    def _ball_count(self) -> int:
+        bag = self.reader.read_bag()
+        return sum(bag.get(b, 0) for b in (1, 2, 3, 4))   # Master/Ultra/Great/Poké
+
+    def _battle_bag_open(self) -> bool:
+        """True only when the in-battle Bag is actually up: the main callback has left
+        CB2_BATTLE (so it's not mid-turn) AND gBagMenuState.location ==
+        ITEMMENULOCATION_BATTLE(5). (bagOpen reads 0 while open, so it's unusable.)"""
+        from game.constants import Addr
+        return (self.mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_BATTLE
+                and self.mgba.read8(Addr.BAG_MENU_STATE + Addr.BAG_LOCATION_OFF) == 5)
+
+    def _open_battle_bag(self) -> bool:
+        """Open the Bag from a battle by selecting BAG (action cursor = 1), the same
+        write-cursor+A method flee_battle uses for RUN. The bag hands off across a
+        controller handshake; confirm it's really up via gBagMenuState, not just a
+        callback change."""
+        from game.constants import Addr
+        from game.state import GameContext
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        for _ in range(30):
+            if self._battle_bag_open():
+                return True
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                return False                 # battle ended out from under us
+            if idle:
+                idle()
+            # The action-menu controller value VARIES by turn (0x08030611 on turn 1,
+            # 0x0802e439 later), so don't gate on it. Instead: if the MOVE menu is up,
+            # back out with B (never attack); otherwise write the BAG cursor and press
+            # A — at the action menu that opens the bag, and on intro/result text it
+            # just advances (the cursor write is ignored there).
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) == Addr.CTRL_CHOOSE_MOVE:
+                self._battle_press("B")
+            else:
+                self.mgba.write8(Addr.ACTION_CURSOR, Addr.ACTION_BAG)
+                self.mgba.hold("A", 20)
+            self.mgba.tick(6)
+        return self._battle_bag_open()
+
+    def _catch(self) -> str:
+        """Throw a Poké Ball at the wild Pokémon. Opens the Bag, switches to the Poké
+        Balls pocket (via gBagMenuState.pocket), throws the top ball, and reports the
+        outcome (caught / broke free). Weaken the foe with use_move first for a better
+        rate. Can't catch trainer battles."""
+        from game.constants import Addr
+        from game.state import GameContext
+        if self.reader.detect_context() != GameContext.IN_BATTLE:
+            return "Not in a battle — you can only catch a wild Pokémon during its battle."
+        if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
+            return "You can't catch a trainer's Pokémon — only wild ones. Win with use_move."
+        balls0 = self._ball_count()
+        if balls0 <= 0:
+            return "No Poké Balls — buy some at a Mart with shop(), then catch."
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        if not self._open_battle_bag():
+            return "Couldn't open the Bag in battle — try catch again."
+        if idle:
+            idle()
+        self.mgba.tick(12)
+        # Switch to the Poké Balls pocket (Right cycles Items→Key Items→Balls).
+        SD = Addr.BAG_MENU_STATE
+        for _ in range(8):
+            if self.mgba.read16(SD + Addr.BAG_POCKET_OFF) == Addr.BAG_POCKET_BALLS:
+                break
+            self.mgba.tap("Right")
+            if idle:
+                idle()
+            self.mgba.tick(8)
+        if self.mgba.read16(SD + Addr.BAG_POCKET_OFF) != Addr.BAG_POCKET_BALLS:
+            self._exit_battle_menus()
+            return "Couldn't reach the Poké Balls pocket — try catch again."
+        # Throw the ball. Selecting the ball opens a USE/CANCEL context menu (USE is
+        # the default); A there throws it. Press A until a ball is actually consumed —
+        # self-verifying, so a dropped input in the list→context→USE chain just means
+        # another press instead of stranding us mid-menu (the old flaky spot).
+        if idle:
+            idle()
+        for _ in range(10):
+            self.mgba.tap("A")
+            if idle:
+                idle()
+            self.mgba.tick(10)
+            if self._ball_count() < balls0:
+                break
+        if self._ball_count() >= balls0:
+            self._exit_battle_menus()
+            return ("Couldn't throw the ball this time — you're back in the battle; "
+                    "try catch() again.")
+        # A ball was thrown. Resolve using gBattleOutcome — the ONLY reliable verdict:
+        # a transient action-menu handler flickers through even a successful catch, and
+        # the party count lags. == B_OUTCOME_CAUGHT the instant the catch succeeds.
+        # Advance with B only — it advances capture/broke-free/Pokédex text, declines
+        # the "give a nickname?" prompt, and is a harmless no-op at the action menu
+        # (unlike A, which would attack). If the outcome stays 0 through the loop, the
+        # mon broke free (still battling).
+        OUTCOME = Addr.BATTLE_OUTCOME
+        caught = False
+        for _ in range(60):
+            if idle:
+                idle()
+            self.mgba.tick(10)
+            if self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT:
+                caught = True
+                break
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                break
+            self.mgba.tap("B")
+        self._exit_battle_menus()            # clear any prompt; never strand in a menu
+        if caught or self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT:
+            return "Gotcha! Caught the wild Pokémon — it's on your team now."
+        return ("It broke free! Weaken it more with use_move (bring its HP low, or "
+                "inflict a status like sleep), then catch() again.")
+
+    def _exit_battle_menus(self) -> None:
+        """Back out of any Bag / context / prompt menu until we're on solid ground
+        (IN_BATTLE or OVERWORLD), so a catch attempt never strands the agent. Settles
+        before each press (menu inputs drop mid-animation) and tries B then A."""
+        from game.state import GameContext
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        for _ in range(14):
+            if self.reader.detect_context() in (GameContext.IN_BATTLE, GameContext.OVERWORLD):
+                return
+            if idle:
+                idle()
+            self.mgba.tap("B")
+            self.mgba.tick(8)
+            if self.reader.detect_context() in (GameContext.IN_BATTLE, GameContext.OVERWORLD):
+                return
+            self.mgba.tap("A")
+            self.mgba.tick(8)
+
     @staticmethod
     def _best_damaging_move(mon) -> str | None:
         """The mon's highest-power move that still has PP, or (if none has listed
@@ -1140,6 +1273,8 @@ class AgentClient:
                 return self._use_move(args["move"])
             case "flee_battle":
                 return self._flee_battle()
+            case "catch":
+                return self._catch()
             case "grind":
                 return self._grind(int(args.get("level", 0)))
             case "read_game_state":

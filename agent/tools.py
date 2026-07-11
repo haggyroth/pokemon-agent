@@ -137,6 +137,18 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "catch",
+        "description": "Throw a Poké Ball at the WILD Pokémon you're battling to add it "
+                       "to your team. Opens the Bag, switches to the Poké Balls pocket, "
+                       "and throws a ball for you. Best after you've weakened the foe "
+                       "with use_move (low HP — or a status like sleep/paralysis — "
+                       "greatly raises the catch rate); it may break free, so you can "
+                       "catch() again. Use it on wild Pokémon that would help your team "
+                       "(a new species, a good type). You can't catch a trainer's "
+                       "Pokémon. Needs Poké Balls (buy them with shop()).",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "read_game_state",
         "description": "Read current game state: party HP, battle status, badges, location.",
         "parameters": {"type": "object", "properties": {}},

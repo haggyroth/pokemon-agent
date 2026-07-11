@@ -572,6 +572,21 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     else:
                         obs_parts.append("WILD battle — you may flee_battle() to escape "
                                          "if you're just passing through or HP is low.")
+                        # Suggest catching a wild Pokémon that would add to the team:
+                        # a NEW species (not already in your party) when you have balls.
+                        balls = sum(reader.read_bag().get(b, 0) for b in (1, 2, 3, 4))
+                        party_species = {p.species_id for p in state.party}
+                        if (balls > 0 and enemy and enemy.species_id
+                                and enemy.species_id not in party_species
+                                and len(state.party) < 6):
+                            obs_parts.append(
+                                f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — "
+                                "consider catch() to add it to your team. Weaken it first "
+                                "with use_move (low HP raises the catch rate).")
+                        elif balls == 0 and len(state.party) < 6:
+                            obs_parts.append(
+                                "You have no Poké Balls — buy some with shop() to catch "
+                                "wild Pokémon for your team.")
             obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
             # Money + key consumables (for heal/catch/shopping decisions). Cheap
             # reads; only meaningful outside battle transitions.
