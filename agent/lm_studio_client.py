@@ -628,6 +628,195 @@ class AgentClient:
         return ("Talked to Nurse Joy but couldn't confirm a full heal — "
                 "try heal again, or check you're facing her at the counter.")
 
+    # ── Poké Mart shopping ────────────────────────────────────────────────────
+    # Standard marts share LAYOUT_MART: the clerk is behind a counter at (2,3); the
+    # player stands in front at (2,5) (walk_to (2,4) stops there — the counter is
+    # impassable) and presses A facing up to talk across it. The buy menu is driven
+    # through sShopData (Addr.SHOP_DATA): the highlighted item is
+    # itemList[scrollOffset + selectedRow], so we navigate the list by reading those
+    # and pressing Down/Up, set quantity by watching itemPrice, and confirm each
+    # purchase by the bag count rising. Menu inputs get dropped during animations, so
+    # every step re-reads state and retries rather than pressing blindly.
+    _MART_CLERK_APPROACH = (2, 4)
+
+    def _buy_list_open(self) -> bool:
+        from game.constants import Addr
+        lp = self.mgba.read32(Addr.SHOP_DATA + Addr.SHOP_ITEMLIST)
+        return (0x08000000 <= lp < 0x0A000000
+                and 0 < self.mgba.read16(Addr.SHOP_DATA + Addr.SHOP_ITEMCOUNT) <= 30)
+
+    def _buy_list_interactive(self) -> bool:
+        """Probe whether the buy ITEM LIST is live and taking D-pad input: on the list
+        a Down nudges selectedRow (we immediately undo it); on a text box / mid-fade /
+        transition it's inert. ONLY safe when we're not on the Buy/Sell choice menu
+        (i.e. after Buy is selected / after a purchase), where Down would move a
+        different cursor. Used to wait out the post-purchase 'Here you go!' text."""
+        from game.constants import Addr
+        SD = Addr.SHOP_DATA
+        r0 = self.mgba.read16(SD + Addr.SHOP_SELROW)
+        self.mgba.tap("Down")
+        self.mgba.tick(8)
+        if self.mgba.read16(SD + Addr.SHOP_SELROW) != r0:
+            self.mgba.tap("Up")            # undo the probe, back to where we were
+            self.mgba.tick(8)
+            return True
+        return False
+
+    def _shop_item_list(self) -> list[int]:
+        from game.constants import Addr
+        lp = self.mgba.read32(Addr.SHOP_DATA + Addr.SHOP_ITEMLIST)
+        n = self.mgba.read16(Addr.SHOP_DATA + Addr.SHOP_ITEMCOUNT)
+        if not (0x08000000 <= lp < 0x0A000000):
+            return []
+        return [self.mgba.read16(lp + 2 * i) for i in range(min(n, 30))]
+
+    def _open_buy_menu(self) -> bool:
+        """Talk to the clerk, then select Buy so the interactive item list is open.
+        sShopData.itemList is set as soon as the Buy/Sell menu appears (before Buy is
+        chosen), so 'itemList valid' only means the shop menu is up — we then select
+        Buy (top option, default cursor) and let the item list fade in before the
+        caller navigates (Task_BuyMenu ignores D-pad while gPaletteFade is active)."""
+        self._walk_to(*self._MART_CLERK_APPROACH)   # lands at the counter-front tile
+        # 1. Talk to the clerk and advance the greeting until the shop menu appears.
+        shop_up = False
+        for _ in range(3):
+            self.mgba.tap("Up")                       # face the clerk
+            for _ in range(8):
+                if self._buy_list_open():
+                    shop_up = True
+                    break
+                self.mgba.tap("A")                    # advance greeting
+                self.mgba.tick(20)
+            if shop_up:
+                break
+        if not shop_up:
+            return False
+        # 2. Select Buy (default top option) → enter the item list, then settle so the
+        #    fade finishes and the list starts taking D-pad input.
+        self.mgba.tap("A")
+        if hasattr(self.mgba, "wait_until_idle"):
+            self.mgba.wait_until_idle()
+        self.mgba.tick(40)
+        return self._buy_list_open()
+
+    def _buy_one_item(self, item_id: int, qty: int, unit_price: int) -> int:
+        """Navigate to item_id in the open list, buy `qty`, return how many were
+        actually added to the bag (0 if not sold here / couldn't afford any)."""
+        from game.constants import Addr
+        SD = Addr.SHOP_DATA
+        items = self._shop_item_list()
+        if item_id not in items:
+            return 0
+        target = items.index(item_id)
+        # Move the highlight to the target row (verify each press; retry drops).
+        for _ in range(40):
+            cur = self.mgba.read16(SD + Addr.SHOP_SCROLL) + self.mgba.read16(SD + Addr.SHOP_SELROW)
+            if cur == target:
+                break
+            self.mgba.tap("Down" if cur < target else "Up")
+            self.mgba.tick(8)
+        else:
+            return 0
+        before = self.reader.read_bag().get(item_id, 0)
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        # Select the item → the "How many?" quantity box. Wait for its init to run
+        # (it computes maxQuantity = money/price; 0 means it hasn't run yet).
+        if idle:
+            idle()
+        self.mgba.tap("A")
+        maxq = 0
+        for _ in range(10):
+            if idle:
+                idle()
+            self.mgba.tick(6)
+            maxq = self.mgba.read16(SD + Addr.SHOP_MAXQTY)
+            if maxq > 0:
+                break
+        if maxq <= 0:
+            return 0                     # quantity box never opened
+        want = max(1, min(qty, maxq))
+        # Dial the quantity up from 1 to `want` (Up = +1), confirming via
+        # itemPrice = unit×count. Re-read after each press; retry drops.
+        for _ in range(want + 15):
+            cur_n = self.mgba.read32(SD + Addr.SHOP_ITEMPRICE) // unit_price if unit_price else 1
+            if cur_n >= want:
+                break
+            self.mgba.tap("Up")
+            self.mgba.tick(6)
+        # Confirm + purchase. A opens the "…you wanted N?" YES/NO box (YES default),
+        # another A selects YES → the purchase runs and the bag grows. Press A until
+        # the bag actually increases — self-verifying, so a dropped input just means
+        # another press rather than a mis-aligned sequence. Then a SINGLE A dismisses
+        # the "Here you go!" line back to the list (never press A on the list itself —
+        # there it re-selects the highlighted item).
+        got = 0
+        for _ in range(10):
+            self.mgba.tap("A")
+            if idle:
+                idle()
+            self.mgba.tick(10)
+            got = self.reader.read_bag().get(item_id, 0) - before
+            if got > 0:
+                break
+        if got > 0:
+            # Advance the "Here you go! Thank you!" text (which may still be printing)
+            # until the item list is interactive again — probe first so we never press
+            # A while ON the list (that would re-select the item).
+            for _ in range(12):
+                if self._buy_list_interactive():
+                    break
+                self.mgba.tap("A")
+                if idle:
+                    idle()
+                self.mgba.tick(10)
+        return max(0, got)
+
+    def _close_buy_menu(self) -> None:
+        from game.state import GameContext
+        for _ in range(12):
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                return
+            self.mgba.tap("B")
+            self.mgba.tick(12)
+
+    def _shop(self) -> str:
+        """Restock at the Poké Mart per the badge-gated purchase policy: travel to a
+        Mart if needed, open the buy menu, buy the affordable par-level list of items
+        this mart sells, and leave. The model just calls shop()."""
+        from knowledge.map_graph import MAP_KIND
+        from knowledge.shopping import compute_shopping_list, ITEM_NAMES, ITEM_PRICES
+        if MAP_KIND.get(self.reader.read_current_map()) != "mart":
+            res = self._go_to("Mart")
+            if MAP_KIND.get(self.reader.read_current_map()) != "mart":
+                return f"On the way to a Mart to restock: {res}"
+        money = self.reader.read_money()
+        plan = compute_shopping_list(self.reader.read_bag(),
+                                     self.ltm.data["badges_earned"], money)
+        if not plan["lines"]:
+            return f"Bag is already stocked (¥{money}) — nothing to buy."
+        if not self._open_buy_menu():
+            return ("Couldn't open the Mart buy menu — walk up to the clerk at the "
+                    "counter and call shop() again.")
+        sold = set(self._shop_item_list())
+        bought, spent, skipped = [], 0, []
+        for line in plan["lines"]:
+            iid, qty = line["item_id"], line["qty"]
+            if iid not in sold:
+                skipped.append(ITEM_NAMES.get(iid, str(iid)))
+                continue
+            got = self._buy_one_item(iid, qty, ITEM_PRICES.get(iid, line["unit_price"]))
+            if got > 0:
+                bought.append(f"{got}× {ITEM_NAMES.get(iid, iid)}")
+                spent += got * line["unit_price"]
+        self._close_buy_menu()
+        if not bought:
+            return ("At the Mart but bought nothing (this mart doesn't sell the "
+                    "recommended items, or you couldn't afford them).")
+        msg = f"Bought {', '.join(bought)} (¥{spent}). Money left: ¥{self.reader.read_money()}."
+        if skipped:
+            msg += f" (Not sold here: {', '.join(dict.fromkeys(skipped))}.)"
+        return msg
+
     def _go_to_map(self, direction: str) -> str:
         """Cross the map connection on the given edge (walk to the edge gap, then
         step off). direction is a compass word/letter (N/S/E/W)."""
@@ -943,6 +1132,8 @@ class AgentClient:
                 return self._go_to(args["destination"])
             case "heal":
                 return self._heal()
+            case "shop":
+                return self._shop()
             case "challenge_leader":
                 return self._challenge_leader()
             case "use_move":

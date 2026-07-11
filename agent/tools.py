@@ -91,6 +91,18 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "shop",
+        "description": "Restock supplies at a Poké Mart. Travels to the nearest Mart "
+                       "if needed, walks to the clerk, and BUYS the recommended items "
+                       "for you — Poké Balls, Potions/healing, and status cures — at "
+                       "par levels that scale with your badge count (it upgrades to "
+                       "Super/Hyper Potions and Great/Ultra Balls as you progress), "
+                       "spending only what you can afford. Call it when the 'Bag:' line "
+                       "shows you're low on Balls or Potions and you're not in a battle. "
+                       "The MART line in the observation shows the exact recommendation.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "use_move",
         "description": "In battle, use one of your lead Pokémon's moves by name. Drives "
                        "the battle menu for you — advances intro/result text, opens FIGHT, "

@@ -166,10 +166,14 @@ PP rules:
    menus by hand. If a wild battle interrupts the trip, deal with it, then call
    `heal()` again. Heal BEFORE pushing into a long area (a cave, a forest, a gym)
    if you're below full.
-6. save_state before every gym leader and every Elite Four member.
-7. After a loss: load_state and try a different strategy.
-8. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
-9. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
+6. **Keep supplies stocked: call `shop()` at a town with a Poké Mart when the "Bag:"
+   line shows you're low on Poké Balls or Potions** (and you're not mid-dungeon). It
+   travels to the Mart and buys the right items for your badge count automatically —
+   you don't drive the shop menu. Do this before a gym or a long route.
+7. save_state before every gym leader and every Elite Four member.
+8. After a loss: load_state and try a different strategy.
+9. In DIALOG_OPEN: press A to advance. In IN_MENU: navigate with the D-pad + A, or press B to close it — do not press movement to "walk".
+10. In TRANSITIONING: call wait_frames(30) and re-read; do not act until the context changes.
 
 ## Preparing for a Gym — level up first if you're weak
 A Gym Leader will beat an under-levelled team. BEFORE challenging one, make sure
