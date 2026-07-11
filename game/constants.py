@@ -103,6 +103,20 @@ class Addr:
     KEY_ITEMS_OFFSET = 0x03B8
     KEY_ITEMS_SLOTS  = 30
 
+    # Money + consumable bag pockets, inside gSaveBlock1 (deref SAVEBLOCK1_PTR).
+    # FRLG XOR-obfuscates money and item QUANTITIES with gSaveBlock2->encryptionKey
+    # (money ^ key32; quantity ^ (key & 0xFFFF)); item IDs are cleartext, id 0 =
+    # empty. gSaveBlock2Ptr is the pointer right after gSaveBlock1Ptr. All offsets
+    # and the pointer derived + verified live (money=$3080, 5 Poké Balls) against
+    # the pokefirered global.h struct.
+    SAVEBLOCK2_PTR       = 0x0300500C   # deref → gSaveBlock2
+    ENCRYPTION_KEY_OFFSET = 0xF20       # + [SAVEBLOCK2_PTR] → u32 XOR key
+    MONEY_OFFSET         = 0x290        # + [SAVEBLOCK1_PTR] → u32 money ^ key
+    ITEMS_OFFSET         = 0x310        # Items pocket (42 slots × 4 bytes)
+    ITEMS_SLOTS          = 42
+    BALLS_OFFSET         = 0x430        # Poké Balls pocket (13 slots × 4 bytes)
+    BALLS_SLOTS          = 13
+
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
     # (its logic was inverted); BATTLE_FLAGS is transient during a battle and

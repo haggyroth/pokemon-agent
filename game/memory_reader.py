@@ -184,6 +184,51 @@ class LeafGreenReader:
         return sum(1 for i in range(0, len(raw), 4)
                    if (raw[i] | (raw[i + 1] << 8)) != 0)
 
+    def _encryption_key(self) -> int:
+        """gSaveBlock2->encryptionKey (u32) — XORs money and item quantities."""
+        sb2 = self.client.read32(Addr.SAVEBLOCK2_PTR)
+        if not self._valid_ewram_ptr(sb2):
+            return 0
+        return self.client.read32(sb2 + Addr.ENCRYPTION_KEY_OFFSET)
+
+    def read_money(self) -> int:
+        """Player money (¥). Stored as u32 ^ encryptionKey. Returns 0 if the save
+        pointers aren't live (title/transition)."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return 0
+        val = self.client.read32(sb1 + Addr.MONEY_OFFSET) ^ self._encryption_key()
+        return val if 0 <= val <= 999_999 else 0
+
+    def read_bag(self) -> dict[int, int]:
+        """Return {item_id: quantity} across the Items and Poké Balls pockets.
+        Item IDs are cleartext; quantities are XOR'd with the low 16 bits of the
+        encryption key. Empty slots (id 0) are skipped. Key items are counted
+        separately (read_key_item_count) — they have no meaningful quantity."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return {}
+        k16 = self._encryption_key() & 0xFFFF
+        bag: dict[int, int] = {}
+        for off, slots in ((Addr.ITEMS_OFFSET, Addr.ITEMS_SLOTS),
+                           (Addr.BALLS_OFFSET, Addr.BALLS_SLOTS)):
+            try:
+                raw = self.client.read_range(sb1 + off, slots * 4)
+            except Exception:
+                continue
+            for i in range(0, len(raw) - 3, 4):
+                iid = raw[i] | (raw[i + 1] << 8)
+                if iid == 0:
+                    continue
+                qty = (raw[i + 2] | (raw[i + 3] << 8)) ^ k16
+                if 0 < qty <= 999:          # guard against a stale/garbage decrypt
+                    bag[iid] = qty
+        return bag
+
+    def read_bag_count(self, item_id: int) -> int:
+        """Quantity of one item id in the bag (0 if absent)."""
+        return self.read_bag().get(item_id, 0)
+
     def read_player_pos(self) -> tuple[int, int]:
         """
         Read live player tile coordinates via the DMA-protected map block.
