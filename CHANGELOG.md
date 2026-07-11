@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.23.1]
+
+### Fixed
+- fix: `use_move` no longer declares "Battle is over" on a transient state (a Gym
+  Leader's fainted Pokémon being replaced by its next one) — it gates on
+  `gBattleOutcome`. This caused the agent to leave a gym after beating only the
+  first Pokémon, land at 0 badges, and get stuck at the Pewter guard (#110)
+
 ## [0.23.0]
 
 ### Added
