@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.19.9]
+
+### Fixed
+- fix: `go_to("Gym")` now routes to the next gym you still owe (first Leader not in
+  `gyms_beaten`), not the nearest one. After Brock it sent the agent back into the
+  beaten Pewter Gym or to Viridian's gym (the final gym, locked until 7 badges);
+  now it heads to Cerulean/Misty. Viridian/Giovanni is only chosen once it's next (#92)
+
 ## [0.19.8]
 
 ### Fixed
