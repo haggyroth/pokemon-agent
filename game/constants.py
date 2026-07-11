@@ -117,6 +117,22 @@ class Addr:
     BALLS_OFFSET         = 0x430        # Poké Balls pocket (13 slots × 4 bytes)
     BALLS_SLOTS          = 13
 
+    # Poké Mart buy menu — sShopData (static in shop.c). Derived + verified live at
+    # the Viridian Mart (itemList=[4,13,14,18], itemCount=4). Fields (struct ShopData):
+    #   +0x04 const u16* itemList   (ROM ptr to the mart's item ids)
+    #   +0x08 u32 itemPrice         (unit price × current quantity in the qty selector)
+    #   +0x0C u16 selectedRow       (highlighted row within the visible window)
+    #   +0x0E u16 scrollOffset      (list scroll; highlighted index = scroll + row)
+    #   +0x10 u16 itemCount         (number of items the mart sells)
+    #   +0x14 u16 maxQuantity       (most you can afford of the selected item)
+    SHOP_DATA          = 0x02039934
+    SHOP_ITEMLIST      = 0x04
+    SHOP_ITEMPRICE     = 0x08
+    SHOP_SELROW        = 0x0C
+    SHOP_SCROLL        = 0x0E
+    SHOP_ITEMCOUNT     = 0x10
+    SHOP_MAXQTY        = 0x14
+
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
     # (its logic was inverted); BATTLE_FLAGS is transient during a battle and

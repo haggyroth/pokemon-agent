@@ -587,7 +587,8 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     rec = shopping_summary(bag, ltm.data["badges_earned"], money)
                     if rec:
                         obs_parts.append(
-                            "MART — " + rec + ". Talk to the clerk (walk up + A) and buy these.")
+                            "MART — " + rec + ". Call shop() to buy the recommended "
+                            "restock automatically.")
             # Inside a gym: point the agent at the Leader — UNLESS this Leader is
             # already beaten, in which case say so and tell it to leave (the agent
             # looped in/out of Pewter Gym re-challenging Brock). go_to is useless
