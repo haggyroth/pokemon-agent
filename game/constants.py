@@ -133,6 +133,21 @@ class Addr:
     SHOP_ITEMCOUNT     = 0x10
     SHOP_MAXQTY        = 0x14
 
+    # In-battle Bag menu — gBagMenuState (static struct BagStruct in item_menu.c).
+    # Derived + verified live (bagOpen=1, pocket flips on Right). The battle bag is
+    # opened from the action menu by selecting BAG (action cursor = 1) with the same
+    # write-cursor+A method as flee_battle; it hands off across a controller handshake,
+    # so cb2 leaves CB2_BATTLE (→ IN_MENU) once it's up. Fields (struct BagStruct):
+    #   +0x04 u8 location   (5 = ITEMMENULOCATION_BATTLE)
+    #   +0x05 u8 bagOpen
+    #   +0x06 u16 pocket    (0=Items, 1=Key Items, 2=Poké Balls)
+    #   +0x0E u16 cursorPos[3]
+    BAG_MENU_STATE     = 0x0203ACFC
+    BAG_LOCATION_OFF   = 0x04
+    BAG_POCKET_OFF     = 0x06
+    BAG_POCKET_BALLS   = 2
+    ACTION_BAG         = 1     # gActionSelectionCursor value for BAG
+
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
     # (its logic was inverted); BATTLE_FLAGS is transient during a battle and
