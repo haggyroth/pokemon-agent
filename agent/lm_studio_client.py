@@ -999,7 +999,6 @@ class AgentClient:
         balls0 = self._ball_count()
         if balls0 <= 0:
             return "No Poké Balls — buy some at a Mart with shop(), then catch."
-        party0 = len(self.reader.read_party())
         idle = getattr(self.mgba, "wait_until_idle", None)
         if not self._open_battle_bag():
             return "Couldn't open the Bag in battle — try catch again."
