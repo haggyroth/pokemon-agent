@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.3]
+
+### Fixed
+- fix: reject garbage party reads on the battle-load frame. The encrypted party
+  substructs momentarily decrypt to nonsense there (out-of-range species/move ids),
+  which made `use_move` fail with "not a known move"; `read_party` now plausibility-
+  checks each mon and reuses the last-known-good party until the data settles (#58).
+- fix(perf): `BattleJournal` caches parsed records (keyed on file mtime/size) so
+  `get_loss_lessons` no longer re-parses the whole journal every in-battle step (#70).
+- fix(security): the screenshot frame defaults to a per-process temp dir instead of a
+  fixed shared-/tmp name — avoids a symlink-follow truncate (CWE-379) and concurrent-run
+  clobber (#67).
+
 ## [0.30.2]
 
 ### Fixed
