@@ -229,6 +229,29 @@ class LeafGreenReader:
         """Quantity of one item id in the bag (0 if absent)."""
         return self.read_bag().get(item_id, 0)
 
+    def read_items_pocket(self) -> list[tuple[int, int]]:
+        """The Items pocket as an ORDERED [(item_id, quantity)] list, in the same slot
+        order the in-game list displays (compacted — empties skipped). use_item needs
+        the order to navigate the bag list cursor to a specific item. Quantities are
+        XOR'd with the low 16 bits of the encryption key, like read_bag."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return []
+        k16 = self._encryption_key() & 0xFFFF
+        out: list[tuple[int, int]] = []
+        try:
+            raw = self.client.read_range(sb1 + Addr.ITEMS_OFFSET, Addr.ITEMS_SLOTS * 4)
+        except Exception:
+            return []
+        for i in range(0, len(raw) - 3, 4):
+            iid = raw[i] | (raw[i + 1] << 8)
+            if iid == 0:
+                continue
+            qty = (raw[i + 2] | (raw[i + 3] << 8)) ^ k16
+            if 0 < qty <= 999:
+                out.append((iid, qty))
+        return out
+
     def read_item_ball_tiles(self) -> list[tuple[int, int]]:
         """Grid coords of item balls currently on screen — loaded object events whose
         graphicsId is the item-ball sprite. A collected ball's flag suppresses its
