@@ -1407,16 +1407,27 @@ class AgentClient:
             return f"Couldn't select {mon.species_name} in the party menu — try again."
         # Select the slot → SHIFT (default) → confirm. Self-verifying: press A until the
         # active battler's species becomes the target's, or bail out cleanly.
-        for _ in range(14):
+        #
+        # Fast-fail on the KNOWN corrupted state: after ANY switch this battle, the party
+        # menu re-opens into a non-interactive callback (0x811eb79) that drops A — a
+        # working first switch leaves 0x811eb79 within ~2 presses (SHIFT → send-out), so
+        # if it's still stuck there after a few presses with no species change, it's the
+        # corrupted reopen — bail immediately instead of mashing A for 14 rounds.
+        PARTY_MENU_CB2 = 0x811eb79
+        for i in range(14):
             if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) == target_species:
                 break
             self.mgba.tap("A")
             if idle:
                 idle()
             self.mgba.tick(14)
+            if i >= 4 and self.mgba.read32(Addr.GMAIN_CALLBACK2) == PARTY_MENU_CB2:
+                break                             # frozen post-switch reopen — stop early
         if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) != target_species:
             self._exit_battle_menus()
-            return f"Couldn't switch to {mon.species_name} — you're back in the battle; try again."
+            return (f"Couldn't switch to {mon.species_name}. Note: switching is only "
+                    f"reliable ONCE per battle right now — after a switch the party menu "
+                    f"won't reopen. Attack with use_move or use_item instead.")
         # Advance the "come back! / go!" send-out text so the caller lands cleanly.
         for _ in range(6):
             if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (
