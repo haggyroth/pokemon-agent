@@ -1389,6 +1389,22 @@ class AgentClient:
             self.mgba.tick(6)
         return self.mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_BATTLE
 
+    def _battle_display_slot(self, field_slot: int) -> int:
+        """Map a field-order party slot to its on-screen slot in the in-battle party menu.
+
+        The menu lists mons in BATTLE order via gBattlePartyCurrentOrder (packed nibbles:
+        display slot → field party id; slot even → high nibble, odd → low nibble). It's
+        identity at battle start but a switch permutes it, so field slot and display slot
+        diverge (#120). Returns the display slot whose party id == field_slot; falls back
+        to identity if none matches (e.g. read glitch)."""
+        from game.constants import Addr
+        for s in range(6):
+            b = self.mgba.read8(Addr.BATTLE_PARTY_ORDER + (s >> 1))
+            pid = (b & 0xF) if (s & 1) else (b >> 4)
+            if pid == field_slot:
+                return s
+        return field_slot
+
     def _switch_pokemon(self, target: str) -> str:
         """Switch the active Pokémon in battle to another party member (by species name
         or 1-based slot). Opens the party menu (POKEMON), moves the cursor to the target
@@ -1419,40 +1435,36 @@ class AgentClient:
         if idle:
             idle()
         self.mgba.tick(30)                        # let the party screen settle
-        for _ in range(12):                       # move the cursor to the target slot
+        # The in-battle party menu lists mons in BATTLE order (gBattlePartyCurrentOrder),
+        # which is remapped after each switch — so the target's field slot is NOT its
+        # on-screen slot once you've already switched this battle. Translate field slot →
+        # display slot; without this the cursor lands on the active mon and the game
+        # rejects it as "already in battle" (why a 2nd switch used to silently fail, #120).
+        disp_slot = self._battle_display_slot(slot)
+        for _ in range(12):                       # move the cursor to the target's display slot
             cur = self.mgba.read8(Addr.PARTY_MENU_SLOT)
-            if cur == slot:
+            if cur == disp_slot:
                 break
-            self.mgba.tap("Down" if cur < slot else "Up")
+            self.mgba.tap("Down" if cur < disp_slot else "Up")
             if idle:
                 idle()
             self.mgba.tick(8)
-        if self.mgba.read8(Addr.PARTY_MENU_SLOT) != slot:
+        if self.mgba.read8(Addr.PARTY_MENU_SLOT) != disp_slot:
             self._exit_battle_menus()
             return f"Couldn't select {mon.species_name} in the party menu — try again."
         # Select the slot → SHIFT (default) → confirm. Self-verifying: press A until the
-        # active battler's species becomes the target's, or bail out cleanly.
-        #
-        # Fast-fail on the KNOWN corrupted state: after ANY switch this battle, the party
-        # menu re-opens into a non-interactive callback (0x811eb79) that drops A — a
-        # working first switch leaves 0x811eb79 within ~2 presses (SHIFT → send-out), so
-        # if it's still stuck there after a few presses with no species change, it's the
-        # corrupted reopen — bail immediately instead of mashing A for 14 rounds.
-        PARTY_MENU_CB2 = 0x811eb79
-        for i in range(14):
+        # active battler's species becomes the target's (the send-out animation takes a
+        # few frames), or bail out cleanly.
+        for _ in range(10):
             if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) == target_species:
                 break
             self.mgba.tap("A")
             if idle:
                 idle()
-            self.mgba.tick(14)
-            if i >= 4 and self.mgba.read32(Addr.GMAIN_CALLBACK2) == PARTY_MENU_CB2:
-                break                             # frozen post-switch reopen — stop early
+            self.mgba.tick(16)
         if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) != target_species:
             self._exit_battle_menus()
-            return (f"Couldn't switch to {mon.species_name}. Note: switching is only "
-                    f"reliable ONCE per battle right now — after a switch the party menu "
-                    f"won't reopen. Attack with use_move or use_item instead.")
+            return f"Couldn't switch to {mon.species_name} — try switch_pokemon again."
         # Advance the "come back! / go!" send-out text so the caller lands cleanly.
         for _ in range(6):
             if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (

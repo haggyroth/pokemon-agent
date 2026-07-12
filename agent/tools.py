@@ -109,9 +109,8 @@ TOOLS = [
                        "the party menu and confirms the swap. Switching costs your turn "
                        "(the opponent gets a free hit), so use it to bring in a "
                        "type-favorable Pokémon or save one that's low — not casually. "
-                       "Needs a team of 2+ (build one with catch()). LIMITATION: reliable "
-                       "only ONCE per battle — the party menu won't reopen after a switch, "
-                       "so plan your one switch; don't retry it (attack or use_item instead).",
+                       "Needs a team of 2+ (build one with catch()). Can be used more than "
+                       "once per battle.",
         "parameters": {"type": "object", "properties": {
             "target": {"type": "string",
                        "description": "Party member to send in: a species name or a 1-based slot."},
