@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.29.0]
+
+### Added
+- feat: team-building. `go_to` now stops once on a wild NEW species (not already on the
+  team) while the team is small (<4) with Poké Balls, so the model can `catch()` a roster
+  instead of auto-fleeing every wild battle; re-issuing `go_to` skips it (flees) and
+  offers the next new species (no loop; fast travel resumes once the team is built). The
+  enemy read is settled + validated to dodge the battle-load garbage read (#58). Plus an
+  overworld obs nudge when the party is <3. Groundwork for using a team: in-battle
+  switching. (#117)
+
 ## [0.28.0]
 
 ### Added
