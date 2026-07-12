@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.0]
+
+### Added
+- feat: `switch_pokemon(target)` — swap the active Pokémon mid-battle (by species name
+  or 1-based slot), so a built team can actually be used to bring in a type-favorable
+  or healthier mon. Drives the action-menu POKEMON option + party menu + SHIFT, and
+  verifies the swap via the active battler's species (`gBattleMons[0].species`); fails
+  cleanly (never a wrong-switch) otherwise. Known limitation: switching a second time
+  back to the just-active/slot-0 mon can fail cleanly (party menu reopens into a
+  non-interactive state) — the common case (bring in a different mon) works, 3/3. (#118)
+
 ## [0.29.0]
 
 ### Added
