@@ -41,6 +41,11 @@ class AgentClient:
         # which reads as progress), so after a few we return actionable guidance.
         self._go_to_last_end: tuple | None = None
         self._go_to_stalls = 0
+        # Team-building: while travelling with a small team, go_to stops ONCE on a wild
+        # new-species encounter so the model can catch it (instead of auto-fleeing past
+        # everything). This flag makes that offer once-per-battle so re-issuing go_to
+        # skips it rather than re-offering forever. Reset when back in the overworld.
+        self._travel_catch_offered = False
         # Cumulative LLM usage for spend tracking (#64). resp.usage may be absent
         # on some endpoints, so token totals are best-effort; call count is exact.
         self.llm_calls = 0
@@ -555,6 +560,21 @@ class AgentClient:
     # blackout, which would warp the player all the way back to a Pokémon Center).
     _TRAVEL_HP_FLOOR = 0.30
 
+    @staticmethod
+    def _is_new_team_species(party, enemy) -> bool:
+        """Whether a travel wild-battle is worth stopping on to catch: the team is
+        still small (<4), the wild mon is a REAL named species (not a battle-load
+        garbage read, #58), and it's a species not already on the team. Ball-count and
+        the once-per-battle flag are checked by the caller."""
+        if enemy is None or not getattr(enemy, "species_id", 0):
+            return False
+        name = getattr(enemy, "species_name", "") or ""
+        if not name or name.startswith("#"):
+            return False
+        if len(party) >= 4:
+            return False
+        return enemy.species_id not in {p.species_id for p in party}
+
     def _handle_travel_battle(self, target_name: str):
         """A battle interrupted travel. Trainer → return so the model fights it;
         wild → auto-flee and keep going (return None), unless the escape fails or HP
@@ -564,6 +584,28 @@ class AgentClient:
             return (f"A trainer battle started en route to {target_name}. You can't "
                     f"flee it — win with use_move (or switch), then "
                     f"go_to({target_name!r}) again.")
+        # Team-building: with a small team and Poké Balls, don't auto-flee a NEW species
+        # (one not already on the team) — stop ONCE so the model can catch it and build a
+        # roster. A lone/pair Pokémon can't sustain dungeons or the Elite Four. The
+        # offer is once-per-battle (flag reset in the overworld), so re-issuing go_to
+        # skips it and flees instead of looping.
+        party = self.reader.read_party()
+        if not self._travel_catch_offered and len(party) < 4 and self._ball_count() > 0:
+            # The enemy struct reads garbage on the battle-load frame (#58), so settle
+            # until it's a real, named species before deciding — otherwise we'd offer on
+            # junk or flee the real mon before offering.
+            enemy = self.reader.read_enemy_lead()
+            for _ in range(5):
+                if enemy and enemy.species_name and not enemy.species_name.startswith("#"):
+                    break
+                self.mgba.tick(6)
+                enemy = self.reader.read_enemy_lead()
+            if self._is_new_team_species(party, enemy):
+                self._travel_catch_offered = True
+                return (f"A wild {enemy.species_name} appeared en route to {target_name} "
+                        f"— a NEW species for your {len(party)}-Pokémon team. To add it, "
+                        f"weaken it with use_move then catch(); or call "
+                        f"go_to({target_name!r}) again to skip it and keep travelling.")
         flee = self._flee_battle()
         if "Got away" not in flee:
             return (f"A wild battle started en route to {target_name} and the escape "
@@ -653,6 +695,7 @@ class AgentClient:
                 if stop:
                     return stop
                 continue   # fled; resume travelling
+            self._travel_catch_offered = False   # overworld — next battle is a fresh offer
 
             cur = self.reader.read_current_map()
             if cur == target_map:

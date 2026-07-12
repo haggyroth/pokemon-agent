@@ -557,6 +557,18 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     obs_parts.append(
                         f"⚠ Lead HP low ({lead.hp_percent:.0%}) — call heal() to "
                         f"restore the party at the nearest Pokémon Center")
+                # Team-building nudge: a lone/pair Pokémon can't sustain a dungeon (its
+                # HP + move PP drain with no way to spread the load) or the Elite Four.
+                # go_to now stops on new wild species so the model can catch a roster.
+                if (not in_battle and state.context == GameContext.OVERWORLD
+                        and len(state.party) < 3):
+                    roster = ", ".join(f"{p.species_name} L{p.level}"
+                                       for p in state.party if p.species_name)
+                    obs_parts.append(
+                        f"⚠ Team: only {len(state.party)} Pokémon ({roster}) — too few to "
+                        "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
+                        "tall grass, weaken a wild Pokémon with use_move, then catch(). "
+                        "(Travel stops on NEW species so you can catch them.)")
                 # Under-levelled-for-Brock nudge: no badges yet and lead below the
                 # ~L13 Vine Whip breakpoint → grind before challenging the gym.
                 if (not in_battle and ltm.data["badges_earned"] == 0
