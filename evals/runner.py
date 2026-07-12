@@ -21,6 +21,7 @@ from evals.scenarios import Scenario, SCENARIOS
 
 console = Console()
 EVAL_DIR = Path(PROGRESS_PATH).parent / "eval"
+DEFAULT_EVAL_WALL_S = 7200.0   # 2h hard ceiling for any scenario without its own cap
 
 
 def run_scenario(sc: Scenario, *, verbose: bool = False) -> dict | None:
@@ -44,9 +45,12 @@ def run_scenario(sc: Scenario, *, verbose: bool = False) -> dict | None:
         console.print(f"[red]  could not start emulator for {sc.name} — skipping[/]")
         return None
 
+    # Always bound the wall-clock so an unattended eval can't run away (an 11-hour
+    # run happened when a local model degraded). Scenarios may set a tighter cap.
+    wall = sc.max_wall_s or DEFAULT_EVAL_WALL_S
     t0 = time.time()
     result = agent.run_episode(rt, goal=sc.goal, goal_desc=sc.goal.desc,
-                               max_steps=sc.max_steps, verbose=verbose)
+                               max_steps=sc.max_steps, max_wall_s=wall, verbose=verbose)
     elapsed = round(time.time() - t0, 1)
 
     out = result.to_dict()

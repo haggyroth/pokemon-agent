@@ -88,6 +88,18 @@ ENABLE_THINKING   = os.getenv("ENABLE_THINKING",   "false").lower() == "true"
 MAX_LLM_CALLS     = int(os.getenv("MAX_LLM_CALLS", "0"))
 TOKEN_BUDGET      = int(os.getenv("TOKEN_BUDGET",  "0"))
 
+# ── Operational guardrails (keep a long run from hanging) ──────────────────────
+# LLM_TIMEOUT: per chat-completion request timeout in seconds. A local model can
+# degrade catastrophically on a marathon run — a single call ballooned to 3+ HOURS
+# in an 11-hour eval, which no step/spend cap could stop (they're checked BETWEEN
+# steps). This bounds any one call; a timed-out call raises and counts against the
+# consecutive-error budget, so a persistently-hung endpoint ends the run cleanly.
+# 0 = no timeout.
+LLM_TIMEOUT       = float(os.getenv("LLM_TIMEOUT", "180"))
+# MAX_WALL_SECONDS: hard wall-clock cap on a whole run (checked each step). Belt-and-
+# suspenders alongside LLM_TIMEOUT so an unattended run can't burn hours. 0 = unlimited.
+MAX_WALL_SECONDS  = float(os.getenv("MAX_WALL_SECONDS", "0"))
+
 # ── Timing ────────────────────────────────────────────────────────────────────
 BUTTON_TAP_DELAY  = float(os.getenv("BUTTON_TAP_DELAY",  "0.10"))
 DECISION_INTERVAL = float(os.getenv("DECISION_INTERVAL", "1.00"))
