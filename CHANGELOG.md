@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.5]
+
+### Fixed
+- fix: `use_move` no longer flails when the lead faints mid-turn (#68). If a faster foe
+  KOs our lead the same turn we pick a move, our PP never drops — the resolution loop
+  used to hold `A` through the forced send-out prompt (blindly confirming a switch) and
+  return a misleading "Could not use…". It now breaks when `party[0]` faints
+  (`current_hp==0`) or changes identity (`species_id`) and returns a truthful
+  observation directing the model to send out its next Pokémon with `switch_pokemon`.
+
 ## [0.30.4]
 
 ### Fixed
