@@ -32,6 +32,13 @@ class Addr:
     # Derived live: steps 0→1 on Down, back on Up. switch_pokemon navigates it to the
     # target slot before selecting.
     PARTY_MENU_SLOT     = 0x020207FE
+    # gBattlePartyCurrentOrder — packed nibbles mapping each in-battle party-menu
+    # DISPLAY slot to a field party id (slot even → high nibble, odd → low nibble of
+    # byte slot//2). Identity [01 23 45] at battle start; a switch permutes it, so the
+    # menu lists mons in BATTLE order, not field order. switch_pokemon uses this to
+    # translate a field slot → its on-screen slot (else a 2nd switch lands on the active
+    # mon and the game rejects it as "already in battle"). Derived live (#120).
+    BATTLE_PARTY_ORDER  = 0x0203B0DC
     # gBattlerControllerFuncs[0] — player battler's controller callback. Equals
     # CTRL_CHOOSE_MOVE while the FIGHT move menu is open, CTRL_CHOOSE_ACTION while
     # the FIGHT/BAG/POKEMON/RUN action menu is open (both live-verified).
