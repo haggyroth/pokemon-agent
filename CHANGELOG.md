@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.27.0]
+
+### Added
+- feat: `use_item(item)` skill + tool uses a Bag item on the active lead in battle — a
+  Potion (Super/Hyper/Max) to restore HP, or a status cure (Antidote, Paralyze Heal,
+  Awakening, Burn/Ice/Full Heal). Reuses the battle-bag nav, walks the live list cursor
+  (`Addr.BAG_LIST_CURSOR`) to the item, and uses it on the lead, self-verifying by the
+  item being consumed / HP rising / status clearing. Prevents blackouts by healing
+  mid-fight. Verified live (Potion heal + Antidote cure). (#115)
+
 ## [0.26.0]
 
 ### Added
