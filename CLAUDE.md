@@ -650,18 +650,35 @@ Pallet → Viridian → Pewter [GYM1] → Cerulean [GYM2]
 ### Tool List
 
 ```python
-# Defined in agent/tools.py. Navigation and battle are HIGH-LEVEL SKILLS —
-# deterministic code drives the emulator; the LLM only picks destinations/moves.
+# Defined in agent/tools.py. Navigation, battle, and menu actions are all HIGH-LEVEL
+# SKILLS — deterministic code drives the emulator; the LLM only picks the intent
+# (destination / move / item / target). Each skill self-verifies via memory and is
+# resumable/clean-failing rather than mashing buttons.
+
+# ── Navigation ────────────────────────────────────────────────────────────────
 go_to(destination: str)      # travel to a named map ("Pewter City") OR waypoint
-                             #   ("Pokemon Center"/"Mart"/"Gym"). Auto-routes across
-                             #   map connections + building/cave warps (BFS over
-                             #   knowledge/map_graph.py); resumable on battle/dialog.
-                             #   THE primary overworld tool.
-walk_to(x: int, y: int)      # A* to a tile on the CURRENT map (routes around walls +
-                             #   loaded NPCs; warp-aware; stops on battle/dialog).
+                             #   ("Pokemon Center"/"Mart"/"Gym"). BFS over map_graph +
+                             #   warps; auto-flees wild battles; stops resumably on a
+                             #   trainer/low-HP/block; gives guidance on a stalled route;
+                             #   stops on a NEW wild species (team-building). Primary tool.
+walk_to(x: int, y: int)      # A* to a tile on the CURRENT map (walls/ledges/NPCs).
 go_to_map(direction: str)    # cross the seamless connection on one edge (N/S/E/W).
-use_move(move: str)          # battle: drive the FIGHT menu and use a move by name,
-                             #   confirming via that move's PP dropping.
+# ── Battle ────────────────────────────────────────────────────────────────────
+use_move(move: str)          # drive the FIGHT menu by name; confirms via PP drop; also
+                             #   resolves a level-up move-learn per knowledge/movelearn.py.
+switch_pokemon(target: str)  # swap the active mon (species name or 1-based slot);
+                             #   verifies via gBattleMons[0].species. (Known limit: a
+                             #   2nd switch back to the just-active slot can fail cleanly.)
+use_item(item: str)          # Potion / status cure on the active lead, from the Items pocket.
+catch()                      # throw a Poké Ball (verdict from gBattleOutcome).
+flee_battle()                # run from a WILD battle (writes action cursor = RUN).
+# ── Progression / field ───────────────────────────────────────────────────────
+heal()                       # restore the party at the nearest Pokémon Center.
+shop()                       # buy a badge-gated, par-level restock at a Mart.
+grind(level: int)            # auto-fight wild Pokémon until the lead hits `level`.
+pick_up_items()              # collect item balls (gObjectEvents gfx 92) on this map.
+challenge_leader()           # walk up to the Gym Leader and start the battle.
+# ── Meta ──────────────────────────────────────────────────────────────────────
 press_button(button: str, times: int = 1)   # menus/dialog/nudges (times clamped 1–10)
 read_game_state() -> GameState
 save_state(slot: int = 0) / load_state(slot: int = 0)
@@ -675,9 +692,10 @@ The opponent is identified from memory (`gEnemyParty`), so there is no
 
 1. Opponent + types are auto-detected (shown in the obs) — no need to set them.
 2. `use_move("<name>")` to attack — prefer the super-effective / highest-power move with PP.
-3. Switch if the opponent has a 2× type advantage and you have a better counter.
-4. Heal if HP < 30% (`go_to("Pokemon Center")`, or Bag → Medicine).
-5. Save state before every gym leader and every E4 trainer; after a loss, load and retry.
+3. `switch_pokemon(...)` if the opponent has a 2× type advantage and you have a better counter.
+4. Heal a low mon mid-battle with `use_item("Potion")`; out of battle `heal()` if HP/PP low.
+5. `catch()` a weakened wild Pokémon to build a team (a lone mon can't sustain a dungeon/E4).
+6. Save state before every gym leader and every E4 trainer; after a loss, load and retry.
 
 ### Reward Schedule
 
