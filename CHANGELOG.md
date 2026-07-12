@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.1]
+
+### Fixed
+- fix: `switch_pokemon` fails fast on the corrupted second-open. Deep dive found the
+  real cause of "switching keeps selecting the active mon": the first switch of a battle
+  works, but after ANY switch the party-menu subsystem is corrupted for the rest of that
+  battle (every subsequent open is non-interactive to A — `callback2` stuck at
+  `0x811eb79`). It now bails quickly with a clear "reliable only once per battle" message
+  instead of mashing a dead menu, and the tool description warns upfront. Proper fix
+  needs disassembly-level RE (#120). (#121)
+
 ## [0.30.0]
 
 ### Added
