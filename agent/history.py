@@ -22,8 +22,11 @@ def trim_messages(messages: list[dict], max_history: int) -> list[dict]:
     immediately followed by its matching `tool` responses. A naive tail slice
     can start on an orphaned `tool` message (its assistant was dropped) and get
     rejected with a 400. This cuts only at a `user` turn boundary, so a
-    tool_calls/tool group is never split. If no safe boundary exists in range,
-    the history is returned unchanged rather than corrupted.
+    tool_calls/tool group is never split. If no boundary exists in the trim
+    window, rather than returning oversized history unchanged (which could grow
+    without bound in a pathological tool-heavy stretch, #69) it HARD-RESETS to the
+    system prompt + the last user group — still API-valid (a user turn starts a
+    fresh, self-contained group) and bounded to one step's worth of messages.
     """
     if len(messages) <= max_history + 1:
         return messages
@@ -32,4 +35,9 @@ def trim_messages(messages: list[dict], max_history: int) -> list[dict]:
     for i in range(max(target, len(system)), len(messages)):
         if messages[i].get("role") == "user":
             return system + messages[i:]
-    return messages
+    # No user boundary within the window — fall back to the LAST user group so
+    # history can't exceed the cap indefinitely.
+    for i in range(len(messages) - 1, len(system) - 1, -1):
+        if messages[i].get("role") == "user":
+            return system + messages[i:]
+    return system if system else messages
