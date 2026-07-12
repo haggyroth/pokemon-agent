@@ -452,7 +452,16 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                     and not in_battle
                     and not was_in_battle_prev_tick):
                 transitioning_steps += 1
-                if transitioning_steps >= 5:
+                # Auto-advance a genuine transition/dialog by tapping A. This branch
+                # `continue`s BEFORE the step/wall-clock budget checks below, so it must
+                # be BOUNDED — a game state stuck in TRANSITIONING would otherwise tap A
+                # forever and bypass every guardrail (an eval hung here for hours). The
+                # wall-clock cap is enforced inline, and after a cap we fall through so a
+                # normal step runs (LLM re-engages + the budgets get checked).
+                if wall_deadline and time.time() >= wall_deadline:
+                    ltm.save()
+                    return _result("max_wall", False, state)
+                if 5 <= transitioning_steps < 45:
                     mgba.tap("A")
                     console.print("[dim]transition: tap A[/]")
                     mgba.tick()
