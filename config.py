@@ -111,5 +111,10 @@ HP_HEAL_THRESHOLD = float(os.getenv("HP_HEAL_THRESHOLD", "0.30"))
 SAVE_DIR          = PROJECT_ROOT / "saves"
 JOURNAL_PATH      = PROJECT_ROOT / "logs" / "battles.jsonl"
 PROGRESS_PATH     = PROJECT_ROOT / "logs" / "progress.json"
-SCREENSHOT_PATH   = os.getenv("SCREENSHOT_PATH",
-                               str(Path(tempfile.gettempdir()) / "mgba_agent_frame.png"))
+# Screenshot frame path. Default to a PER-PROCESS temp dir, not a fixed name in the
+# shared temp dir: a predictable /tmp path lets another user pre-plant a symlink the
+# native writer would follow/truncate (CWE-379), and two concurrent runs would clobber
+# each other's frames (run B's screenshot fed to run A's model). #67
+SCREENSHOT_PATH   = os.getenv(
+    "SCREENSHOT_PATH",
+    str(Path(tempfile.mkdtemp(prefix="pokemon-agent-")) / "frame.png"))
