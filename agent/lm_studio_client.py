@@ -34,6 +34,12 @@ class AgentClient:
         # use_move of a clean move menu during Brock's Onix and forfeited the gym).
         self._learn_armed = False
         self._lead_level_seen: int | None = None
+        # go_to stall detection: consecutive travel calls that end at the same map
+        # without arriving. The "call go_to again" resume message loops the agent
+        # forever when the path is story-gated (e.g. the Pewter guard shuffles it back,
+        # which reads as progress), so after a few we return actionable guidance.
+        self._go_to_last_end: tuple | None = None
+        self._go_to_stalls = 0
         # Cumulative LLM usage for spend tracking (#64). resp.usage may be absent
         # on some endpoints, so token totals are best-effort; call count is exact.
         self.llm_calls = 0
@@ -494,6 +500,41 @@ class AgentClient:
             self.mgba.tick(10)
         return self.reader.detect_context()
 
+    def _register_go_to_stall(self, target_name: str, end_map) -> str | None:
+        """Track consecutive go_to calls that end at the SAME map without reaching the
+        target. A genuinely-progressing journey ends somewhere new (or arrives) each
+        call; ending at the same map repeatedly means the path is gated (an unbeaten
+        local Gym, a story event, or a missing HM). Since the resumable "call go_to
+        again" message otherwise loops the agent forever — the Pewter guard shuffling
+        it back to the gym reads as movement, i.e. "progress" — after 3 stalls we
+        return actionable guidance instead. Returns that guidance, or None to let the
+        caller send its normal resume message."""
+        key = (target_name, end_map)
+        if key == self._go_to_last_end:
+            self._go_to_stalls += 1
+        else:
+            self._go_to_last_end = key
+            self._go_to_stalls = 1
+        if self._go_to_stalls < 3:
+            return None
+        self._go_to_stalls = 0            # fresh 3-strike window after we've advised
+        self._go_to_last_end = None
+        here = MAP_NAMES.get(end_map, "here")
+        from knowledge.leafgreen_data import GYMS
+        beaten = set(self.ltm.data.get("gyms_beaten", []))
+        nxt = next((g for g in GYMS if g["leader"] not in beaten), None)
+        if nxt and (nxt["city"] in here or here in nxt["city"]):
+            return (f"Blocked: you've circled back to {here} 3× trying to reach "
+                    f"{target_name}. Kanto keeps a city's road onward shut until its "
+                    f"Gym Leader is beaten, and you still owe {nxt['leader']} here. Stop "
+                    f"retrying that route — challenge the gym: go_to('Gym'), then "
+                    f"challenge_leader().")
+        return (f"Blocked reaching {target_name}: you've ended at {here} 3× with no "
+                f"progress, so the way on is gated — likely a story event to finish "
+                f"here or an HM you don't have yet (Cut/Surf/Strength). Do something "
+                f"else (explore {here}, review objectives, or heal) rather than "
+                f"repeating this route.")
+
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
         Center", "Mart", "Gym"), auto-routing across map connections AND building/
@@ -526,6 +567,8 @@ class AgentClient:
 
             cur = self.reader.read_current_map()
             if cur == target_map:
+                self._go_to_stalls = 0          # reached it — clear any stall streak
+                self._go_to_last_end = None
                 return f"Arrived at {target_name}."
             # Region-qualify the current node (Route 2's north/south halves route
             # differently) so a split map is crossed via its gate, not a sealed edge.
@@ -558,10 +601,17 @@ class AgentClient:
                 # truly pinned (same map AND didn't move at all this hop).
                 if self.reader.read_player_pos() != before_pos:
                     continue
+                guidance = self._register_go_to_stall(target_name, before)
+                if guidance:
+                    return guidance
                 here = MAP_NAMES.get(before, before)
                 return (f"Heading to {target_name}: stuck at {here} ({res}). "
                         f"It may need something first (a cave/HM), or try again.")
-        here = MAP_NAMES.get(self.reader.read_current_map(), "?")
+        end_map = self.reader.read_current_map()
+        guidance = self._register_go_to_stall(target_name, end_map)
+        if guidance:
+            return guidance
+        here = MAP_NAMES.get(end_map, "?")
         return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
 
     def _warp_exit_tile(self, warp: tuple[int, int]) -> tuple[int, int]:
