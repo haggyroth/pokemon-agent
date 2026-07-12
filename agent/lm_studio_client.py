@@ -11,7 +11,8 @@ from game.mgba_client import MGBAClient
 from memory.long_term import LongTermMemory
 from knowledge.leafgreen_data import MILESTONES
 from knowledge.navigation import get_map_image_path, MAP_NAMES
-from config import LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKENS, ENABLE_THINKING, SCREENSHOT_PATH
+from config import (LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKENS,
+                    ENABLE_THINKING, SCREENSHOT_PATH, LLM_TIMEOUT)
 from rich.console import Console
 
 console = Console()
@@ -195,6 +196,7 @@ class AgentClient:
                 model=MODEL_NAME, messages=self.messages,
                 tools=TOOLS, tool_choice="auto",
                 temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+                timeout=LLM_TIMEOUT or None,   # bound a single call (see config)
             )
             self.llm_calls += 1
             usage = getattr(resp, "usage", None)

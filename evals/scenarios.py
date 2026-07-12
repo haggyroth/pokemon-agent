@@ -25,6 +25,10 @@ class Scenario:
     max_steps:   int
     start_save:  Optional[str] = None
     start_state: Optional[str] = None
+    # Wall-clock safety cap (seconds) so an unattended eval can't run away — a local
+    # model degraded to 3+ hour steps and burned 11 hours before. 0 = use the runner's
+    # default ceiling. Set explicitly for legitimately long scenarios.
+    max_wall_s:  float = 0.0
     notes:       str = ""
     # Known-failing today (documents an open bug); the run still executes and is
     # scored, but the runner reports it as an expected failure rather than a
@@ -50,6 +54,17 @@ SCENARIOS: list[Scenario] = [
               "(Tackle/Growl/Leech Seed, no Vine Whip yet), so the agent must GRIND "
               "to ~L13 for Vine Whip before it can reliably beat Geodude L12 / Onix "
               "L14, then navigate the Pewter Gym and win. Long, exploratory run.",
+    ),
+    Scenario(
+        name="second_badge",
+        goal=goals.badges_at_least(2),
+        max_steps=800,
+        max_wall_s=5400,     # ~90 min ceiling; should finish well under this
+        start_save=DEFAULT_SAVE,
+        notes="Full mid-game pipeline: beat Brock, then cross Route 3 + Mt. Moon (a "
+              "trainer-dense multi-floor maze) to Cerulean and beat Misty (Starmie L21, "
+              "has Recover). Exercises everything post-first-badge — dungeon nav, trainer "
+              "battles, healing/items — to surface the next capability gate.",
     ),
     Scenario(
         name="reach_pewter",

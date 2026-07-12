@@ -28,6 +28,32 @@ def effectiveness_vs(move_type: str, defender_types: tuple[str, ...]) -> float:
     return mult
 
 
+def overworld_pp_summary(move_names: list[str], pp: list[int],
+                         low_threshold: int = 5) -> tuple[str, str | None]:
+    """Overworld PP readout for the lead: a per-move "Name PP:n" line, plus a warning
+    when the total PP left on ATTACKING (non-status) moves is at/below `low_threshold`.
+    Outside battle the agent is otherwise blind to PP and will run its damaging moves
+    dry across a trainer gauntlet; a Pokémon Center heal restores PP, so it should
+    retreat while it still can. Returns ("", None) if the mon has no moves."""
+    bits: list[str] = []
+    atk_pp = 0
+    for nm, p in zip(move_names, pp):
+        if not nm:
+            continue
+        bits.append(f"{nm} PP:{p}")
+        if nm not in STATUS_MOVES:
+            atk_pp += p
+    if not bits:
+        return "", None
+    line = "Lead moves: " + ", ".join(bits)
+    warn = None
+    if atk_pp <= low_threshold:
+        warn = (f"⚠ LOW PP: only {atk_pp} PP left on your attacking moves — heal at a "
+                "Pokémon Center (it restores PP) BEFORE more battles, or you'll be "
+                "stuck using Struggle.")
+    return line, warn
+
+
 def annotate_moves(move_names: list[str],
                    opponent_name: str = "",
                    pp_list: list[int] | None = None,

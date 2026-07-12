@@ -1,7 +1,7 @@
 from datetime import datetime
 from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
                     USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
-                    LLM_BASE_URL)
+                    LLM_BASE_URL, MAX_WALL_SECONDS)
 from game.memory_reader import LeafGreenReader
 from game.state import GameContext, GameState, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
@@ -17,7 +17,7 @@ from knowledge.shopping import shopping_summary
 from knowledge.map_graph import MAP_KIND
 from game.constants import Addr
 from game.pathfinding import door_centers
-from knowledge.battle import battle_summary
+from knowledge.battle import battle_summary, overworld_pp_summary
 from rich.console import Console
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -80,7 +80,7 @@ class AgentRuntime:
 @dataclass
 class EpisodeResult:
     """Outcome of one run_episode() call — the eval scorecard for a scenario."""
-    reason:            str            # goal | max_steps | max_llm_calls | token_budget | interrupted | error_budget
+    reason:            str            # goal | max_steps | max_wall | max_llm_calls | token_budget | interrupted | error_budget
     passed:            bool           # goal predicate satisfied
     steps:             int
     reward:            float
@@ -305,7 +305,8 @@ def build_runtime(*, backend: str = MGBA_BACKEND,
 
 
 def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str = "",
-                max_steps: int = 0, verbose: bool = True) -> EpisodeResult:
+                max_steps: int = 0, max_wall_s: float = MAX_WALL_SECONDS,
+                verbose: bool = True) -> EpisodeResult:
     """Drive the decision loop until the goal is met, a cap is hit, or the run is
     interrupted / exceeds the error budget. Returns an EpisodeResult scorecard.
 
@@ -328,6 +329,7 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
     pending_map_b64      = None   # area map to attach next tick (cleared after one use)
     pending_map_name     = ""
     step_count           = 0
+    wall_deadline        = time.time() + max_wall_s if max_wall_s else 0.0
     consecutive_errors   = 0      # ticks that raised in a row (see MAX_CONSECUTIVE_ERRORS)
     blackout_active      = False  # inside a blackout (all fainted); reset on recovery
     decision_ticks       = 0      # overworld decision ticks (for stuck_ratio)
@@ -606,6 +608,17 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                 potions = sum(bag.get(p, 0) for p in (13, 22, 21, 20, 19))
                 obs_parts.append(
                     f"Bag: ¥{money} | Poké Balls: {balls} | Potions/heals: {potions}")
+                # Lead move PP — the agent is otherwise blind to PP outside battle and
+                # would run its attacking moves dry across a trainer gauntlet (it did,
+                # for 11 hours). A Pokémon Center heal restores PP, so warn while it
+                # can still retreat. (In battle the per-move PP is already in the obs.)
+                lead = state.party[0] if state.party else None
+                if lead:
+                    pp_line, pp_warn = overworld_pp_summary(lead.move_names, lead.pp)
+                    if pp_line:
+                        obs_parts.append(pp_line)
+                    if pp_warn:
+                        obs_parts.append(pp_warn)
                 # At a Mart: recommend a badge-gated, par-level restock the agent can afford.
                 if MAP_KIND.get((state.map_bank, state.map_id)) == "mart":
                     rec = shopping_summary(bag, ltm.data["badges_earned"], money)
@@ -820,6 +833,15 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                                   f"{_run_summary(reward, client, step_count)}[/]")
                 ltm.save()
                 return _result("token_budget", False, state)
+            # Wall-clock guard: an unattended run (esp. a local model that degrades on a
+            # marathon) can't hang for hours — checked each step, so at worst one over-
+            # long step past the deadline (LLM_TIMEOUT bounds that single step).
+            if wall_deadline and time.time() >= wall_deadline:
+                if verbose:
+                    console.print(f"[green]Reached wall-clock cap ({max_wall_s:.0f}s) — stopping. "
+                                  f"{_run_summary(reward, client, step_count)}[/]")
+                ltm.save()
+                return _result("max_wall", False, state)
 
         except KeyboardInterrupt:
             if verbose:
