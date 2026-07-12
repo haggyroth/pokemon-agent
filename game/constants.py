@@ -43,6 +43,15 @@ class Addr:
     # last learned move), so treat it as a real prompt only when it's a valid move id
     # the lead does NOT already know. 0 handling is caller-side.
     MOVE_TO_LEARN      = 0x02024022
+    # gBattleScripting.learnMoveState (u8) — the level-up move-learn state machine.
+    # Derived + verified live: 0 in a normal battle; 1 ("Delete a move?" box, waiting
+    # for input) → 2 (YES chosen, opening summary) → 3 (forget summary) → 4 (exit).
+    # CAUTION: like gMoveToLearn it LINGERS — it holds its last value (3/4) back in the
+    # overworld, so it is NOT a standalone "prompt active" gate. The driver only treats
+    # ==1 while cb2==CB2_BATTLE (and a valid gMoveToLearn) as a LIVE delete box, and
+    # terminates on the battle's own state (action menu / overworld), never on this
+    # value going 0. See memory battle-menu-re.md for the full deep-dive.
+    LEARN_MOVE_STATE   = 0x02023FE3
 
     # Progress. Badges live in gSaveBlock1, which the game DMA-RELOCATES on every
     # map transition (verified live: base 0x202554c indoors → 0x20255a8 outdoors).
