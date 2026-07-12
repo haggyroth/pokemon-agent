@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.4]
+
+### Fixed
+- fix: history hygiene (#69). A failed LLM call (likelier now with `LLM_TIMEOUT`) no
+  longer leaves a dangling user turn — `step()` rolls back everything it appended if
+  the call raises, so retries don't pile up unanswered turns and inflate token cost.
+  `trim_messages` now hard-resets to the system prompt + last user group when no
+  boundary is in the trim window, instead of returning oversized history.
+
+### Changed
+- chore(ci): SHA-pin `actions/checkout` (v4.3.1) and `actions/setup-python` (v5.6.0)
+  to commit SHAs, and add `.github/dependabot.yml` (github-actions + pip) so the pins
+  and requirements still auto-update (#72).
+
 ## [0.30.3]
 
 ### Fixed
