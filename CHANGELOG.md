@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.2]
+
+### Fixed
+- fix: bound the transition auto-advance so a stuck game state can't bypass the run
+  guardrails. A `TRANSITIONING`-stuck main loop tapped A and `continue`d forever, before
+  the step/wall-clock budget checks — an eval hung ~3h there. Now the wall-clock cap is
+  enforced inline and the auto-A is capped so a genuinely stuck state falls through to a
+  normal step (LLM re-engages, budgets run). Complements the 0.28.0 guardrails. (#122)
+
 ## [0.30.1]
 
 ### Fixed
