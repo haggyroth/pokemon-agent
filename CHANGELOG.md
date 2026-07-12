@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.24.1]
+
+### Fixed
+- fix: the move-learn driver no longer forfeits trainer battles. gMoveToLearn LINGERS
+  after a declined level-up move, so the driver kept re-engaging every turn of Brock's
+  Onix, starved `use_move` of a move menu, and the agent left the gym at 0 badges (then
+  looped at the Pewter guard). Now armed on a lead level-up edge (disarmed after
+  driving) with a live-delete-box safety net, and it terminates on the overworld /
+  an idle-timeout instead of the STALE `gBattlerControllerFuncs` value that read
+  CHOOSE_ACTION mid-victory-sequence. Verified: `first_badge` eval now beats Brock and
+  earns the Boulder Badge (#112)
+
 ## [0.24.0]
 
 ### Added
