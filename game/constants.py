@@ -20,7 +20,18 @@ class Addr:
     # during use_move RE — it's the ACTION cursor, not the move one). Indices:
     # 0=FIGHT 1=BAG 2=POKEMON 3=RUN. flee_battle writes 3 then presses A.
     ACTION_CURSOR = 0x02023FF8
-    ACTION_RUN    = 3
+    ACTION_RUN     = 3
+    ACTION_POKEMON = 2   # gActionSelectionCursor value for POKEMON (switch)
+    # gBattleMons[0].species (u16) — the PLAYER's ACTIVE battler's live species.
+    # Derived live: it changes Bulbasaur(1)→Weedle(13) the instant an in-battle switch
+    # completes, so switch_pokemon confirms success by this becoming the target's
+    # species (the party array order is unchanged by a switch, so read_party can't see
+    # it). gBattleMons[0] base; species at struct offset 0.
+    BATTLE_MON0_SPECIES = 0x02023BE4
+    # Live cursor (slotId) in the in-battle party menu, 0-based over party slots.
+    # Derived live: steps 0→1 on Down, back on Up. switch_pokemon navigates it to the
+    # target slot before selecting.
+    PARTY_MENU_SLOT     = 0x020207FE
     # gBattlerControllerFuncs[0] — player battler's controller callback. Equals
     # CTRL_CHOOSE_MOVE while the FIGHT move menu is open, CTRL_CHOOSE_ACTION while
     # the FIGHT/BAG/POKEMON/RUN action menu is open (both live-verified).
