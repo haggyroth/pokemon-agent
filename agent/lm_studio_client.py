@@ -1267,6 +1267,93 @@ class AgentClient:
         return ("It broke free! Weaken it more with use_move (bring its HP low, or "
                 "inflict a status like sleep), then catch() again.")
 
+    def _use_item(self, item: str) -> str:
+        """Use a Bag item on your ACTIVE Pokémon during battle — a Potion to heal, an
+        Antidote/Paralyze Heal/etc. to cure status. Opens the Bag, switches to the Items
+        pocket, navigates the list to the named item (via the live cursor), and uses it
+        on the lead, confirming by the item being consumed / HP rising / status clearing.
+        Using an item spends your turn. (Overworld item use isn't handled here.)"""
+        from game.constants import Addr
+        from game.state import GameContext
+        from knowledge.shopping import ITEM_NAMES
+        if self.reader.detect_context() != GameContext.IN_BATTLE:
+            return "use_item is for battles. (In the overworld, items apply automatically where needed.)"
+        key = item.lower().strip().replace("é", "e")
+        name2id = {v.lower().replace("é", "e"): k for k, v in ITEM_NAMES.items()}
+        iid = name2id.get(key)
+        if iid is None:
+            hits = [k for n, k in name2id.items() if key and key in n]
+            iid = hits[0] if len(hits) == 1 else None
+        if iid is None:
+            return f"Don't recognise the item '{item}'. Try e.g. Potion, Super Potion, Antidote."
+        pocket = self.reader.read_items_pocket()
+        order = [i for i, _ in pocket]
+        if iid not in order:
+            have = ", ".join(ITEM_NAMES.get(i, f"#{i}") for i in order) or "nothing usable"
+            return f"No {ITEM_NAMES.get(iid, item)} in your Items pocket (you have: {have})."
+        target_index = order.index(iid)
+        before_qty = dict(pocket).get(iid, 0)
+        lead0 = self.reader.read_party()
+        before_hp = lead0[0].current_hp if lead0 else 0
+        before_status = lead0[0].status if lead0 else "healthy"
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        if not self._open_battle_bag():
+            return "Couldn't open the Bag in battle — try use_item again."
+        if idle:
+            idle()
+        self.mgba.tick(12)
+        SD = Addr.BAG_MENU_STATE
+        for _ in range(8):                       # Left cycles Balls→Key Items→Items
+            if self.mgba.read16(SD + Addr.BAG_POCKET_OFF) == Addr.BAG_POCKET_ITEMS:
+                break
+            self.mgba.tap("Left")
+            if idle:
+                idle()
+            self.mgba.tick(8)
+        if self.mgba.read16(SD + Addr.BAG_POCKET_OFF) != Addr.BAG_POCKET_ITEMS:
+            self._exit_battle_menus()
+            return "Couldn't reach the Items pocket — try use_item again."
+        for _ in range(16):                      # walk the list cursor to the item
+            cur = self.mgba.read8(Addr.BAG_LIST_CURSOR)
+            if cur == target_index:
+                break
+            self.mgba.tap("Down" if cur < target_index else "Up")
+            if idle:
+                idle()
+            self.mgba.tick(6)
+        if self.mgba.read8(Addr.BAG_LIST_CURSOR) != target_index:
+            self._exit_battle_menus()
+            return f"Couldn't select {ITEM_NAMES.get(iid, item)} in the bag — try again."
+
+        def used() -> bool:
+            pk = self.reader.read_party()
+            p = pk[0] if pk else None
+            qty = dict(self.reader.read_items_pocket()).get(iid, 0)
+            return (qty < before_qty) or (p is not None and (
+                p.current_hp > before_hp
+                or (before_status != "healthy" and p.status == "healthy")))
+
+        # Select → USE (default) → party menu (lead is the default slot) → confirm text.
+        # Self-verifying A presses: a dropped input in the chain just costs another press
+        # instead of stranding us, and we stop the instant the item takes effect.
+        for _ in range(16):
+            if used():
+                break
+            self.mgba.tap("A")
+            if idle:
+                idle()
+            self.mgba.tick(12)
+        self._exit_battle_menus()
+        if not used():
+            return f"Couldn't use the {ITEM_NAMES.get(iid, item)} — you're back in the battle; try again."
+        p = self.reader.read_party()[0]
+        gained = p.current_hp - before_hp
+        if gained > 0:
+            return f"Used {ITEM_NAMES.get(iid, item)} — {p.species_name or 'lead'} healed +{gained} HP ({p.current_hp}/{p.max_hp})."
+        if before_status != "healthy" and p.status == "healthy":
+            return f"Used {ITEM_NAMES.get(iid, item)} — cured {p.species_name or 'lead'}'s {before_status}."
+        return f"Used {ITEM_NAMES.get(iid, item)}."
+
     def _exit_battle_menus(self) -> None:
         """Back out of any Bag / context / prompt menu until we're on solid ground
         (IN_BATTLE or OVERWORLD), so a catch attempt never strands the agent. Settles
@@ -1689,6 +1776,8 @@ class AgentClient:
                 return self._shop()
             case "pick_up_items":
                 return self._pick_up_items()
+            case "use_item":
+                return self._use_item(args["item"])
             case "challenge_leader":
                 return self._challenge_leader()
             case "use_move":

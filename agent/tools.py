@@ -103,6 +103,20 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "use_item",
+        "description": "In battle, use a Bag item on your ACTIVE Pokémon — a Potion "
+                       "(or Super/Hyper/Max Potion) to restore HP, or a status cure "
+                       "(Antidote, Paralyze Heal, Awakening, Burn Heal, Ice Heal, Full "
+                       "Heal). Drives the Bag → Items pocket → item → your lead for you, "
+                       "and confirms it worked. Using an item spends your turn, so heal "
+                       "when your lead is low rather than risking a faint. Check the "
+                       "'Bag:' line for what you have.",
+        "parameters": {"type": "object", "properties": {
+            "item": {"type": "string",
+                     "description": "Item name, e.g. 'Potion', 'Super Potion', 'Antidote'."},
+        }, "required": ["item"]},
+    }},
+    {"type": "function", "function": {
         "name": "pick_up_items",
         "description": "Collect the item balls (Poké Balls sitting on the ground) visible "
                        "on the current map. Walks up to each, faces it, and picks it up for "

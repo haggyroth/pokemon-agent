@@ -170,8 +170,14 @@ class Addr:
     BAG_MENU_STATE     = 0x0203ACFC
     BAG_LOCATION_OFF   = 0x04
     BAG_POCKET_OFF     = 0x06
+    BAG_POCKET_ITEMS   = 0
     BAG_POCKET_BALLS   = 2
     ACTION_BAG         = 1     # gActionSelectionCursor value for BAG
+    # Live highlighted row in the open Bag's item list (0-based). Derived live: it
+    # steps 0→1 on Down, back on Up. Lets use_item navigate to a specific item by its
+    # position in the pocket. (It's the on-screen cursor row; for a short list — no
+    # scroll — that equals the item's index in the pocket, which covers early game.)
+    BAG_LIST_CURSOR    = 0x0203AD04
 
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
