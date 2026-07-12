@@ -1,14 +1,14 @@
-requests>=2.32
-openai>=1.0
-rich>=13.0
-python-dotenv>=1.0
+requests>=2.34.2
+openai>=2.45.0
+rich>=15.0.0
+python-dotenv>=1.2.2
 
 # Native emulator backend (MGBA_BACKEND=native): builds the in-process libmgba
 # binding. Requires Homebrew libmgba at build time: brew install mgba
 # setuptools is needed by cffi to compile the extension on Python 3.12+.
-cffi>=1.16
-setuptools>=68
+cffi>=2.1.0
+setuptools>=83.0.0
 
 # Live viewer window (SHOW_WINDOW=true, native backend). Optional — only needed
 # if you want to watch the agent play.
-pygame>=2.6
+pygame>=2.6.1
