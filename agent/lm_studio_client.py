@@ -27,6 +27,13 @@ class AgentClient:
         self.tilemap = TilemapReader(mgba)   # for walk_to pathfinding
         self.messages: list[dict] = []
         self._current_opponent: str = ""  # set by set_opponent tool call
+        # Level-up move-learn arming (see _maybe_drive_learn): a move-learn prompt only
+        # follows a level-up, but gMoveToLearn LINGERS after one (a declined move stays
+        # "offered" forever). We arm on a lead level-up edge and disarm after driving,
+        # so the driver never re-engages on the stale value mid-battle (which starved
+        # use_move of a clean move menu during Brock's Onix and forfeited the gym).
+        self._learn_armed = False
+        self._lead_level_seen: int | None = None
         # Cumulative LLM usage for spend tracking (#64). resp.usage may be absent
         # on some endpoints, so token totals are best-effort; call count is exact.
         self.llm_calls = 0
@@ -1297,14 +1304,33 @@ class AgentClient:
             self.mgba.tick(6)
 
     def _maybe_drive_learn(self) -> str | None:
-        """If a level-up is offering the lead a new move (gMoveToLearn valid + unknown —
-        set ~16 frames BEFORE the interactive delete box), take over and drive the whole
+        """If a level-up is offering the lead a new move, take over and drive the whole
         move-learn flow carefully per policy. Returns a note if it did, else None. Cheap
-        no-op on a normal turn (offered == 0). This is the single entry point; it's
-        called wherever a battle would otherwise press A into the box."""
+        no-op on a normal turn. This is the single entry point; it's called wherever a
+        battle would otherwise press A into the box.
+
+        Gating: gMoveToLearn is set ~16 frames BEFORE the interactive delete box (good
+        for early, un-mashed detection) but it also LINGERS afterward — a DECLINED move
+        stays "offered" for the rest of the battle. Detecting on that alone made the
+        driver re-engage every turn of Brock's Onix and starve use_move of a move menu
+        (it forfeited the gym at 0 badges). Since a move-learn only ever follows a
+        level-up, we ARM on a lead level-up edge and DISARM once we've driven the offer,
+        so a stale gMoveToLearn can't re-trigger mid-battle. As a safety net we also
+        engage when a delete box is live RIGHT NOW (learnMoveState == 1, which — unlike
+        gMoveToLearn — never lingers): that catches a box even if the level-up landed
+        mid-use_move and the arm hadn't sampled the new level yet."""
+        party = self.reader.read_party()
+        lvl = party[0].level if party else 0
+        if self._lead_level_seen is not None and lvl > self._lead_level_seen:
+            self._learn_armed = True     # a level-up just happened → a learn may be pending
+        self._lead_level_seen = lvl
         if self._offered_move() == 0:
             return None
-        return self._drive_pending_learn()
+        if not self._learn_armed and not self._delete_box_live():
+            return None      # not armed and no box on screen → ignore a lingering offer
+        note = self._drive_pending_learn()
+        self._learn_armed = False
+        return note
 
     def _drive_pending_learn(self) -> str | None:
         """Frame-step the level-up move-learn flow to completion, resolving each delete
@@ -1316,17 +1342,26 @@ class AgentClient:
         from game.state import GameContext
         from game.constants import Addr
         note = None
+        # Iterations since we last resolved a box. We CANNOT terminate on
+        # gBattlerControllerFuncs (CHOOSE_ACTION/MOVE): that value goes STALE during the
+        # end-of-battle victory/level-up sequence (it reads CHOOSE_ACTION even though no
+        # menu is up), which bailed the driver before the box ever appeared. Instead we
+        # end on the overworld (wild battle) or, for a battle that continues (trainer),
+        # when no further box has appeared for a while — the learn flow is over.
+        idle = 0
         for _ in range(300):
             if self._delete_box_live():
                 n = self._resolve_move_learn()
                 note = f"{note}; {n}" if note else n
+                idle = 0
                 continue
-            ctrl = self.mgba.read32(Addr.BATTLE_CTRL_FUNC)
-            if ctrl in (Addr.CTRL_CHOOSE_ACTION, Addr.CTRL_CHOOSE_ACTION_ALT, Addr.CTRL_CHOOSE_MOVE):
-                return note   # back at a normal decision point — done
             if self.reader.detect_context() == GameContext.OVERWORLD:
-                return note   # battle ended (the box lives in CB2_BATTLE, so only the
-                              # overworld — not gBattleOutcome — ends the flow)
+                return note   # battle ended (a box lives in CB2_BATTLE, so only the
+                              # overworld — not the stale controller func — ends the flow)
+            idle += 1
+            if idle > 24:
+                return note   # no further box appeared — the learn flow is done and the
+                              # battle has resumed (trainer battle continues past it)
             # Advance the "wants to learn"/result text one step. wait_until_idle can
             # land us exactly on a freshly-interactive box, so re-check lms after it
             # and bail to the top (to resolve) rather than pressing A — otherwise the A
