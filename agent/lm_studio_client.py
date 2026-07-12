@@ -1130,6 +1130,12 @@ class AgentClient:
         move_label = party[0].move_names[slot]
         if party[0].pp[slot] == 0:
             return f"{move_label} has no PP left — choose another move."
+        # Remember who's giving the order so we can tell if it fainted mid-turn (#68):
+        # a faster foe can KO our lead before our move executes, in which case PP never
+        # drops and the naive success check would mash A blindly through the forced
+        # send-out prompt. 0 means Tier-2 decryption gave us nothing usable — don't
+        # arm the identity guard on it (only the HP==0 faint signal is trustworthy then).
+        species_before = party[0].species_id
 
         # A prior level-up may have left a move-learn prompt pending — resolve it
         # before attacking (else committing a move would mash it into an overwrite).
@@ -1173,6 +1179,16 @@ class AgentClient:
                     return f"Used {move_label}. {learn}."
                 if self.reader.detect_context() != GameContext.IN_BATTLE and self._battle_truly_over():
                     return f"Used {move_label} (battle ended)."
+                # Our lead fainted (or was swapped out) before the move resolved — its PP
+                # never dropped, so we'd otherwise mash A through the forced send-out and
+                # confirm a switch blind (#68). Stop and hand the model a truthful obs so
+                # it can pick who to send out next (switch_pokemon), rather than a
+                # misleading "Could not use…".
+                if after and (after[0].current_hp == 0
+                              or (species_before and after[0].species_id != species_before)):
+                    return (f"Your lead fainted before {move_label} could resolve — "
+                            f"the foe was faster. Send out your next Pokémon with "
+                            f"switch_pokemon.")
                 if hasattr(self.mgba, "wait_until_idle"):
                     self.mgba.wait_until_idle()
                 self.mgba.hold("A", 18)
