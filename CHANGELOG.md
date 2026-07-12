@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.26.0]
+
+### Added
+- feat: `pick_up_items()` skill + tool collects ground item balls (free Potions,
+  Antidotes, Poké Balls, TMs). Item balls are object events with gfx id
+  `OBJ_EVENT_GFX_ITEM_BALL` (92); scanning loaded `gObjectEvents` for that id lists
+  the uncollected balls on screen. Walks to each, faces it, picks it up, and confirms
+  via the bag total; the observation surfaces visible balls so the model calls it.
+  Verified live (Viridian Forest Potion). (#114)
+
 ## [0.25.0]
 
 ### Added
