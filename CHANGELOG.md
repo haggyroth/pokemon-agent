@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.24.0]
+
+### Added
+- feat: deterministic in-battle move-learn driver — when a Pokémon at 4 moves levels
+  into a new move, the agent now resolves the "Delete a move?" prompt by the shipped
+  forget policy instead of mashing A/B and forgetting a move at random (which was
+  overwriting damaging moves with status moves, e.g. Sleep Powder over Tackle).
+  `_maybe_drive_learn` (gated on `gMoveToLearn`, set ~16 frames before the box) takes
+  over in `use_move` + `_auto_fight` and frame-steps the flow with anti-bleed so an A
+  never slips through the ~2-frame interactive window. Decline = mash B to
+  `learnMoveState == 4` then A gated on the offered move changing (handles back-to-back
+  same-level prompts); accept supported for slot 0, non-0 slots stay decline-safe.
+  Adds `Addr.LEARN_MOVE_STATE` (`0x02023FE3`). Verified live: Bulbasaur's L15 double
+  (Poison + Sleep Powder) declines both and keeps Tackle, 3/3 (#111)
+
 ## [0.23.1]
 
 ### Fixed
