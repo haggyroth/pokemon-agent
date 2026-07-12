@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.28.0]
+
+### Added
+- feat: run guardrails + overworld PP awareness (from an 11-hour runaway eval). New
+  `LLM_TIMEOUT` (per-request, default 180s) bounds a single chat completion; new
+  `MAX_WALL_SECONDS` / `run_episode(max_wall_s=…)` is a hard wall-clock cap (result
+  reason `max_wall`); the eval runner always bounds wall-clock (2h ceiling) and gains
+  a `second_badge` scenario. Plus `knowledge.battle.overworld_pp_summary()` adds a
+  `Lead moves: … PP:n` obs line and a LOW-PP warning (≤5 attacking PP) so the agent
+  heals to restore PP instead of grinding its moves to Struggle. (#116)
+
 ## [0.27.0]
 
 ### Added
