@@ -103,6 +103,19 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "switch_pokemon",
+        "description": "In battle, switch your active Pokémon to another party member "
+                       "(by species name, e.g. 'Pidgey', or 1-based slot number). Drives "
+                       "the party menu and confirms the swap. Switching costs your turn "
+                       "(the opponent gets a free hit), so use it to bring in a "
+                       "type-favorable Pokémon or save one that's low — not casually. "
+                       "Needs a team of 2+ (build one with catch()).",
+        "parameters": {"type": "object", "properties": {
+            "target": {"type": "string",
+                       "description": "Party member to send in: a species name or a 1-based slot."},
+        }, "required": ["target"]},
+    }},
+    {"type": "function", "function": {
         "name": "use_item",
         "description": "In battle, use a Bag item on your ACTIVE Pokémon — a Potion "
                        "(or Super/Hyper/Max Potion) to restore HP, or a status cure "

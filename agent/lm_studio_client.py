@@ -1312,6 +1312,119 @@ class AgentClient:
         return ("It broke free! Weaken it more with use_move (bring its HP low, or "
                 "inflict a status like sleep), then catch() again.")
 
+    @staticmethod
+    def _resolve_party_target(target: str, party) -> int | None:
+        """Map a switch target — a 1-based slot number or a species name (exact, then
+        partial) — to a 0-based party slot index, or None if it doesn't match."""
+        key = target.lower().strip()
+        if key.isdigit():
+            i = int(key) - 1
+            return i if 0 <= i < len(party) else None
+        for i, p in enumerate(party):
+            if p.species_name and p.species_name.lower() == key:
+                return i
+        for i, p in enumerate(party):
+            if p.species_name and key in p.species_name.lower():
+                return i
+        return None
+
+    def _open_party_menu(self) -> bool:
+        """Open the party menu from a battle by selecting POKEMON (action cursor = 2),
+        the same looped write-cursor+A method _open_battle_bag uses for BAG. Confirms
+        via the callback leaving CB2_BATTLE (the party screen has its own callback)."""
+        from game.constants import Addr
+        from game.state import GameContext
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        opened = False
+        for _ in range(30):
+            if self.mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_BATTLE:
+                opened = True
+                break                             # the party screen is coming up
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                return False                      # battle ended out from under us
+            if idle:
+                idle()
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) == Addr.CTRL_CHOOSE_MOVE:
+                self._battle_press("B")           # back out of the move menu; never attack
+            else:
+                self.mgba.write8(Addr.ACTION_CURSOR, Addr.ACTION_POKEMON)
+                self.mgba.hold("A", 20)
+            self.mgba.tick(6)
+        if not opened:
+            return False
+        # The party screen transitions through a LOADING callback before it becomes
+        # interactive; returning too early leaves inputs ignored (a switch froze here).
+        # Settle until gMain.callback2 stops changing (and is no longer CB2_BATTLE).
+        prev = None
+        for _ in range(20):
+            cb = self.mgba.read32(Addr.GMAIN_CALLBACK2)
+            if cb != Addr.CB2_BATTLE and cb == prev:
+                return True                       # stable, interactive party screen
+            prev = cb
+            self.mgba.tick(6)
+        return self.mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_BATTLE
+
+    def _switch_pokemon(self, target: str) -> str:
+        """Switch the active Pokémon in battle to another party member (by species name
+        or 1-based slot). Opens the party menu (POKEMON), moves the cursor to the target
+        slot, selects it, and confirms SHIFT — then verifies the active battler's species
+        actually changed. Switching uses your turn (the opponent gets a free hit), so do
+        it to gain a type advantage or save a low mon, not casually."""
+        from game.constants import Addr
+        from game.state import GameContext
+        if self.reader.detect_context() != GameContext.IN_BATTLE:
+            return "switch_pokemon is only for battles."
+        party = self.reader.read_party()
+        if len(party) < 2:
+            return "You only have one Pokémon — nothing to switch to. Catch a team first."
+        slot = self._resolve_party_target(target, party)
+        if slot is None:
+            roster = ", ".join(f"{i+1}:{p.species_name}" for i, p in enumerate(party) if p.species_name)
+            return f"Can't find '{target}' in your party ({roster})."
+        mon = party[slot]
+        if mon.current_hp == 0:
+            return f"{mon.species_name} has fainted — pick a Pokémon with HP left."
+        active_species = self.mgba.read16(Addr.BATTLE_MON0_SPECIES)
+        if mon.species_id == active_species:
+            return f"{mon.species_name} is already the one battling."
+        target_species = mon.species_id
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        if not self._open_party_menu():
+            return "Couldn't open the party menu — try switch_pokemon again."
+        if idle:
+            idle()
+        self.mgba.tick(30)                        # let the party screen settle
+        for _ in range(12):                       # move the cursor to the target slot
+            cur = self.mgba.read8(Addr.PARTY_MENU_SLOT)
+            if cur == slot:
+                break
+            self.mgba.tap("Down" if cur < slot else "Up")
+            if idle:
+                idle()
+            self.mgba.tick(8)
+        if self.mgba.read8(Addr.PARTY_MENU_SLOT) != slot:
+            self._exit_battle_menus()
+            return f"Couldn't select {mon.species_name} in the party menu — try again."
+        # Select the slot → SHIFT (default) → confirm. Self-verifying: press A until the
+        # active battler's species becomes the target's, or bail out cleanly.
+        for _ in range(14):
+            if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) == target_species:
+                break
+            self.mgba.tap("A")
+            if idle:
+                idle()
+            self.mgba.tick(14)
+        if self.mgba.read16(Addr.BATTLE_MON0_SPECIES) != target_species:
+            self._exit_battle_menus()
+            return f"Couldn't switch to {mon.species_name} — you're back in the battle; try again."
+        # Advance the "come back! / go!" send-out text so the caller lands cleanly.
+        for _ in range(6):
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (
+                    Addr.CTRL_CHOOSE_ACTION, Addr.CTRL_CHOOSE_ACTION_ALT, Addr.CTRL_CHOOSE_MOVE):
+                break
+            self._battle_press("A")
+        return f"Switched in {mon.species_name} (L{mon.level}). It's now your active Pokémon."
+
     def _use_item(self, item: str) -> str:
         """Use a Bag item on your ACTIVE Pokémon during battle — a Potion to heal, an
         Antidote/Paralyze Heal/etc. to cure status. Opens the Bag, switches to the Items
@@ -1823,6 +1936,8 @@ class AgentClient:
                 return self._pick_up_items()
             case "use_item":
                 return self._use_item(args["item"])
+            case "switch_pokemon":
+                return self._switch_pokemon(str(args["target"]))
             case "challenge_leader":
                 return self._challenge_leader()
             case "use_move":
