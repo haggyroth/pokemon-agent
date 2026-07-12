@@ -20,19 +20,39 @@ Pokemon_LeafGreen.gba
      └── Calls a local LLM (LM Studio) with tool use → presses buttons
 ```
 
-The LLM uses tool calling to press buttons, read game state, and save/load emulator states. A shaped reward system tracks progress and transitions to sparse rewards after badge 4.
+The agent works through **deterministic high-level skills**, not raw button-mashing: the LLM picks *what* to do (a destination, a move, a Pokémon to switch to) and tested Python code drives the emulator to do it reliably. This is the core design — the model reasons about strategy while the skills handle the finicky menu/frame timing. A shaped reward system tracks progress and transitions to sparse rewards after badge 4.
+
+## What it can do
+
+The agent has a full gameplay skill set. The LLM calls these as tools:
+
+**Navigation**
+- `go_to("<place>")` — travel to a named map or waypoint ("Pewter City", "Pokémon Center", "Mart", "Gym"), auto-routing across map connections and building/cave warps (BFS over a graph generated from the pokefirered decomp). Auto-flees wild battles so a whole route/forest is one call; stops resumably on a trainer, low HP, or a block. Detects a stalled route and gives actionable guidance instead of looping. Stops on a *new* wild species so the agent can build a team.
+- `walk_to(x, y)` — A* to a tile on the current map, routing around walls, ledges, and loaded NPCs.
+- `go_to_map(direction)` — cross a seamless map-edge connection.
+
+**Battle**
+- `use_move("<name>")` — drive the FIGHT menu by memory (opponent identified from RAM, type-chart + Gen III physical/special-split analysis in the observation). Resolves a level-up **move-learn** prompt per a policy that never cripples the moveset.
+- `switch_pokemon(target)` — swap in another party member (type advantage / save a low mon).
+- `use_item(name)` — Potions and status cures from the bag, on the active Pokémon.
+- `catch()` — throw a Poké Ball (verdict read from `gBattleOutcome`); `flee_battle()` — run from a wild battle.
+
+**Progression & survival**
+- `heal()` — restore the party at the nearest Pokémon Center; `shop()` — buy a badge-gated, par-level restock at a Mart; `grind(level)` — auto-fight wild Pokémon to a target level.
+- `pick_up_items()` — collect item balls on the ground; `challenge_leader()` — walk up to a Gym Leader and start the fight.
+- `record_milestone`, `save_state` / `load_state`, `read_game_state`, `press_button`, `wait_frames`.
 
 ## Features
 
-- **In-process emulation** — libmgba driven directly in Python; deterministic frame stepping, no network round-trips
-- **Direct memory reading** — parses the 100-byte Gen III party struct, XOR-decrypts species ID and moves, reads HP/level/status unencrypted
-- **Context detection** — distinguishes OVERWORLD / IN_BATTLE / DIALOG / TRANSITIONING via memory flags
-- **High-level navigation skills** — `go_to("<place>")` auto-routes across map connections and building/cave doors (BFS over a graph generated from the pokefirered decomp), incl. waypoints like "Pokemon Center"; `walk_to(x,y)` A*-paths around walls and NPCs. The LLM picks destinations; code drives movement
-- **Battle skills** — opponent read from memory, type-chart / physical-special-split analysis, and `use_move("<name>")` that drives the FIGHT menu deterministically
+- **In-process emulation** — libmgba driven directly in Python; deterministic frame stepping, no network round-trips, ~50× real-time
+- **Direct memory reading** — parses the 100-byte Gen III party struct, XOR-decrypts species ID and moves, reads HP/level/status/PP unencrypted
+- **Context detection** — distinguishes OVERWORLD / IN_BATTLE / DIALOG / IN_MENU / TRANSITIONING via the live `gMain.callback2` dispatcher
+- **Team-building & resource awareness** — nudges the agent to catch a team, surfaces move PP (so it heals before running its moves dry), recommends restocks
 - **Navigation hints** — tilemap passability, warps, and connections from ROM data; overhead area maps
-- **Persistent memory** — battle journal (JSONL), long-term progress (JSON), session tracking
+- **Persistent memory** — battle journal (JSONL), long-term progress (JSON), session tracking, loss-lesson retrieval
 - **Live viewer** — optional pygame window to watch the agent play (`SHOW_WINDOW=true`)
-- **State save/load** — saves before gym leaders, loads on blackout
+- **Run guardrails** — per-call `LLM_TIMEOUT` and a wall-clock cap so an unattended run can't hang; state save/load before gyms and on blackout
+- **Eval harness** — score real agent runs against goals (see below)
 
 ## Requirements
 
@@ -95,7 +115,9 @@ All settings live in `.env` (copy from `.env.example`). Key options:
 | `TOKEN_BUDGET` | `0` | Stop once cumulative prompt+completion tokens reach this (`0` = unlimited) |
 | `SHOW_WINDOW` | `false` | Live pygame window (native backend; requires `pygame`) |
 | `VIEWER_SCALE` | `3` | Window scale — 240×160 × scale |
-| `VIEWER_FPS` | `60` | Playback cap; `0` = full emulator speed |
+| `VIEWER_FPS` | `120` | Viewer playback pace cap (≈2× GBA speed); `0` = full emulator speed |
+| `LLM_TIMEOUT` | `180` | Per chat-completion timeout (s); bounds a single call so a slow/hung endpoint can't stall a run. `0` = none |
+| `MAX_WALL_SECONDS` | `0` | Hard wall-clock cap on a whole run (`0` = unlimited) |
 
 ## Testing
 
@@ -170,9 +192,9 @@ pathfinding/routing bug. It boots a real emulator, so it's opt-in:
 
 ## Memory layout notes
 
-All memory reads use full GBA bus addresses, identical between the native binding and the HTTP API, so the decoder is backend-agnostic. Party data at `0x02024288` uses Gen III XOR encryption (PID ^ OT_ID key); HP, level, and status are unencrypted and always reliable.
+All memory reads use full GBA bus addresses, identical between the native binding and the HTTP API, so the decoder is backend-agnostic. Party data at `0x02024284` uses Gen III XOR encryption (PID ^ OT_ID key); HP, level, status, and PP are unencrypted and always reliable.
 
-**On writes:** the agent treats game RAM as read-only for observation — it does not touch save data, badges, stats, RNG, or battle outcomes. The one sanctioned write is the battle move-cursor (`gMoveSelectionCursor`), which `use_move` sets to the target slot before pressing A. That's equivalent to navigating the FIGHT menu with the D-pad (it only chooses *which* of your moves to use, deterministically); it doesn't alter game logic. This is why "no ROM hacks" above refers to the ROM and game rules, not a claim that no RAM byte is ever written.
+**On writes:** the agent treats game RAM as read-only for observation — it does not touch save data, badges, stats, experience, RNG, or battle outcomes. The only sanctioned writes are **menu cursor positions** — the FIGHT move cursor, the battle action cursor (FIGHT/BAG/POKÉMON/RUN), and the bag/party list cursors — which the skills set to a target before pressing A. That's exactly equivalent to navigating a menu with the D-pad (it only chooses *which* legal option to select, deterministically, avoiding dropped-input flakiness); it never alters game logic or outcomes. This is why "no ROM hacks" above refers to the ROM and game rules, not a claim that no RAM byte is ever written.
 
 The authoritative memory map is [`game/constants.py`](game/constants.py); see [CLAUDE.md](CLAUDE.md) for context-detection details, backend notes, and Gen III data structure documentation.
 
