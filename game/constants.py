@@ -228,6 +228,12 @@ class Addr:
     OBJECT_EVENT_STRIDE = 0x24
     OBJECT_EVENT_COUNT  = 16
     OBJECT_COORD_OFFSET = 7
+    # +0x05 u8 graphicsId — identifies WHAT an object event is. Item balls on the
+    # ground use OBJ_EVENT_GFX_ITEM_BALL (92, from the pokefirered decomp). A collected
+    # ball's flag suppresses its spawn, so scanning loaded object events for this gfx
+    # id lists exactly the UNcollected balls currently on screen (pick_up_items).
+    OBJECT_GFX_OFFSET   = 0x05
+    OBJ_GFX_ITEM_BALL   = 92
 
 
 # Gen III character encoding (for nickname decoding)

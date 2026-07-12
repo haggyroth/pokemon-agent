@@ -103,6 +103,15 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "pick_up_items",
+        "description": "Collect the item balls (Poké Balls sitting on the ground) visible "
+                       "on the current map. Walks up to each, faces it, and picks it up for "
+                       "you — free items like Potions, Antidotes, Poké Balls, and TMs. Call "
+                       "it whenever the observation's 'Items on the ground:' line lists a "
+                       "ball, before leaving the area. Overworld only.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "use_move",
         "description": "In battle, use one of your lead Pokémon's moves by name. Drives "
                        "the battle menu for you — advances intro/result text, opens FIGHT, "

@@ -229,6 +229,29 @@ class LeafGreenReader:
         """Quantity of one item id in the bag (0 if absent)."""
         return self.read_bag().get(item_id, 0)
 
+    def read_item_ball_tiles(self) -> list[tuple[int, int]]:
+        """Grid coords of item balls currently on screen — loaded object events whose
+        graphicsId is the item-ball sprite. A collected ball's flag suppresses its
+        spawn, so this lists exactly the UNcollected balls nearby (the pickup skill
+        walks to each and presses A). currentCoords are grid coord + 7, like NPCs.
+        Empty on any read hiccup (never crashes the caller)."""
+        out: list[tuple[int, int]] = []
+        try:
+            for i in range(Addr.OBJECT_EVENT_COUNT):
+                b = Addr.OBJECT_EVENTS + i * Addr.OBJECT_EVENT_STRIDE
+                if not (self.client.read8(b) & 1):                 # not active
+                    continue
+                if self.client.read8(b + Addr.OBJECT_GFX_OFFSET) != Addr.OBJ_GFX_ITEM_BALL:
+                    continue
+                x = self.client.read16(b + 0x10)
+                y = self.client.read16(b + 0x12)
+                x = x - 65536 if x >= 32768 else x
+                y = y - 65536 if y >= 32768 else y
+                out.append((x - Addr.OBJECT_COORD_OFFSET, y - Addr.OBJECT_COORD_OFFSET))
+        except Exception:
+            return []
+        return out
+
     def read_player_pos(self) -> tuple[int, int]:
         """
         Read live player tile coordinates via the DMA-protected map block.
