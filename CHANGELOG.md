@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.6]
+
+### Fixed
+- fix: `switch_pokemon` is now reliable on every turn, not just the first switch of a
+  battle (#120). The in-battle party menu lists mons in battle order
+  (`gBattlePartyCurrentOrder`), which is permuted after each switch; the tool navigated
+  to the target's field slot, valid only pre-switch — afterward it landed on the active
+  mon and the game rejected the SHIFT as "already in battle" (the "keeps selecting the
+  active Pokémon" symptom). Now translates field slot → battle-order display slot
+  (`Addr.BATTLE_PARTY_ORDER`). Also removes the mis-diagnosed once-per-battle fast-fail
+  (the "stuck" callback `0x0811eb79` is just the normal `CB2_UpdatePartyMenu`). Verified
+  live: three consecutive switches in one battle all land.
+
 ## [0.30.5]
 
 ### Fixed
