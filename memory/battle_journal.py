@@ -15,20 +15,38 @@ class BattleJournal:
         # so scenario battles don't pollute the real journal.
         self.path = Path(path or JOURNAL_PATH)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Parsed-records cache keyed on the file's (mtime, size). get_loss_lessons runs
+        # every in-battle decision step (via build_system_prompt), so re-parsing the whole
+        # JSONL each tick is a hot-loop file read at thousands of battles (#70). We reparse
+        # only when the file actually changes.
+        self._cache: list[BattleRecord] | None = None
+        self._cache_key: tuple | None = None
 
     def log(self, record: BattleRecord):
         with open(self.path, "a") as f:
             f.write(json.dumps(asdict(record)) + "\n")
+        self._cache = None          # invalidate — next _all() reparses
+
+    def _file_key(self):
+        try:
+            st = self.path.stat()
+        except OSError:
+            return None
+        return (st.st_mtime_ns, st.st_size)
 
     def _all(self) -> list[BattleRecord]:
-        if not self.path.exists():
+        key = self._file_key()
+        if key is None:             # file doesn't exist
             return []
+        if self._cache is not None and key == self._cache_key:
+            return self._cache
         records = []
         with open(self.path) as f:
             for line in f:
                 if line.strip():
                     try: records.append(BattleRecord(**json.loads(line)))
                     except Exception: pass
+        self._cache, self._cache_key = records, key
         return records
 
     def get_loss_lessons(self, enemy_name: str, n: int = 3) -> str:
