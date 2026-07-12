@@ -187,6 +187,7 @@ class AgentClient:
         else:
             user_content = observation
 
+        checkpoint = len(self.messages)     # roll back to here if this step fails (#69)
         self.messages.append({"role": "user", "content": user_content})
         self._trim_image_history()
         actions: list[str] = []
@@ -197,12 +198,20 @@ class AgentClient:
         # stale screenshot). After MAX_TOOL_ROUNDS we return control so the main
         # loop re-observes (fresh screenshot + observation).
         for _round in range(self.MAX_TOOL_ROUNDS):
-            resp = self.llm.chat.completions.create(
-                model=MODEL_NAME, messages=self.messages,
-                tools=TOOLS, tool_choice="auto",
-                temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
-                timeout=LLM_TIMEOUT or None,   # bound a single call (see config)
-            )
+            try:
+                resp = self.llm.chat.completions.create(
+                    model=MODEL_NAME, messages=self.messages,
+                    tools=TOOLS, tool_choice="auto",
+                    temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+                    timeout=LLM_TIMEOUT or None,   # bound a single call (see config)
+                )
+            except Exception:
+                # A failed LLM call (e.g. an LLM_TIMEOUT) must not leave a dangling user
+                # turn — or a half-finished tool_calls group — in history: the API would
+                # reject the next request, and each retried step would pile on another,
+                # inflating token cost. Roll back everything this step appended (#69).
+                del self.messages[checkpoint:]
+                raise
             self.llm_calls += 1
             usage = getattr(resp, "usage", None)
             if usage:
