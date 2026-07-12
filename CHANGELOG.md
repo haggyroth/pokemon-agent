@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.25.0]
+
+### Added
+- feat: `go_to` stall detection breaks the travel retry loop. Its resumable "call
+  go_to again" message looped the agent forever when the path was story-gated (e.g.
+  leaving Pewter east at 0 badges, the guard NPC shuffles the player back to the gym,
+  which reads as "progress"). Now tracks consecutive calls that end at the same map
+  without arriving, and after 3 returns actionable guidance — redirect to the local
+  unbeaten Gym (`go_to('Gym')` → `challenge_leader()`) when that's the gate, else
+  explain the way is gated (story event / missing HM). Resets on arrival, real
+  progress, and after advising, so long journeys are unaffected (#113)
+
 ## [0.24.1]
 
 ### Fixed
