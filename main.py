@@ -636,6 +636,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                                      f"(walk_to needs 0≤x<{tilemap._width}, 0≤y<{tilemap._height})")
                 surr = tilemap.surroundings_str(state.player_x, state.player_y)
                 obs_parts.append(f"Tiles: {surr}")
+                balls = reader.read_item_ball_tiles()
+                if balls:
+                    where = ", ".join(f"({x},{y})" for x, y in balls[:5])
+                    obs_parts.append(
+                        f"Items on the ground: item ball(s) at {where} — call "
+                        "pick_up_items() to collect them before leaving.")
                 travel_dir = get_travel_direction(state)
                 if travel_dir:
                     passable = tilemap.passable_directions(state.player_x, state.player_y)

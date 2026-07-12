@@ -391,6 +391,93 @@ class AgentClient:
                     f"the target may be blocked or off this map.")
         return f"Stopped at ({px},{py}) while heading to ({tx},{ty})."
 
+    @staticmethod
+    def _facing_dir(px: int, py: int, tx: int, ty: int) -> str | None:
+        """Button that turns the player from (px,py) to face the adjacent tile
+        (tx,ty). None if not orthogonally adjacent."""
+        if (tx, ty) == (px + 1, py): return "Right"
+        if (tx, ty) == (px - 1, py): return "Left"
+        if (tx, ty) == (px, py + 1): return "Down"
+        if (tx, ty) == (px, py - 1): return "Up"
+        return None
+
+    def _approach_adjacent(self, tx: int, ty: int) -> bool:
+        """Walk to a walkable tile orthogonally adjacent to (tx,ty) — used to stand
+        next to a solid object (item ball) so we can face it and press A. Already-
+        adjacent is success. Tries the nearest reachable neighbour. Returns whether
+        we ended up adjacent."""
+        grid, w, h = self.tilemap.passable_grid()
+        if not grid:
+            return False
+        px, py = self.reader.read_player_pos()
+        neighbours = [(tx, ty - 1), (tx, ty + 1), (tx - 1, ty), (tx + 1, ty)]
+        if (px, py) in neighbours:
+            return True
+        cand = [(nx, ny) for nx, ny in neighbours
+                if 0 <= nx < w and 0 <= ny < h and grid[ny][nx]]
+        cand.sort(key=lambda t: abs(t[0] - px) + abs(t[1] - py))
+        for nx, ny in cand:
+            self._walk_to(nx, ny)
+            if self.reader.read_player_pos() == (nx, ny):
+                return True
+        return False
+
+    def _bag_and_keys(self) -> tuple[dict, int]:
+        return self.reader.read_bag(), self.reader.read_key_item_count()
+
+    def _pick_up_items(self) -> str:
+        """Collect every item ball currently visible on this map. For each, walks up
+        next to it, faces it, presses A, and advances the 'found ITEM!' text — the
+        deterministic version of what the model would otherwise fumble. Confirms each
+        pickup by the bag/key-item total rising (or the ball vanishing). Item balls
+        are surfaced in the observation so the model knows to call this."""
+        from game.state import GameContext
+        from knowledge.shopping import ITEM_NAMES
+        if self.reader.detect_context() != GameContext.OVERWORLD:
+            return "Can only pick up items while walking around (not in a menu/battle)."
+        got: list[str] = []
+        for _ in range(8):                       # bounded: at most 8 balls per call
+            balls = self.reader.read_item_ball_tiles()
+            if not balls:
+                break
+            px, py = self.reader.read_player_pos()
+            bx, by = min(balls, key=lambda t: abs(t[0] - px) + abs(t[1] - py))
+            if not self._approach_adjacent(bx, by):
+                return self._pickup_result(got, f"couldn't reach the item at ({bx},{by})")
+            before_bag, before_keys = self._bag_and_keys()
+            picked = False
+            for _ in range(6):
+                px, py = self.reader.read_player_pos()
+                face = self._facing_dir(px, py, bx, by)
+                if face:
+                    self.mgba.tap(face)          # turn to face the ball (bumps it, no move)
+                self.mgba.tap("A")               # pick up
+                self.mgba.tick(15)
+                self._advance_to_control()       # advance "found ITEM!" text to control
+                after_bag, after_keys = self._bag_and_keys()
+                if after_keys > before_keys or sum(after_bag.values()) > sum(before_bag.values()) \
+                        or (bx, by) not in self.reader.read_item_ball_tiles():
+                    picked = True
+                    break
+            if not picked:
+                return self._pickup_result(got, f"the item at ({bx},{by}) didn't respond")
+            after_bag, after_keys = self._bag_and_keys()
+            new = [ITEM_NAMES.get(iid, f"item#{iid}") for iid, q in after_bag.items()
+                   if q > before_bag.get(iid, 0)]
+            if after_keys > before_keys:
+                new.append("a key item")
+            got.append(", ".join(new) if new else "an item")
+        return self._pickup_result(got)
+
+    @staticmethod
+    def _pickup_result(got: list[str], problem: str = "") -> str:
+        if not got and problem:
+            return f"No items picked up — {problem}."
+        if not got:
+            return "No item balls visible here."
+        head = f"Picked up {len(got)} item(s): {'; '.join(got)}."
+        return head + (f" Stopped: {problem}." if problem else "")
+
     _EDGE = {  # direction -> (border-cell generator, step button)
         "North": ("top",    "Up"),
         "South": ("bottom", "Down"),
@@ -1600,6 +1687,8 @@ class AgentClient:
                 return self._heal()
             case "shop":
                 return self._shop()
+            case "pick_up_items":
+                return self._pick_up_items()
             case "challenge_leader":
                 return self._challenge_leader()
             case "use_move":
