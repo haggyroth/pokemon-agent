@@ -59,6 +59,7 @@ class LeafGreenReader:
         self._last_badges: tuple[int, int] = (0, 0)
         self._last_pos:    tuple[int, int] = (0, 0)
         self._last_map:    tuple[int, int] = (0, 0)
+        self._last_good_party: list | None = None
 
     @staticmethod
     def _valid_ewram_ptr(ptr: int) -> bool:
@@ -152,6 +153,16 @@ class LeafGreenReader:
             species_name=species_name, move_ids=move_ids, move_names=move_names, pp=pp,
         )
 
+    # Gen III internal species indices run 1..411 (Bulbasaur..Chimecho-era slots);
+    # move ids top out ~354. A decode outside these is garbage, not a real Pokémon.
+    _MAX_SPECIES = 411
+    _MAX_MOVE_ID = 559
+
+    @classmethod
+    def _mon_plausible(cls, mon: "PokemonStatus") -> bool:
+        return (1 <= mon.species_id <= cls._MAX_SPECIES
+                and all(0 <= m <= cls._MAX_MOVE_ID for m in mon.move_ids))
+
     def read_party(self) -> list[PokemonStatus]:
         party = []
         for slot in range(6):
@@ -162,6 +173,15 @@ class LeafGreenReader:
             if raw[0x54] == 0:
                 continue
             party.append(self._decode_mon(raw, slot))
+        # On the battle-load frame the encrypted substructs decrypt to nonsense
+        # (out-of-range species / move ids), which made use_move fail with "not a
+        # known move" and the agent flail for a step (#58). Reject an implausible read
+        # and reuse the last good party — the data settles within a frame or two.
+        if party and all(self._mon_plausible(m) for m in party):
+            self._last_good_party = party
+            return party
+        if party and self._last_good_party is not None:
+            return self._last_good_party
         return party
 
     def read_enemy_lead(self) -> PokemonStatus | None:
