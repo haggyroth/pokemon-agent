@@ -1,0 +1,20 @@
+# Dependabot keeps dependencies current and, crucially, bumps the SHA-pinned CI
+# actions (they're pinned to commit SHAs for supply-chain hardening — #72 — which
+# would otherwise never auto-update). Grouped, low-noise weekly PRs.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-deps:
+        patterns: ["*"]
