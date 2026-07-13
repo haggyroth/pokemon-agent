@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.11]
+
+### Fixed
+- fix: Mt. Moon traversal no longer stalls (nav). (1) `walk_to` regains real overworld
+  control before pathing — in a lingering post-battle/dialog/fade state the D-pad is
+  absorbed, so it used to sit pinned in place reporting "Stopped at (x,y)" (the same root
+  as the Poké Center stall, hit here after the cave's trainer battles). (2) A go_to stall
+  inside a cave (new `DUNGEON_MAPS`: Mt. Moon 1F/B1F/B2F) now returns maze guidance
+  ("keep pushing to the far-side exit, don't backtrack") instead of the wrong "gated —
+  you need an HM" message that made the agent turn back. Surfaced by the `second_badge`
+  eval (agent reached Mt. Moon 1F but stalled at 44%).
+
 ## [0.30.10]
 
 ### Fixed
