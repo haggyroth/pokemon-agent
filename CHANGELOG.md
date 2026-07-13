@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.7]
+
+### Fixed
+- fix: routing to Cerulean now goes through Mt. Moon instead of into the mountain wall
+  (nav). Route 4 is one map split by Mt. Moon — the agent arrives from Route 3 on the
+  west half, but Cerulean's seam is on the east half, reachable only by traversing the
+  cave. BFS took the 1-hop east seam and `walk_to` kept hitting the wall, stalling the
+  agent at badge 1. Route 4 is now a split map (west/east regions) so routing enters the
+  Mt. Moon warp and emerges on the far side.
+
 ## [0.30.6]
 
 ### Fixed
