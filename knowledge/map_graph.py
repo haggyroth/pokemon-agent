@@ -467,6 +467,14 @@ MAP_WARPS: dict[tuple[int, int], list[tuple[int, int, tuple[int, int]]]] = {
     (42, 0): [(4, 7, (3, 64))],
 }
 
+# Multi-floor cave/dungeon maps. A go_to stall here means "still navigating the maze"
+# (fight the trainer blocking you, keep pushing to the far-side exit), NOT a gated city
+# road — so _register_go_to_stall gives maze guidance instead of the wrong "you need an
+# HM / story event" message that made the agent give up and backtrack inside Mt. Moon.
+DUNGEON_MAPS: frozenset = frozenset({
+    (1, 1), (1, 2), (1, 3),   # Mt. Moon 1F / B1F / B2F
+})
+
 MAP_KIND: dict[tuple[int, int], str] = {
     (5, 1): "gym",
     (5, 3): "mart",

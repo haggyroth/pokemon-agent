@@ -148,3 +148,32 @@ def test_walk_to_gives_up_when_truly_blocked_without_hanging():
     assert world.pos != (0, 4)
     assert ("Stopped" in msg) or ("No walkable path" in msg)
     assert world.pos[1] <= 2      # got no further than the obstacle
+
+
+class MenuThenOverworld(FakeWorld):
+    """Lingering post-battle/dialog state: detect_context() reports IN_MENU and the
+    D-pad is absorbed (no movement) until `menu_taps` presses have gone in (the A-mash
+    from _advance_to_control), after which control returns to OVERWORLD. Models the
+    Poké Center / Mt. Moon stall where walk_to used to sit in place forever."""
+    def __init__(self, grid, start, menu_taps=3):
+        super().__init__(grid, start)
+        self.menu_taps = menu_taps
+        self.presses = 0
+
+    def detect_context(self):
+        return GameContext.OVERWORLD if self.presses >= self.menu_taps else GameContext.IN_MENU
+
+    def tap(self, mv):
+        self.presses += 1
+        if self.presses < self.menu_taps:
+            return                       # menu absorbs the input — player can't move
+        super().tap(mv)
+
+
+def test_walk_to_regains_control_from_lingering_menu():
+    # walk_to called while still IN_MENU (post-heal / post-battle) must clear the state
+    # and then reach the target, not stall in place (the Poké Center / Mt. Moon stall).
+    world = MenuThenOverworld(_open(5, 5), start=(0, 0), menu_taps=3)
+    msg = _client(world)._walk_to(4, 4)
+    assert world.pos == (4, 4), msg
+    assert "Arrived" in msg

@@ -307,6 +307,14 @@ class AgentClient:
         the identical path and stalling (the Viridian Forest / ledge stall)."""
         from game.pathfinding import find_path
         from game.state import GameContext
+        # A lingering post-battle / dialog / heal-fade state (DIALOG_OPEN / TRANSITIONING
+        # / IN_MENU) absorbs the D-pad, so A* taps can't move the player and walk_to
+        # stalls in place — the Poké Center exit and Mt. Moon post-trainer-battle stalls
+        # (a beaten trainer's "…I lost!" line, or a warp fade, left control un-returned).
+        # Regain real overworld control first: A advances dialog/text and waits out a fade.
+        if self.reader.detect_context() not in (GameContext.OVERWORLD, GameContext.IN_BATTLE):
+            if self._advance_to_control(tries=12) == GameContext.IN_BATTLE:
+                return f"A battle started before walking (at {self.reader.read_player_pos()})."
         start_map = self.reader.read_current_map()
         warps = set(self.tilemap.read_warps())
         blocked: set[tuple[int, int]] = set()   # tiles a step failed to enter
@@ -666,6 +674,14 @@ class AgentClient:
         self._go_to_stalls = 0            # fresh 3-strike window after we've advised
         self._go_to_last_end = None
         here = MAP_NAMES.get(end_map, "here")
+        from knowledge.map_graph import DUNGEON_MAPS
+        if end_map in DUNGEON_MAPS:
+            # A cave maze, not a gated road — don't send the "you need an HM" message that
+            # made the agent backtrack out of Mt. Moon. Tell it to keep pushing through.
+            return (f"You're still inside {here} — a cave maze, NOT a gated road (no HM "
+                    f"needed). Keep pushing to the far-side exit: call go_to again toward "
+                    f"your destination, use_move to beat any trainer blocking the path, and "
+                    f"heal() only if HP is low. Don't backtrack out the way you came in.")
         from knowledge.leafgreen_data import GYMS
         beaten = set(self.ltm.data.get("gyms_beaten", []))
         nxt = next((g for g in GYMS if g["leader"] not in beaten), None)
