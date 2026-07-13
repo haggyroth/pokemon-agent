@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.9]
+
+### Fixed
+- fix: `use_move` no longer loops on a lingering move-learn offer (battle). After a mon
+  declines a level-up move (e.g. Bulbasaur's Poison/Sleep Powder at L15), `gMoveToLearn`
+  and `learnMoveState` both linger, so the driver re-declined the same move every turn
+  instead of attacking — the `second_badge` eval stalled ~83 min on Route 3 and capped
+  out at badge 1. The driver now refuses to re-drive an offer id it already resolved.
+  Also closes an evolution timing gap in the model-driven path: `use_move`/`_auto_fight`
+  now wait for the post-battle evolution scene to launch and complete it (verified live:
+  a levelled-up Bulbasaur evolves to Ivysaur through `use_move`, not just grind).
+
 ## [0.30.8]
 
 ### Fixed
