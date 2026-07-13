@@ -849,9 +849,12 @@ class AgentClient:
         # watch for full HP; nudge Up before confirming so the cursor sits on YES.
         for _ in range(40):
             if self._party_full_hp():
-                for _ in range(4):     # clear the "restored to full health" line
-                    self.mgba.tap("A")
-                    self.mgba.tick(6)
+                # Advance the nurse's closing dialogue AND wait out the heal fade until
+                # we're back in real OVERWORLD control. A fixed few A-taps left the
+                # player standing on the counter tile still flagged IN_MENU, where
+                # walk_to can't move — the Poké Center exit stall (the agent re-issued
+                # walk_to(exit) for ~50s until the fade happened to clear).
+                self._advance_to_control(tries=24)
                 return "Healed the party to full HP at the Pokémon Center."
             self.mgba.tap("Up")        # keep the YES/NO cursor on YES if it's up
             self.mgba.tap("A")
