@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.10]
+
+### Fixed
+- fix: `heal()` now returns in real overworld control, fixing the Poké Center exit stall
+  (nav). After healing, the game lingers IN_MENU for ~80 frames (nurse's closing dialogue
+  + heal fade); the old fixed 4 A-taps handed control back while the player was still on
+  the counter tile flagged IN_MENU, where `walk_to` can't move — the agent sat re-issuing
+  `walk_to(exit)` for ~50s until the fade cleared on its own. `heal()` now advances to
+  OVERWORLD before returning. Surfaced by the `second_badge` eval.
+
 ## [0.30.9]
 
 ### Fixed
