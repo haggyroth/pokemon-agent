@@ -35,6 +35,12 @@ class AgentClient:
         # use_move of a clean move menu during Brock's Onix and forfeited the gym).
         self._learn_armed = False
         self._lead_level_seen: int | None = None
+        # The last move-offer id we already resolved (declined/accepted). gMoveToLearn
+        # AND learnMoveState both LINGER after a decline, so _delete_box_live() keeps
+        # reading a phantom box every turn — which made use_move re-decline the same
+        # move instead of attacking, looping the whole battle. We refuse to re-drive an
+        # offer whose id we've already handled until it actually clears.
+        self._offer_resolved = 0
         # go_to stall detection: consecutive travel calls that end at the same map
         # without arriving. The "call go_to again" resume message loops the agent
         # forever when the path is story-gated (e.g. the Pewter guard shuffles it back,
@@ -1146,6 +1152,7 @@ class AgentClient:
         for _ in range(20):
             if self.reader.detect_context() != GameContext.IN_BATTLE:
                 if self._battle_truly_over():
+                    self._settle_evolution()   # a level-up this battle may now evolve
                     return "Battle is over."
                 # Transient (a fainted foe being replaced by the Leader's next
                 # Pokémon reads as a brief menu/transition) — advance, don't bail.
@@ -1178,6 +1185,7 @@ class AgentClient:
                 if learn:
                     return f"Used {move_label}. {learn}."
                 if self.reader.detect_context() != GameContext.IN_BATTLE and self._battle_truly_over():
+                    self._settle_evolution()   # a level-up this battle may now evolve
                     return f"Used {move_label} (battle ended)."
                 # Our lead fainted (or was swapped out) before the move resolved — its PP
                 # never dropped, so we'd otherwise mash A through the forced send-out and
@@ -1746,20 +1754,30 @@ class AgentClient:
         (it forfeited the gym at 0 badges). Since a move-learn only ever follows a
         level-up, we ARM on a lead level-up edge and DISARM once we've driven the offer,
         so a stale gMoveToLearn can't re-trigger mid-battle. As a safety net we also
-        engage when a delete box is live RIGHT NOW (learnMoveState == 1, which — unlike
-        gMoveToLearn — never lingers): that catches a box even if the level-up landed
-        mid-use_move and the arm hadn't sampled the new level yet."""
+        engage when a delete box is live RIGHT NOW (learnMoveState == 1). BUT that state
+        ALSO lingers after a decline (the 'give up learning?' confirm advances the script
+        without resetting it), so _delete_box_live() reads a phantom box every subsequent
+        turn — which looped use_move on 'declined X' instead of attacking for a whole
+        trainer gauntlet. Guard: never re-drive an offer id we've already resolved until
+        it clears (a genuinely new move has a different gMoveToLearn id)."""
         party = self.reader.read_party()
         lvl = party[0].level if party else 0
         if self._lead_level_seen is not None and lvl > self._lead_level_seen:
             self._learn_armed = True     # a level-up just happened → a learn may be pending
         self._lead_level_seen = lvl
-        if self._offered_move() == 0:
+        off = self._offered_move()
+        if off == 0:
+            self._offer_resolved = 0     # offer cleared → a future offer is fresh again
             return None
+        if off == self._offer_resolved:
+            return None      # this exact offer already declined/accepted; it's lingering
         if not self._learn_armed and not self._delete_box_live():
             return None      # not armed and no box on screen → ignore a lingering offer
         note = self._drive_pending_learn()
         self._learn_armed = False
+        # Remember whatever offer still lingers now, so we don't re-drive it next turn.
+        # (Read AFTER driving: back-to-back same-level learns leave the LAST move's id.)
+        self._offer_resolved = self._offered_move()
         return note
 
     def _drive_pending_learn(self) -> str | None:
@@ -1827,6 +1845,22 @@ class AgentClient:
             self.mgba.tick(4)
         return True
 
+    def _settle_evolution(self) -> bool:
+        """Call right after a battle ends. The evolution scene launches a few frames
+        AFTER the battle's return-to-field, so a single _in_evolution_scene() check can
+        miss it; wait briefly for it to appear, then complete it (A, never B). Exits
+        immediately once we're back on the field (the common no-evolution case). Returns
+        True if it completed an evolution. Used by every deterministic battle-end path so
+        the model never sees the flickering scene and cancels it with B."""
+        from game.state import GameContext
+        for _ in range(20):
+            if self._finish_evolution():
+                return True
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                return False
+            self.mgba.tick(2)
+        return False
+
     def _auto_fight(self) -> None:
         """Fight the current battle to the end with the best damaging move each turn."""
         from game.state import GameContext
@@ -1843,15 +1877,7 @@ class AgentClient:
                 self._use_move(mv)
             else:
                 self._battle_press("A")   # no PP → Struggle / advance
-        # The battle just ended — if the level-up triggers an evolution, let it play
-        # out (A, never B) before returning, so grind/travel complete it deterministically
-        # instead of leaving the flickering scene for the model to cancel with B.
-        for _ in range(20):
-            if self._finish_evolution():
-                break
-            if self.reader.detect_context() == GameContext.OVERWORLD:
-                break
-            self.mgba.tick(2)
+        self._settle_evolution()   # let a level-up evolution play out (A, never B)
 
     _OPPOSITE = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
 
