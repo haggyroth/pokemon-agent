@@ -352,6 +352,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
 
     while True:
         try:
+            # A level-up can trigger an evolution scene on return to the field. It
+            # flickers between TRANSITIONING and IN_MENU, so the model kept cancelling
+            # it with B and the lead never evolved. Complete it here (advance with A,
+            # never B) before anything else acts, so the model never sees it.
+            if client._in_evolution_scene():
+                client._finish_evolution()
             state = reader.read_state()
             diff  = reader.diff(prev_state, state)
             stm.current_state = state
