@@ -12,6 +12,7 @@ requires_openai = pytest.mark.skipif(
     importlib.util.find_spec("openai") is None, reason="openai not installed")
 
 PEWTER = (3, 2)      # MAP_NAMES[(3,2)] == "Pewter City"; Brock's city
+MT_MOON_1F = (1, 1)  # a cave-maze map (DUNGEON_MAPS)
 
 
 def _client(beaten):
@@ -67,6 +68,21 @@ def test_generic_gate_when_no_local_gym_owed():
     assert msg is not None
     assert "Brock" not in msg
     assert "gated" in msg or "HM" in msg
+
+
+@requires_openai
+def test_dungeon_stall_gives_maze_guidance_not_gated():
+    # Stalling inside Mt. Moon is a cave maze, not a gated road — the guidance must tell
+    # the agent to keep pushing through, NOT that it needs an HM (which made it backtrack).
+    c = _client([])   # Brock unbeaten, but a cave isn't a city gym gate
+    for _ in range(2):
+        c._register_go_to_stall("Cerulean City", MT_MOON_1F)
+    msg = c._register_go_to_stall("Cerulean City", MT_MOON_1F)
+    assert msg is not None
+    assert "maze" in msg.lower()
+    assert "HM" not in msg or "no HM" in msg   # must not claim an HM is required
+    assert "backtrack" in msg.lower()
+    assert "go_to('Gym')" not in msg           # not the city-gym redirect
 
 
 @requires_openai
