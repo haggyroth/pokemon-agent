@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.30.8]
+
+### Fixed
+- fix: Pokémon now evolve instead of having the evolution cancelled (battle). A level-up
+  triggers a post-battle evolution scene (its own callback `CB2_EVOLUTION`) whose context
+  flickers into IN_MENU — so the model dismissed it with B, which *cancels* the evolution.
+  The agent now detects the scene and advances it with A only (never B), in the main loop
+  and after each auto-fought battle. Verified live: a levelled-up Bulbasaur evolves to
+  Ivysaur instead of staying Bulbasaur.
+
 ## [0.30.7]
 
 ### Fixed
