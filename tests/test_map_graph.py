@@ -52,6 +52,31 @@ def test_node_for_regionizes_split_map_by_y():
     assert node_for(3, 1, 10, 10) == (3, 1)
 
 
+def test_route4_west_to_cerulean_routes_through_mt_moon():
+    # Route 4 is one map split by Mt. Moon: you arrive from Route 3 on the WEST
+    # side, and Cerulean's seam is on the EAST side — reachable only THROUGH the
+    # cave. Without the split, BFS took the 1-hop East seam and the agent walked
+    # into the mountain wall. From the west region the route must enter Mt. Moon.
+    route = route_to(node_for(3, 22, 19, 6), (3, 3))   # west side of Route 4
+    assert route is not None
+    assert route[-1] == ("connection", "East", (3, 3))   # ends by entering Cerulean
+    maps = [step[2] for step in route]
+    assert (1, 1) in maps, "route must pass through Mt. Moon 1F"
+    assert (3, 22, "E") in maps, "must emerge on Route 4's east side"
+    # The first hop off the west side is the Mt. Moon entrance warp, not a seam.
+    assert route[0] == ("warp", (19, 5), (1, 1))
+
+
+def test_route4_east_to_cerulean_is_direct_seam():
+    # Once you've emerged on the east side, Cerulean is a single seamless edge.
+    assert route_to((3, 22, "E"), (3, 3)) == [("connection", "East", (3, 3))]
+
+
+def test_node_for_regionizes_route4_by_x():
+    assert node_for(3, 22, 19, 6) == (3, 22, "W")      # Mt. Moon entrance side
+    assert node_for(3, 22, 32, 5) == (3, 22, "E")      # B1F exit / Cerulean side
+
+
 def test_connection_only_route_to_pewter_is_not_the_naive_four_norths():
     # Regression for #59: the direct (3,20)->North->Pewter walk is a lie from the
     # south region. bfs_route (connection-only) must NOT offer it as a 4-step walk.

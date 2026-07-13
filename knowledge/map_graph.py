@@ -525,21 +525,32 @@ MAP_KIND: dict[tuple[int, int], str] = {
 # the south half, y<32 the north half.
 SPLIT_MAPS: dict[tuple[int, int], dict] = {
     (3, 20): {"tags": ("N", "S"), "region": lambda x, y: "S" if y >= 32 else "N"},
+    # Route 4 is one map cut in two by Mt. Moon: the WEST half (from Route 3, holds the
+    # Mt. Moon entrance at 19,5 + the Poké Center at 12,5) and the EAST half (the B1F
+    # exit at 32,5 + the seam into Cerulean). No walkable tiles bridge them — the only
+    # W→E path is THROUGH Mt. Moon — so without this split BFS took the 1-hop East seam
+    # and the agent walked into the mountain wall (#… Cerulean routing).
+    (3, 22): {"tags": ("W", "E"), "region": lambda x, y: "E" if x >= 26 else "W"},
 }
 # Which region owns each OUTGOING seamless connection edge of a split map.
 SPLIT_CONN_REGION: dict[tuple[int, int], dict[str, str]] = {
     (3, 20): {"North": "N", "South": "S"},
+    (3, 22): {"East": "E", "South": "W"},   # East→Cerulean is east; South→Route 3 is west
 }
 # Which region you ARRIVE in when a neighbor's connection lands on a split map
 # (MAP_CONNECTIONS carries no arrival coords). Keyed (from_map, split_dest_map).
 CONN_ARRIVAL_REGION: dict[tuple, str] = {
     ((3, 1), (3, 20)): "S",   # Viridian City → Route 2 (enter at the south end)
     ((3, 2), (3, 20)): "N",   # Pewter City   → Route 2 (enter at the north end)
+    ((3, 21), (3, 22)): "W",  # Route 3 → Route 4 (arrive on the west/Mt. Moon side)
+    ((3, 3), (3, 22)): "E",   # Cerulean City → Route 4 (arrive on the east side)
 }
-# Same, for warps that land on a split map (Viridian Forest's two gates).
+# Same, for warps that land on a split map (Viridian Forest's two gates; Mt. Moon).
 WARP_ARRIVAL_REGION: dict[tuple, str] = {
     ((15, 0), (3, 20)): "S",  # Viridian Forest SOUTH gate → Route 2 south
     ((15, 3), (3, 20)): "N",  # Viridian Forest NORTH gate → Route 2 north
+    ((1, 1), (3, 22)): "W",   # Mt. Moon 1F exit → Route 4 west (lands at 19,5)
+    ((1, 2), (3, 22)): "E",   # Mt. Moon B1F exit → Route 4 east (lands at 32,5)
 }
 
 
