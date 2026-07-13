@@ -1807,6 +1807,26 @@ class AgentClient:
                     break
         return note
 
+    def _in_evolution_scene(self) -> bool:
+        """True while the post-battle evolution scene is on screen (its own callback).
+        A normal battle end goes straight to the overworld, so this is unambiguous."""
+        from game.constants import Addr
+        return self.mgba.read32(Addr.GMAIN_CALLBACK2) == Addr.CB2_EVOLUTION
+
+    def _finish_evolution(self) -> bool:
+        """Let an active evolution scene run to completion by advancing with A. NEVER
+        press B here — B cancels the evolution ("Huh? … stopped evolving!"), which is
+        why a levelled-up lead never evolved (the scene flickers into IN_MENU and the
+        agent dismissed it with B). Returns True if it drove a scene. (#… allow-evolution)"""
+        if not self._in_evolution_scene():
+            return False
+        for _ in range(200):
+            if not self._in_evolution_scene():
+                break
+            self.mgba.tap("A")
+            self.mgba.tick(4)
+        return True
+
     def _auto_fight(self) -> None:
         """Fight the current battle to the end with the best damaging move each turn."""
         from game.state import GameContext
@@ -1814,15 +1834,24 @@ class AgentClient:
             if self._maybe_drive_learn():      # a KO offered a level-up move
                 continue
             if self.reader.detect_context() != GameContext.IN_BATTLE:
-                return
+                break
             party = self.reader.read_party()
             if not party:
-                return
+                break
             mv = self._best_damaging_move(party[0])
             if mv:
                 self._use_move(mv)
             else:
                 self._battle_press("A")   # no PP → Struggle / advance
+        # The battle just ended — if the level-up triggers an evolution, let it play
+        # out (A, never B) before returning, so grind/travel complete it deterministically
+        # instead of leaving the flickering scene for the model to cancel with B.
+        for _ in range(20):
+            if self._finish_evolution():
+                break
+            if self.reader.detect_context() == GameContext.OVERWORLD:
+                break
+            self.mgba.tick(2)
 
     _OPPOSITE = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
 

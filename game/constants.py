@@ -123,6 +123,11 @@ class Addr:
     GMAIN_CALLBACK2 = 0x030030F4   # u32: gMain.callback2 — live screen dispatcher
     CB2_OVERWORLD   = 0x080565B5   # callback2 value while the field system is active
     CB2_BATTLE      = 0x08011101   # callback2 value during battle
+    # Post-battle evolution scene (CB2_EvolutionSceneUpdate). Present ONLY while a mon
+    # is evolving — a normal battle end goes straight to CB2_OVERWORLD (verified live).
+    # The scene flickers between TRANSITIONING and IN_MENU, so the agent kept dismissing
+    # it with B (which CANCELS the evolution). Advance it with A instead. Derived live.
+    CB2_EVOLUTION   = 0x080CE6E5
     SCREEN_FADE     = 0x03000F9C   # u8: 1 while a menu is on screen OR mid-fade; clears when the menu closes
     SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
     # Field-menu flag. Non-zero for EVERY field menu (Start, Bag, Party, Trainer
