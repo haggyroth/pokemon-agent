@@ -1203,6 +1203,7 @@ class AgentClient:
             if self.reader.detect_context() != GameContext.IN_BATTLE:
                 if self._battle_truly_over():
                     self._settle_evolution()   # a level-up this battle may now evolve
+                    self._advance_to_control(tries=30)   # clear post-battle text/blackout to overworld
                     return "Battle is over."
                 # Transient (a fainted foe being replaced by the Leader's next
                 # Pokémon reads as a brief menu/transition) — advance, don't bail.
@@ -1237,6 +1238,7 @@ class AgentClient:
                     return f"Used {move_label}. {learn}."
                 if self.reader.detect_context() != GameContext.IN_BATTLE and self._battle_truly_over():
                     self._settle_evolution()   # a level-up this battle may now evolve
+                    self._advance_to_control(tries=30)   # clear post-battle text/blackout to overworld
                     return f"Used {move_label} (battle ended)."
                 # The active mon fainted (or was swapped out) before the move resolved — its
                 # PP never dropped, so we'd otherwise mash A through the forced send-out and
