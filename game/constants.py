@@ -54,6 +54,9 @@ class Addr:
     # The definitive "was it caught?" signal (party count lags; action-menu value
     # varies), used by catch().
     BATTLE_OUTCOME     = 0x02023E8A
+    B_OUTCOME_WON      = 1   # gBattleOutcome after the player wins
+    B_OUTCOME_LOST     = 2   # player lost (party about to white out)
+    B_OUTCOME_DREW     = 3   # draw (both sides down)
     B_OUTCOME_CAUGHT   = 7
     # gMoveToLearn (u16) — the move the game is offering the lead on a level-up, set
     # while the "Delete a move to make room?" prompt is up. Derived + verified live
