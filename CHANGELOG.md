@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.31.1]
+
+### Fixed
+- fix: `use_move` targets the ACTIVE battler's moves, not the lead's (battle). Once a
+  non-lead mon is out (a switch, or a forced send-out after the lead faints), the FIGHT
+  menu shows the active mon's moves — but the code indexed `gPlayerParty[0]` (the lead),
+  so it could land on an empty slot (a caught Pidgey with two moves "trying to use a slot
+  with no move learned"). Now reads the active mon from `gBattleMons[0]`
+  (moves/PP/HP/species) for validation, slot, PP-drop, and the faint check; `_auto_fight`
+  picks from it too; empty move names are rejected. Verified live: a switched-in Weedle
+  attacks with its own moves and the lead's are rejected.
+
 ## [0.31.0]
 
 ### Added
