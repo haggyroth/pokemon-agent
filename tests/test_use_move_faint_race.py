@@ -150,3 +150,50 @@ def test_use_move_rejects_empty_move_name():
     # An empty name must not match an empty move slot.
     msg = _client(_ActiveMonFake())._use_move("")
     assert "not a known move" in msg.lower()
+
+
+class _BattleOverFake:
+    """The battle just ended (outcome set) but the game lingers IN_MENU (post-battle text
+    / blackout / badge script) until A-presses bring it to OVERWORLD. use_move must
+    ADVANCE that state, not return leaving the agent parked in a stuck menu."""
+    def __init__(self, menu_steps=3):
+        self.menu_steps = menu_steps
+        self.presses = 0
+
+    def read_party(self):
+        return [PokemonStatus(slot=0, level=13, current_hp=0, max_hp=38, status="healthy",
+                              species_id=1, species_name="Bulbasaur",
+                              move_names=["Tackle", "Growl", "", ""], pp=[30, 40, 0, 0])]
+
+    def detect_context(self):
+        return GameContext.OVERWORLD if self.presses >= self.menu_steps else GameContext.IN_MENU
+
+    def read8(self, addr):
+        return 2 if addr == Addr.BATTLE_OUTCOME else 0   # nonzero outcome ⇒ truly over
+
+    def read32(self, addr):
+        return Addr.CB2_OVERWORLD                        # not CB2_EVOLUTION → no evo scene
+
+    def read16(self, addr):
+        return 0
+
+    def write8(self, addr, val):
+        pass
+
+    def hold(self, button, frames):
+        pass
+
+    def tap(self, button):
+        if button == "A":
+            self.presses += 1
+
+    def tick(self, n=1):
+        pass
+
+
+def test_use_move_advances_post_battle_to_overworld():
+    f = _BattleOverFake(menu_steps=3)
+    msg = _client(f)._use_move("Tackle")
+    assert "Battle is over" in msg
+    assert f.presses >= 3                       # advanced the post-battle menu, didn't park
+    assert f.detect_context() == GameContext.OVERWORLD
