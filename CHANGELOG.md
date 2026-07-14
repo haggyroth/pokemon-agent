@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.31.2]
+
+### Fixed
+- fix: `use_move` advances the post-battle state to overworld control (battle). A battle
+  end often lingers in a menu/fade (a blackout warp, a trainer's post-battle line, a
+  gym's badge script) that reads as IN_MENU/TRANSITIONING; use_move used to return
+  "Battle is over" immediately and no-op every subsequent call while walk_to couldn't
+  move, parking the agent in a post-battle menu (the "stuck in the Pewter Gym" stall).
+  It now presses A to real OVERWORLD before returning. Reproduced: a loss to Brock left
+  the agent stuck IN_MENU 25+ steps; now recovers in 1–2 calls.
+
 ## [0.31.1]
 
 ### Fixed
