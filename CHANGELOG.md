@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [0.31.0]
+
+### Added
+- feat: `go_to` now auto-fights trainer battles it hits while travelling (it already
+  auto-flees wilds), so a trainer-dense dungeon like Mt. Moon is one call instead of
+  dozens of LLM round-trips. It hands back to the model only when judgement is needed —
+  a loss/blackout, a fight that didn't finish on autopilot (tough trainer or a forced
+  switch after a faint), or a win that left the lead below the travel HP floor. Move-learn
+  and evolution mid-fight are handled inside the auto-fight; wild-battle handling (catch
+  offer + auto-flee) is unchanged. Live: one `go_to` cleared Viridian Forest's Bug
+  Catchers to Pewter in a single call.
+
 ## [0.30.11]
 
 ### Fixed
