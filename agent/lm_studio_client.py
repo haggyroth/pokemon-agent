@@ -1167,20 +1167,31 @@ class AgentClient:
         party = self.reader.read_party()
         if not party:
             return "No active Pokémon."
-        names = [n.lower() for n in party[0].move_names]
-        if name.lower().strip() not in names:
-            known = ", ".join(m for m in party[0].move_names if m)
+        # Validate + index against the ACTIVE battler's moves (gBattleMons[0]) — the set
+        # the FIGHT menu shows and MOVE_CURSOR indexes. Using the lead (party[0]) here is
+        # wrong once another mon is out (switch / forced send-out after a faint): its slot
+        # order differs, so the cursor could land on an EMPTY slot (a caught Pidgey with
+        # two moves). Out of battle, fall back to the lead so name errors still read sanely.
+        in_battle = self.reader.detect_context() == GameContext.IN_BATTLE
+        if in_battle:
+            _ids, move_names, pp = self.reader.read_active_battle_moves()
+        else:
+            move_names, pp = party[0].move_names, party[0].pp
+        names = [n.lower() for n in move_names]
+        key = name.lower().strip()
+        if not key or key not in names:   # `not key` guards an empty name matching an empty slot
+            known = ", ".join(m for m in move_names if m)
             return f"'{name}' is not a known move. Known moves: {known}."
-        slot = names.index(name.lower().strip())
-        move_label = party[0].move_names[slot]
-        if party[0].pp[slot] == 0:
+        slot = names.index(key)
+        move_label = move_names[slot]
+        if pp[slot] == 0:
             return f"{move_label} has no PP left — choose another move."
         # Remember who's giving the order so we can tell if it fainted mid-turn (#68):
         # a faster foe can KO our lead before our move executes, in which case PP never
         # drops and the naive success check would mash A blindly through the forced
         # send-out prompt. 0 means Tier-2 decryption gave us nothing usable — don't
         # arm the identity guard on it (only the HP==0 faint signal is trustworthy then).
-        species_before = party[0].species_id
+        species_before = self.reader.read_active_battle_species() if in_battle else party[0].species_id
 
         # A prior level-up may have left a move-learn prompt pending — resolve it
         # before attacking (else committing a move would mash it into an overwrite).
@@ -1207,15 +1218,16 @@ class AgentClient:
                     return learn
                 self._battle_press("A")   # advance intro/result text, or open FIGHT
                 continue
-            # Move menu is up: pick the slot and commit.
-            pp_before = self.reader.read_party()[0].pp[slot]
+            # Move menu is up: pick the slot and commit. PP is read from the ACTIVE
+            # battler (gBattleMons[0]) — the live in-battle PP that decrements when the
+            # move lands, and matches the slot the cursor indexes.
+            pp_before = self.reader.read_active_battle_moves()[2][slot]
             self.mgba.write8(Addr.MOVE_CURSOR, slot)
             self.mgba.hold("A", 20)       # A edge → commits gMoveSelectionCursor
             # Let the turn resolve — advance result text until OUR move's PP drops,
             # the battle truly ends, or the next action menu appears.
             for _ in range(24):
-                after = self.reader.read_party()
-                if after and after[0].pp[slot] < pp_before:
+                if self.reader.read_active_battle_moves()[2][slot] < pp_before:
                     return f"Used {move_label}."          # our move landed
                 # A KO can trigger a level-up move-learn while we're still advancing
                 # result text — catch it (offered set ~16 frames before the box) and
@@ -1226,13 +1238,13 @@ class AgentClient:
                 if self.reader.detect_context() != GameContext.IN_BATTLE and self._battle_truly_over():
                     self._settle_evolution()   # a level-up this battle may now evolve
                     return f"Used {move_label} (battle ended)."
-                # Our lead fainted (or was swapped out) before the move resolved — its PP
-                # never dropped, so we'd otherwise mash A through the forced send-out and
-                # confirm a switch blind (#68). Stop and hand the model a truthful obs so
-                # it can pick who to send out next (switch_pokemon), rather than a
-                # misleading "Could not use…".
-                if after and (after[0].current_hp == 0
-                              or (species_before and after[0].species_id != species_before)):
+                # The active mon fainted (or was swapped out) before the move resolved — its
+                # PP never dropped, so we'd otherwise mash A through the forced send-out and
+                # confirm a switch blind (#68). Stop and hand the model a truthful obs so it
+                # can pick who to send out next (switch_pokemon), rather than a misleading
+                # "Could not use…". Read the ACTIVE battler (gBattleMons[0]), not the lead.
+                if (self.reader.read_active_battle_hp() == 0
+                        or (species_before and self.reader.read_active_battle_species() != species_before)):
                     return (f"Your lead fainted before {move_label} could resolve — "
                             f"the foe was faster. Send out your next Pokémon with "
                             f"switch_pokemon.")
@@ -1626,21 +1638,22 @@ class AgentClient:
             self.mgba.tick(8)
 
     @staticmethod
-    def _best_damaging_move(mon) -> str | None:
-        """The mon's highest-power move that still has PP, or (if none has listed
-        power) the first move with PP. None only if every move is out of PP."""
+    def _best_damaging_move(move_names, pp) -> str | None:
+        """From parallel (move_names, pp) lists, the highest-power move that still has PP,
+        or (if none has listed power) the first move with PP. None only if every move is
+        out of PP. Empty slots (name "") are skipped, so a mon with <4 moves is safe."""
         from knowledge.leafgreen_data import MOVE_POWER
         best, best_pow = None, 0
-        for name, pp in zip(mon.move_names, mon.pp):
-            if not name or pp <= 0:
+        for name, p in zip(move_names, pp):
+            if not name or p <= 0:
                 continue
             pw = MOVE_POWER.get(name, 0)
             if pw > best_pow:
                 best, best_pow = name, pw
         if best is not None:
             return best
-        for name, pp in zip(mon.move_names, mon.pp):   # fallback: any move with PP
-            if name and pp > 0:
+        for name, p in zip(move_names, pp):   # fallback: any move with PP
+            if name and p > 0:
                 return name
         return None
 
@@ -1908,10 +1921,10 @@ class AgentClient:
                 continue
             if self.reader.detect_context() != GameContext.IN_BATTLE:
                 break
-            party = self.reader.read_party()
-            if not party:
-                break
-            mv = self._best_damaging_move(party[0])
+            # Pick from the ACTIVE battler's moves (gBattleMons[0]), not the lead — the
+            # mon fighting may be a switched-in / sent-out teammate with a different set.
+            _ids, names, pp = self.reader.read_active_battle_moves()
+            mv = self._best_damaging_move(names, pp)
             if mv:
                 self._use_move(mv)
             else:

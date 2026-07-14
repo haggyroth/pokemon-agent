@@ -184,6 +184,27 @@ class LeafGreenReader:
             return self._last_good_party
         return party
 
+    def read_active_battle_moves(self) -> tuple[list[int], list[str], list[int]]:
+        """The ACTIVE player battler's moves + PP from gBattleMons[0] — the exact set the
+        in-battle FIGHT menu shows and gMoveSelectionCursor indexes. Use this in battle
+        instead of gPlayerParty[0], which is the LEAD and wrong once another mon is out (a
+        switch, or a forced send-out after the lead faints — e.g. a caught Pidgey with only
+        two moves, where indexing the lead's slots lands on an empty slot). Returns
+        (move_ids, move_names, pp)."""
+        base = Addr.BATTLE_MON0_SPECIES               # gBattleMons[0] base (species @ +0)
+        ids = [self.client.read16(base + 0x0C + 2 * i) for i in range(4)]   # moves @ +0x0C
+        pp = [self.client.read8(base + 0x24 + i) for i in range(4)]         # pp    @ +0x24
+        names = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in ids]
+        return ids, names, pp
+
+    def read_active_battle_species(self) -> int:
+        """Species of the active player battler (gBattleMons[0].species)."""
+        return self.client.read16(Addr.BATTLE_MON0_SPECIES)
+
+    def read_active_battle_hp(self) -> int:
+        """Current HP of the active player battler (gBattleMons[0].hp @ +0x28)."""
+        return self.client.read16(Addr.BATTLE_MON0_SPECIES + 0x28)
+
     def read_enemy_lead(self) -> PokemonStatus | None:
         """Decode the opponent's active Pokémon (gEnemyParty[0]) — the wild mon or
         the trainer's current lead. gEnemyParty is a fixed global (not DMA-relocated),
