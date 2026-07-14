@@ -599,14 +599,34 @@ class AgentClient:
         return enemy.species_id not in {p.species_id for p in party}
 
     def _handle_travel_battle(self, target_name: str):
-        """A battle interrupted travel. Trainer → return so the model fights it;
-        wild → auto-flee and keep going (return None), unless the escape fails or HP
-        is low. Returns a message to stop go_to, or None to continue travelling."""
+        """A battle interrupted travel. Trainer → auto-fight it (can't flee) so a
+        trainer-dense dungeon is ONE go_to call, not dozens of LLM round-trips; wild →
+        auto-flee and keep going (return None), unless the escape fails or HP is low.
+        Returns a message to stop go_to, or None to continue travelling."""
         from game.constants import Addr
+        from game.state import GameContext
         if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
-            return (f"A trainer battle started en route to {target_name}. You can't "
-                    f"flee it — win with use_move (or switch), then "
-                    f"go_to({target_name!r}) again.")
+            # Auto-fight the (usually weak) travel trainer with best-move logic. Hand
+            # back to the model for anything that needs judgement — a loss, a fight that
+            # didn't finish on autopilot (tough trainer / a forced switch after a faint),
+            # or a scraped-through win that left the lead low.
+            self._auto_fight()
+            outcome = self.mgba.read8(Addr.BATTLE_OUTCOME)
+            party = self.reader.read_party()
+            if outcome in (Addr.B_OUTCOME_LOST, Addr.B_OUTCOME_DREW) or (
+                    party and all(p.current_hp == 0 for p in party)):
+                return (f"Lost a trainer battle en route to {target_name} — heal (and "
+                        f"revive any fainted mon), then go_to({target_name!r}) again.")
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                # Still fighting after a full auto pass — take over for the hard call.
+                return (f"A tough trainer battle en route to {target_name} isn't resolving "
+                        f"on autopilot — take over with use_move / switch_pokemon / "
+                        f"use_item, then go_to({target_name!r}) again.")
+            if party and party[0].max_hp and party[0].hp_percent < self._TRAVEL_HP_FLOOR:
+                return (f"Beat a trainer en route to {target_name}, but your lead's HP is "
+                        f"low ({party[0].hp_percent:.0%}) — call heal(), then "
+                        f"go_to({target_name!r}) again.")
+            return None   # won cleanly — keep travelling
         # Team-building: with a small team and Poké Balls, don't auto-flee a NEW species
         # (one not already on the team) — stop ONCE so the model can catch it and build a
         # roster. A lone/pair Pokémon can't sustain dungeons or the Elite Four. The
