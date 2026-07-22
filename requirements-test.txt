@@ -2,6 +2,6 @@
 # (No openai/pygame/cffi: those pull in the LLM client, viewer, and native
 # binding, none of which the pure unit tests import.)
 pytest>=9.1.1
-ruff>=0.15.21
+ruff>=0.15.22
 requests>=2.34.2
 python-dotenv>=1.2.2
