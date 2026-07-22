@@ -1,5 +1,5 @@
 requests>=2.34.2
-openai>=2.45.0
+openai>=2.46.0
 rich>=15.0.0
 python-dotenv>=1.2.2
 
