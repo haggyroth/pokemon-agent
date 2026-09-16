@@ -3,7 +3,7 @@ from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
                     USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
                     LLM_BASE_URL, MAX_WALL_SECONDS)
 from game.memory_reader import LeafGreenReader
-from game.state import GameContext, GameState, active_party_member, newly_fainted_slots
+from game.state import GameContext, GameState, StateDiff, active_party_member, newly_fainted_slots
 from game.tilemap_reader import TilemapReader
 from agent.lm_studio_client import AgentClient
 from agent.reward import RewardTracker
@@ -304,6 +304,397 @@ def build_runtime(*, backend: str = MGBA_BACKEND,
                         stm=stm, journal=journal, reward=reward, tilemap=tilemap)
 
 
+@dataclass
+class _RunState:
+    """Mutable per-tick state carried across the run_episode decision loop.
+
+    Collapses the ~18 free locals the former monolith threaded through each tick
+    into one object, so the loop's phases are named helper calls mutating named
+    fields instead of a wall of `nonlocal` reads/writes. One instance per episode.
+    """
+    prev_state: Optional[GameState] = None
+    battle_was_active: bool = False
+    battle_start_lead: str = ""
+    current_enemy: str = ""
+    battle_active_slot: int = 0
+    battle_is_trainer: bool = False
+    prev_key_items: Optional[int] = None
+    prev_map_key: Optional[tuple[int, int]] = None
+    transitioning_steps: int = 0
+    pending_map_b64: Optional[str] = None
+    pending_map_name: str = ""
+    blackout_active: bool = False
+    decision_ticks: int = 0
+    stuck_ticks: int = 0
+    step_count: int = 0
+    consecutive_errors: int = 0
+
+
+def _handle_battle_end(run: _RunState, state: GameState, reward: RewardTracker,
+                       ltm: LongTermMemory, journal: BattleJournal) -> None:
+    """Classify the just-ended battle, reward it, and journal it once.
+
+    Runs on the tick where `in_battle` flips False. Reads the fighting mon's final
+    HP/identity from `state.party` + `run.battle_active_slot`, then resets
+    `run.current_enemy` for the next encounter."""
+    active_mon = active_party_member(state.party, run.battle_active_slot)
+    lead_hp_pct = active_mon.hp_percent if active_mon else 0.0
+    active_species = active_mon.species_name if active_mon else run.battle_start_lead
+    all_fainted = bool(state.party) and all(p.current_hp == 0 for p in state.party)
+    outcome = "loss" if all_fainted else "win"
+    # Pass enemy name for journal + system prompt loss-lessons
+    current_enemy_snap = run.current_enemy
+    run.current_enemy = ""
+    if outcome == "win":
+        ltm.data["battles_won"] += 1
+        # Reward trainer wins (wild wins aren't in the schedule). Gym leaders are
+        # trainers too and additionally fire gym_leader_win on the subsequent badge
+        # — a negligible +1 overlap.
+        if run.battle_is_trainer:
+            reward.reward("trainer_win")
+    else:
+        ltm.data["battles_lost"] += 1
+    location = MAP_NAMES.get((state.map_bank, state.map_id),
+                             f"bank={state.map_bank},id={state.map_id}")
+    journal.log(BattleRecord(
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        location=location,
+        enemy_name=current_enemy_snap or "unknown",
+        enemy_level=0,
+        player_lead=active_species,
+        outcome=outcome,
+        turns=0,
+        moves_used=[],
+        hp_remaining_pct=round(lead_hp_pct, 2),
+        reward=0.0,
+        notes="",
+    ))
+    console.print(f"[magenta]Battle {outcome}[/] | active={active_species} hp={lead_hp_pct:.0%}")
+    ltm.save()
+
+
+def _apply_rewards(run: _RunState, state: GameState, diff: StateDiff,
+                   reader: LeafGreenReader, reward: RewardTracker,
+                   ltm: LongTermMemory) -> None:
+    """Apply auto-rewards + auto-milestones derived from this tick's state diff.
+
+    Reads `run.prev_state` for "increased" comparisons and updates
+    `run.prev_key_items` so the next tick can detect a new key item."""
+    if diff.badges_changed:
+        # Only reward/record when badge count genuinely increased. A spurious read
+        # (e.g. badge_bits glitches 0→non-0→0) triggers badges_changed without
+        # state.badges > run.prev_state.badges.
+        if run.prev_state is not None and state.badges > run.prev_state.badges:
+            reward.reward("new_badge")
+            # A badge increase means a gym leader was just defeated.
+            reward.reward("gym_leader_win")
+            # Use raw bitmask diff — state.badges is a popcount (0-8), not a
+            # bitmask, so "state.badges & ~prev_state.badges" was WRONG.
+            newly_set = state.badge_bits & (~run.prev_state.badge_bits & 0xFF)
+            for bit in range(8):
+                if newly_set & (1 << bit):
+                    ms = BADGE_BIT_MILESTONE.get(bit)
+                    if ms:
+                        ltm.add_milestone(ms)
+                        console.print(f"[green bold]Milestone: {ms}[/]")
+                    gym = next((g for g in GYMS if g["badge_bit"] == bit), None)
+                    if gym:
+                        ltm.add_badge(gym["leader"])
+            if reward.shaped and state.badges >= 4:
+                reward.anneal_to_sparse()
+
+    for _ in diff.level_changed:
+        reward.reward("level_up")
+
+    # Penalise each of our Pokémon fainting (once per faint).
+    if run.prev_state is not None:
+        for _slot in newly_fainted_slots(run.prev_state.party, state.party):
+            reward.reward("party_faint")
+
+    # Reward obtaining a key item (bag key-items pocket count increased).
+    key_items = reader.read_key_item_count()
+    if run.prev_key_items is not None and key_items > run.prev_key_items:
+        reward.reward("key_item")
+        console.print(f"[cyan]Key item obtained (bag key items: {key_items})[/]")
+    run.prev_key_items = key_items
+
+    if run.prev_state is not None and state.party_count > run.prev_state.party_count:
+        reward.reward("caught_new")
+        ltm.data["pokemon_caught"] = ltm.data.get("pokemon_caught", 0) + 1
+        # first-party addition → starter chosen
+        if run.prev_state.party_count == 0 and state.party_count == 1:
+            starter = state.party[0].species_name or "Unknown"
+            if ltm.data.get("starter") is None:
+                ltm.data["starter"] = starter
+            if ltm.add_milestone("starter_chosen", f"chose {starter}"):
+                console.print(f"[green bold]Milestone: starter_chosen ({starter})[/]")
+
+    # Keep the in-memory reward total current; it's written to disk on the next
+    # ltm.save() (battle end / milestone / stop), not every tick — so a crash loses
+    # reward accrued since the last save (acceptably small).
+    ltm.data["total_reward"] = round(reward.total, 2)
+
+
+def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
+                      run: _RunState, reader: LeafGreenReader,
+                      tilemap: TilemapReader, ltm: LongTermMemory,
+                      stm: ShortTermMemory, map_key: tuple[int, int]) -> str:
+    """Build the one-line observation the LLM sees each tick.
+
+    Pure string assembly from live state + memory; the only side effect is
+    re-injecting the area map into `run.pending_map_b64` when the agent is stuck on
+    the overworld and no map is already queued."""
+    # Use LTM badge count for display — it is the authoritative source
+    # (game RAM can hold stale badge data from old saves/sessions).
+    obs_parts = [f"Context: {state.context.name}",
+                 f"Badges: {ltm.data['badges_earned']}/8"]
+    if run.prev_state is not None:
+        dx = state.player_x - run.prev_state.player_x
+        dy = state.player_y - run.prev_state.player_y
+        if dx == 0 and dy == 0:
+            obs_parts.append("Movement: none (position unchanged since last step)")
+        else:
+            obs_parts.append(f"Movement: moved ({dx:+d},{dy:+d})")
+    if state.party:
+        lead = state.party[0]
+        obs_parts.append(
+            f"Lead: {lead.species_name or '?'} L{lead.level} "
+            f"HP={lead.current_hp}/{lead.max_hp} ({lead.status})"
+        )
+        # Proactive heal nudge: low HP outside battle → recommend heal().
+        if (not in_battle and lead.max_hp and lead.hp_percent < 0.40
+                and state.context == GameContext.OVERWORLD):
+            obs_parts.append(
+                f"⚠ Lead HP low ({lead.hp_percent:.0%}) — call heal() to "
+                f"restore the party at the nearest Pokémon Center")
+        # Team-building nudge: a lone/pair Pokémon can't sustain a dungeon (its
+        # HP + move PP drain with no way to spread the load) or the Elite Four.
+        # go_to now stops on new wild species so the model can catch a roster.
+        if (not in_battle and state.context == GameContext.OVERWORLD
+                and len(state.party) < 3):
+            roster = ", ".join(f"{p.species_name} L{p.level}"
+                               for p in state.party if p.species_name)
+            obs_parts.append(
+                f"⚠ Team: only {len(state.party)} Pokémon ({roster}) — too few to "
+                "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
+                "tall grass, weaken a wild Pokémon with use_move, then catch(). "
+                "(Travel stops on NEW species so you can catch them.)")
+        # Under-levelled-for-Brock nudge: no badges yet and lead below the
+        # ~L13 Vine Whip breakpoint → grind before challenging the gym.
+        if (not in_battle and ltm.data["badges_earned"] == 0
+                and lead.level and lead.level < 13
+                and state.context == GameContext.OVERWORLD):
+            obs_parts.append(
+                f"⚠ Lead is L{lead.level} — under-levelled for Brock (want ~L13 "
+                f"for Vine Whip). Stand in tall grass and call grind(13) to level "
+                f"up before the Pewter Gym")
+        if in_battle:
+            move_names = [m for m in lead.move_names if m]
+            lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
+            enemy = reader.read_enemy_lead()
+            bsummary = battle_summary(move_names, run.current_enemy,
+                                      lead.hp_percent, lead.pp,
+                                      attacker_types=lead_types,
+                                      opponent_status=enemy.status if enemy else "")
+            obs_parts.append(bsummary)
+            if enemy:
+                obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
+            # Tell the model whether it can flee (wild) or must fight (trainer).
+            if run.battle_is_trainer:
+                obs_parts.append("TRAINER battle — you cannot flee; win or switch.")
+            else:
+                obs_parts.append("WILD battle — you may flee_battle() to escape "
+                                 "if you're just passing through or HP is low.")
+                # Suggest catching a wild Pokémon that would add to the team:
+                # a NEW species (not already in your party) when you have balls.
+                balls = sum(reader.read_bag().get(b, 0) for b in (1, 2, 3, 4))
+                party_species = {p.species_id for p in state.party}
+                if (balls > 0 and enemy and enemy.species_id
+                        and enemy.species_id not in party_species
+                        and len(state.party) < 6):
+                    obs_parts.append(
+                        f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — "
+                        "consider catch() to add it to your team. Weaken it first "
+                        "with use_move (low HP raises the catch rate).")
+                elif balls == 0 and len(state.party) < 6:
+                    obs_parts.append(
+                        "You have no Poké Balls — buy some with shop() to catch "
+                        "wild Pokémon for your team.")
+    obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
+    # Money + key consumables (for heal/catch/shopping decisions). Cheap
+    # reads; only meaningful outside battle transitions.
+    if not in_battle and state.context in (GameContext.OVERWORLD, GameContext.IN_MENU):
+        money = reader.read_money()
+        bag = reader.read_bag()
+        balls = sum(bag.get(b, 0) for b in (1, 2, 3, 4))   # any Poké Ball type
+        potions = sum(bag.get(p, 0) for p in (13, 22, 21, 20, 19))
+        obs_parts.append(
+            f"Bag: ¥{money} | Poké Balls: {balls} | Potions/heals: {potions}")
+        # Lead move PP — the agent is otherwise blind to PP outside battle and
+        # would run its attacking moves dry across a trainer gauntlet (it did,
+        # for 11 hours). A Pokémon Center heal restores PP, so warn while it
+        # can still retreat. (In battle the per-move PP is already in the obs.)
+        lead = state.party[0] if state.party else None
+        if lead:
+            pp_line, pp_warn = overworld_pp_summary(lead.move_names, lead.pp)
+            if pp_line:
+                obs_parts.append(pp_line)
+            if pp_warn:
+                obs_parts.append(pp_warn)
+        # At a Mart: recommend a badge-gated, par-level restock the agent can afford.
+        if MAP_KIND.get((state.map_bank, state.map_id)) == "mart":
+            rec = shopping_summary(bag, ltm.data["badges_earned"], money)
+            if rec:
+                obs_parts.append(
+                    "MART — " + rec + ". Call shop() to buy the recommended "
+                    "restock automatically.")
+    # Inside a gym: point the agent at the Leader — UNLESS this Leader is
+    # already beaten, in which case say so and tell it to leave (the agent
+    # looped in/out of Pewter Gym re-challenging Brock). go_to is useless
+    # here; you have to WALK UP to the Leader.
+    if (not in_battle and state.context == GameContext.OVERWORLD
+            and MAP_KIND.get((state.map_bank, state.map_id)) == "gym"):
+        gym_leader = GYM_MAP_LEADER.get((state.map_bank, state.map_id))
+        if gym_leader and gym_leader in ltm.data["gyms_beaten"]:
+            obs_parts.append(
+                f"GYM ALREADY BEATEN: you already defeated {gym_leader} here — "
+                "do NOT challenge them again. LEAVE the gym (walk_to the exit "
+                "door) and head to your NEXT objective in the Navigation section.")
+        else:
+            obs_parts.append(
+                "GYM: to fight the Leader, call challenge_leader() — it walks up "
+                "to them and starts the battle. (heal() and save_state first.) "
+                "Do NOT use go_to inside a gym.")
+    if state.context == GameContext.OVERWORLD and tilemap.ready:
+        if tilemap._width and tilemap._height:
+            obs_parts.append(f"Map size: {tilemap._width}×{tilemap._height} "
+                             f"(walk_to needs 0≤x<{tilemap._width}, 0≤y<{tilemap._height})")
+        surr = tilemap.surroundings_str(state.player_x, state.player_y)
+        obs_parts.append(f"Tiles: {surr}")
+        balls = reader.read_item_ball_tiles()
+        if balls:
+            where = ", ".join(f"({x},{y})" for x, y in balls[:5])
+            obs_parts.append(
+                f"Items on the ground: item ball(s) at {where} — call "
+                "pick_up_items() to collect them before leaving.")
+        travel_dir = get_travel_direction(state)
+        if travel_dir:
+            passable = tilemap.passable_directions(state.player_x, state.player_y)
+            btn = DIRECTION_BUTTON[travel_dir]
+            if passable.get(travel_dir):
+                obs_parts.append(f"Suggested: press {btn} ({travel_dir} tile is floor, matches travel direction)")
+            else:
+                alts = [f"{DIRECTION_BUTTON[d]}({d})" for d, ok in passable.items() if ok]
+                obs_parts.append(f"Travel {travel_dir} blocked — passable: {', '.join(alts) or 'none'} (find a detour)")
+    # Indoors: surface the door/stairs tiles so the agent can leave. The
+    # outdoor route is unreachable until it does (see get_route_guidance).
+    if tilemap.ready and infer_building_type(state.map_bank, state.map_id) == "interior":
+        # A door can span several adjacent warp tiles but usually only the
+        # CENTER one actually warps (the side tiles "arrive" without exiting).
+        # Collapse each contiguous run to its middle so we point at the tile
+        # that works (fixes suggesting an off-by-one non-functional door).
+        warps = door_centers(tilemap.read_warps())
+        if warps:
+            px, py = state.player_x, state.player_y
+            nearest = min(warps, key=lambda w: abs(w[0] - px) + abs(w[1] - py))
+            steps = []
+            if nearest[1] > py:   steps.append(f"{nearest[1]-py} Down")
+            elif nearest[1] < py: steps.append(f"{py-nearest[1]} Up")
+            if nearest[0] > px:   steps.append(f"{nearest[0]-px} Right")
+            elif nearest[0] < px: steps.append(f"{px-nearest[0]} Left")
+            toward = ", then ".join(steps) if steps else "you are next to it — step onto it"
+            coords = ", ".join(f"({x},{y})" for x, y in warps[:4])
+            obs_parts.append(
+                f"EXITS (door/stairs tiles): {coords}. To leave the building, "
+                f"call walk_to{nearest} — it will path there and step through. "
+                f"(Nearest is {nearest}: {toward}.)")
+    # Outdoors: surface map connections (which edge leads to which map).
+    # These are seamless — walk off that edge to cross; not warp tiles.
+    elif tilemap.ready and state.context == GameContext.OVERWORLD:
+        conns = tilemap.read_connections()
+        if conns:
+            parts = []
+            for c in conns:
+                name = MAP_NAMES.get((c["map_bank"], c["map_id"]),
+                                     f"{c['map_bank']}/{c['map_id']}")
+                parts.append(f"{c['direction']}→{name}")
+            obs_parts.append("Map edges (call go_to_map(direction) to travel there): "
+                             + ", ".join(parts))
+    if diff.notes:
+        obs_parts.append("Changes: " + "; ".join(diff.notes))
+    # Revisit warning — explicit signal to explore new directions
+    visits = stm.visit_count(state.player_x, state.player_y)
+    if visits >= 4 and state.context == GameContext.OVERWORLD:
+        obs_parts.append(
+            f"REVISIT #{visits}: you have been at ({state.player_x},{state.player_y}) "
+            f"{visits} times — choose a direction you have NOT tried recently"
+        )
+
+    if stm.stuck:
+        ctx = state.context.name
+        if ctx == "IN_BATTLE":
+            obs_parts.append("STUCK: same battle action repeating — try a different move or switch Pokémon")
+        elif ctx == "DIALOG_OPEN" or ctx == "TRANSITIONING":
+            obs_parts.append("STUCK: dialog/transition not advancing — press A")
+        elif ctx == "IN_MENU":
+            obs_parts.append("STUCK in a menu — press B to close it and return to the field, or navigate with the D-pad and A")
+        else:
+            obs_parts.append("STUCK: position unchanged after repeated input — wall or obstacle ahead, try a different direction or press B to cancel any open menu")
+            # Re-inject the area map when stuck on the overworld so the agent can re-orient
+            if USE_VISION and run.pending_map_b64 is None:
+                run.pending_map_b64, run.pending_map_name = AgentClient.load_area_map(*map_key)
+
+    # Close every turn with an explicit call to action — the state dump alone
+    # reads to some models as "no question asked", and they reply with prose
+    # instead of acting. Make the imperative unmissable.
+    obs_parts.append("→ Your turn: decide the best next action and call a tool NOW (do not reply with text only)")
+    return " | ".join(obs_parts)
+
+
+def _handle_blackout(run: _RunState, state: GameState, mgba, reader: LeafGreenReader,
+                     reward: RewardTracker, ltm: LongTermMemory) -> bool:
+    """Handle an all-fainted party: fire the loss penalty once, then recover.
+
+    Returns True if the caller should `continue` (the blackout path never falls
+    through to the LLM decision step). Tries a slot-0 state reload first; if none
+    was saved this session, advances the game's own whiteout sequence with A."""
+    party_wiped = bool(state.party) and all(p.current_hp == 0 for p in state.party)
+    if not party_wiped:
+        run.blackout_active = False   # recovered (respawn/heal) → re-arm
+        return False
+    # Fire the loss penalty ONCE per blackout, not every tick while the party stays
+    # fainted (that double-counted the penalty indefinitely).
+    if not run.blackout_active:
+        run.blackout_active = True
+        console.print("[red bold]BLACKOUT — all party fainted[/]")
+        reward.reward("loss")
+        ltm.save()
+    # Try to reload the pre-fight state. If none was saved this session the load
+    # FAILS (slot file missing) — don't pretend it worked and spin; let the game's
+    # own whiteout sequence carry the player to the last Pokémon Center by advancing
+    # its dialog with A.
+    if mgba.load_state(0):
+        console.print("[green]Loaded slot 0 after blackout[/]")
+        mgba.tick(60)
+        run.prev_state = None
+        run.battle_was_active = False
+        run.blackout_active = False   # recovered via reload
+    else:
+        console.print("[yellow]No save state in slot 0 — advancing the "
+                      "whiteout/Nurse-Joy recovery to the Pokémon Center[/]")
+        # The blackout plays a multi-box sequence (out of Pokémon → scurried to a
+        # Center → warp → auto-heal) that only advances on A. Press it several times
+        # per pass (not once) so recovery actually progresses instead of crawling one
+        # box per tick.
+        for _ in range(6):
+            mgba.tap("A")
+            mgba.tick(12)
+            if bool(reader.read_party()) and any(
+                    p.current_hp > 0 for p in reader.read_party()):
+                break   # auto-heal landed — party revived
+    return True
+
+
 def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str = "",
                 max_steps: int = 0, max_wall_s: float = MAX_WALL_SECONDS,
                 verbose: bool = True) -> EpisodeResult:
@@ -313,40 +704,29 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
     With goal=None and max_steps=0 this is the open-ended real run (what main()
     uses). The eval harness passes a goal predicate + step budget per scenario.
     Spend caps (MAX_LLM_CALLS/TOKEN_BUDGET) always apply as a safety net.
+
+    The body is a thin phase sequence — battle bookkeeping, reward application,
+    observation, blackout recovery, and the LLM decision — each a helper above.
+    Only the per-tick locals (state/diff/in_battle) and loop accounting live here.
     """
     mgba, reader, client = rt.mgba, rt.reader, rt.client
     ltm, stm, journal, reward, tilemap = rt.ltm, rt.stm, rt.journal, rt.reward, rt.tilemap
 
-    prev_state           = None
-    battle_was_active    = False
-    battle_start_lead    = ""   # species name of our lead when battle began
-    current_enemy        = ""   # last known opponent species name (set by LLM via tool or detected)
-    battle_active_slot   = 0    # party slot of the Pokémon actually fighting (see below)
-    battle_is_trainer    = False  # whether the current battle is vs a trainer (gBattleTypeFlags)
-    prev_key_items       = None   # count of bag key items (reward key_item on increase)
-    prev_map_key         = None
-    transitioning_steps  = 0
-    pending_map_b64      = None   # area map to attach next tick (cleared after one use)
-    pending_map_name     = ""
-    step_count           = 0
-    wall_deadline        = time.time() + max_wall_s if max_wall_s else 0.0
-    consecutive_errors   = 0      # ticks that raised in a row (see MAX_CONSECUTIVE_ERRORS)
-    blackout_active      = False  # inside a blackout (all fainted); reset on recovery
-    decision_ticks       = 0      # overworld decision ticks (for stuck_ratio)
-    stuck_ticks          = 0      # of those, how many with no movement
+    run = _RunState()
+    wall_deadline = time.time() + max_wall_s if max_wall_s else 0.0
 
     def _result(reason: str, passed: bool, s: Optional[GameState] = None) -> EpisodeResult:
         if s is None:
             s = reader.read_state()
         return EpisodeResult(
-            reason=reason, passed=passed, steps=step_count,
+            reason=reason, passed=passed, steps=run.step_count,
             reward=round(reward.total, 2), llm_calls=client.llm_calls,
             prompt_tokens=client.total_prompt_tokens,
             completion_tokens=client.total_completion_tokens,
             final_map=(s.map_bank, s.map_id), final_pos=(s.player_x, s.player_y),
             badges=ltm.data["badges_earned"],
             milestones=list(ltm.data.get("milestones", [])),
-            stuck_ratio=round(stuck_ticks / decision_ticks, 3) if decision_ticks else 0.0,
+            stuck_ratio=round(run.stuck_ticks / run.decision_ticks, 3) if run.decision_ticks else 0.0,
             goal_desc=goal_desc,
         )
 
@@ -359,9 +739,9 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             if client._in_evolution_scene():
                 client._finish_evolution()
             state = reader.read_state()
-            diff  = reader.diff(prev_state, state)
+            diff  = reader.diff(run.prev_state, state)
             stm.current_state = state
-            stm.last_state    = prev_state
+            stm.last_state    = run.prev_state
             stm.last_diff     = diff
 
             # Goal reached? (eval harness only; no-op for the open-ended real run.)
@@ -372,19 +752,19 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                 return _result("goal", True, state)
 
             in_battle = state.context == GameContext.IN_BATTLE
-            if in_battle and not battle_was_active:
+            if in_battle and not run.battle_was_active:
                 stm.reset_for_new_battle()
                 ltm.data["total_battles"] += 1
-                battle_start_lead = state.party[0].species_name if state.party else ""
-                battle_active_slot = 0
+                run.battle_start_lead = state.party[0].species_name if state.party else ""
+                run.battle_active_slot = 0
                 # Classify the battle from gBattleTypeFlags (set at battle init).
-                battle_is_trainer = bool(mgba.read32(Addr.BATTLE_TYPE_FLAGS)
-                                         & Addr.BATTLE_TYPE_TRAINER)
+                run.battle_is_trainer = bool(mgba.read32(Addr.BATTLE_TYPE_FLAGS)
+                                             & Addr.BATTLE_TYPE_TRAINER)
                 # Identify the opponent from memory (gEnemyParty[0]) — do NOT rely
                 # on the model to read the species off the screen (it guessed wrong).
                 enemy = reader.read_enemy_lead()
-                current_enemy = (enemy.species_name or "").upper().strip() if enemy else ""
-                client._current_opponent = current_enemy
+                run.current_enemy = (enemy.species_name or "").upper().strip() if enemy else ""
+                client._current_opponent = run.current_enemy
 
             # Keep the opponent identity fresh from memory every battle tick (it
             # can load a frame or two after the battle callback, and the lead
@@ -393,56 +773,23 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             if in_battle:
                 enemy = reader.read_enemy_lead()
                 if enemy and enemy.species_name:
-                    current_enemy = enemy.species_name.upper().strip()
+                    run.current_enemy = enemy.species_name.upper().strip()
 
             # Track which of our Pokémon is actually fighting. In single battles
             # only the active mon's HP changes, so the last slot to take damage
             # is the one that's out — remembered so battle-end logging records the
             # fighting mon, not always the lead (#2).
             if in_battle and diff.hp_changed:
-                battle_active_slot = diff.hp_changed[-1]
+                run.battle_active_slot = diff.hp_changed[-1]
 
             # ── Battle end detection ────────────────────────────────────────
-            if battle_was_active and not in_battle:
-                active_mon = active_party_member(state.party, battle_active_slot)
-                lead_hp_pct = active_mon.hp_percent if active_mon else 0.0
-                active_species = active_mon.species_name if active_mon else battle_start_lead
-                all_fainted = bool(state.party) and all(p.current_hp == 0 for p in state.party)
-                outcome = "loss" if all_fainted else "win"
-                # Pass enemy name for journal + system prompt loss-lessons
-                current_enemy_snap = current_enemy
-                current_enemy = ""
-                if outcome == "win":
-                    ltm.data["battles_won"] += 1
-                    # Reward trainer wins (wild wins aren't in the schedule). Gym
-                    # leaders are trainers too and additionally fire gym_leader_win
-                    # on the subsequent badge — a negligible +1 overlap.
-                    if battle_is_trainer:
-                        reward.reward("trainer_win")
-                else:
-                    ltm.data["battles_lost"] += 1
-                location = MAP_NAMES.get((state.map_bank, state.map_id),
-                                         f"bank={state.map_bank},id={state.map_id}")
-                journal.log(BattleRecord(
-                    timestamp=datetime.now().isoformat(timespec="seconds"),
-                    location=location,
-                    enemy_name=current_enemy_snap or "unknown",
-                    enemy_level=0,
-                    player_lead=active_species,
-                    outcome=outcome,
-                    turns=0,
-                    moves_used=[],
-                    hp_remaining_pct=round(lead_hp_pct, 2),
-                    reward=0.0,
-                    notes="",
-                ))
-                console.print(f"[magenta]Battle {outcome}[/] | active={active_species} hp={lead_hp_pct:.0%}")
-                ltm.save()
+            if run.battle_was_active and not in_battle:
+                _handle_battle_end(run, state, reward, ltm, journal)
             # Save the pre-update value so the auto-tap guard below can see
             # whether we were in battle on the PREVIOUS tick (battle_was_active
             # is about to be overwritten with the current tick's value).
-            was_in_battle_prev_tick = battle_was_active
-            battle_was_active = in_battle
+            was_in_battle_prev_tick = run.battle_was_active
+            run.battle_was_active = in_battle
 
             # Auto-advance a stuck dialog / transition with A. Fires for
             # DIALOG_OPEN (where NPC/sign/item dialogs live) and TRANSITIONING
@@ -457,7 +804,7 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             if (state.context in (GameContext.DIALOG_OPEN, GameContext.TRANSITIONING)
                     and not in_battle
                     and not was_in_battle_prev_tick):
-                transitioning_steps += 1
+                run.transitioning_steps += 1
                 # Auto-advance a genuine transition/dialog by tapping A. This branch
                 # `continue`s BEFORE the step/wall-clock budget checks below, so it must
                 # be BOUNDED — a game state stuck in TRANSITIONING would otherwise tap A
@@ -467,17 +814,17 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                 if wall_deadline and time.time() >= wall_deadline:
                     ltm.save()
                     return _result("max_wall", False, state)
-                if 5 <= transitioning_steps < 45:
+                if 5 <= run.transitioning_steps < 45:
                     mgba.tap("A")
                     console.print("[dim]transition: tap A[/]")
                     mgba.tick()
                     continue
             else:
-                transitioning_steps = 0
+                run.transitioning_steps = 0
 
             # Refresh tilemap cache whenever the map changes
             map_key = (state.map_bank, state.map_id)
-            if map_key != prev_map_key:
+            if map_key != run.prev_map_key:
                 tilemap.refresh()
                 stm.reset_for_new_map()
                 # Town-visit tracking
@@ -488,322 +835,35 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                         console.print(f"[cyan]New town: {town_name}[/]")
                 # Load overhead reference map (attach to next decision step)
                 if USE_VISION:
-                    pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
-                    if pending_map_b64:
-                        console.print(f"[blue]Area map loaded: {pending_map_name}[/]")
-                prev_map_key = map_key
+                    run.pending_map_b64, run.pending_map_name = AgentClient.load_area_map(*map_key)
+                    if run.pending_map_b64:
+                        console.print(f"[blue]Area map loaded: {run.pending_map_name}[/]")
+                run.prev_map_key = map_key
 
             # ── Auto-reward + auto-milestone from state diff ────────────────
-            if diff.badges_changed:
-                # Only reward/record when badge count genuinely increased.
-                # A spurious read (e.g. badge_bits glitches 0→non-0→0) would
-                # trigger badges_changed without state.badges > prev_state.badges.
-                if prev_state is not None and state.badges > prev_state.badges:
-                    reward.reward("new_badge")
-                    # A badge increase means a gym leader was just defeated.
-                    reward.reward("gym_leader_win")
-                    # Use raw bitmask diff — state.badges is a popcount (0-8), not
-                    # a bitmask, so "state.badges & ~prev_state.badges" was WRONG.
-                    newly_set = state.badge_bits & (~prev_state.badge_bits & 0xFF)
-                    for bit in range(8):
-                        if newly_set & (1 << bit):
-                            ms = BADGE_BIT_MILESTONE.get(bit)
-                            if ms:
-                                ltm.add_milestone(ms)
-                                console.print(f"[green bold]Milestone: {ms}[/]")
-                            gym = next((g for g in GYMS if g["badge_bit"] == bit), None)
-                            if gym:
-                                ltm.add_badge(gym["leader"])
-                    if reward.shaped and state.badges >= 4:
-                        reward.anneal_to_sparse()
-
-            for _ in diff.level_changed:
-                reward.reward("level_up")
-
-            # Penalise each of our Pokémon fainting (once per faint).
-            if prev_state is not None:
-                for _slot in newly_fainted_slots(prev_state.party, state.party):
-                    reward.reward("party_faint")
-
-            # Reward obtaining a key item (bag key-items pocket count increased).
-            key_items = reader.read_key_item_count()
-            if prev_key_items is not None and key_items > prev_key_items:
-                reward.reward("key_item")
-                console.print(f"[cyan]Key item obtained (bag key items: {key_items})[/]")
-            prev_key_items = key_items
-
-            if prev_state is not None and state.party_count > prev_state.party_count:
-                reward.reward("caught_new")
-                ltm.data["pokemon_caught"] = ltm.data.get("pokemon_caught", 0) + 1
-                # first-party addition → starter chosen
-                if prev_state.party_count == 0 and state.party_count == 1:
-                    starter = state.party[0].species_name or "Unknown"
-                    if ltm.data.get("starter") is None:
-                        ltm.data["starter"] = starter
-                    if ltm.add_milestone("starter_chosen", f"chose {starter}"):
-                        console.print(f"[green bold]Milestone: starter_chosen ({starter})[/]")
-
-            # Keep the in-memory reward total current; it's written to disk on the
-            # next ltm.save() (battle end / milestone / stop), not every tick — so a
-            # crash loses reward accrued since the last save (acceptably small).
-            ltm.data["total_reward"] = round(reward.total, 2)
+            _apply_rewards(run, state, diff, reader, reward, ltm)
 
             # ── Build observation string ─────────────────────────────────────
-            # Use LTM badge count for display — it is the authoritative source
-            # (game RAM can hold stale badge data from old saves/sessions).
-            obs_parts = [f"Context: {state.context.name}",
-                         f"Badges: {ltm.data['badges_earned']}/8"]
-            if prev_state is not None:
-                dx = state.player_x - prev_state.player_x
-                dy = state.player_y - prev_state.player_y
-                if dx == 0 and dy == 0:
-                    obs_parts.append("Movement: none (position unchanged since last step)")
-                else:
-                    obs_parts.append(f"Movement: moved ({dx:+d},{dy:+d})")
-            if state.party:
-                lead = state.party[0]
-                obs_parts.append(
-                    f"Lead: {lead.species_name or '?'} L{lead.level} "
-                    f"HP={lead.current_hp}/{lead.max_hp} ({lead.status})"
-                )
-                # Proactive heal nudge: low HP outside battle → recommend heal().
-                if (not in_battle and lead.max_hp and lead.hp_percent < 0.40
-                        and state.context == GameContext.OVERWORLD):
-                    obs_parts.append(
-                        f"⚠ Lead HP low ({lead.hp_percent:.0%}) — call heal() to "
-                        f"restore the party at the nearest Pokémon Center")
-                # Team-building nudge: a lone/pair Pokémon can't sustain a dungeon (its
-                # HP + move PP drain with no way to spread the load) or the Elite Four.
-                # go_to now stops on new wild species so the model can catch a roster.
-                if (not in_battle and state.context == GameContext.OVERWORLD
-                        and len(state.party) < 3):
-                    roster = ", ".join(f"{p.species_name} L{p.level}"
-                                       for p in state.party if p.species_name)
-                    obs_parts.append(
-                        f"⚠ Team: only {len(state.party)} Pokémon ({roster}) — too few to "
-                        "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
-                        "tall grass, weaken a wild Pokémon with use_move, then catch(). "
-                        "(Travel stops on NEW species so you can catch them.)")
-                # Under-levelled-for-Brock nudge: no badges yet and lead below the
-                # ~L13 Vine Whip breakpoint → grind before challenging the gym.
-                if (not in_battle and ltm.data["badges_earned"] == 0
-                        and lead.level and lead.level < 13
-                        and state.context == GameContext.OVERWORLD):
-                    obs_parts.append(
-                        f"⚠ Lead is L{lead.level} — under-levelled for Brock (want ~L13 "
-                        f"for Vine Whip). Stand in tall grass and call grind(13) to level "
-                        f"up before the Pewter Gym")
-                if in_battle:
-                    move_names = [m for m in lead.move_names if m]
-                    lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
-                    enemy = reader.read_enemy_lead()
-                    bsummary = battle_summary(move_names, current_enemy,
-                                              lead.hp_percent, lead.pp,
-                                              attacker_types=lead_types,
-                                              opponent_status=enemy.status if enemy else "")
-                    obs_parts.append(bsummary)
-                    if enemy:
-                        obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
-                    # Tell the model whether it can flee (wild) or must fight (trainer).
-                    if battle_is_trainer:
-                        obs_parts.append("TRAINER battle — you cannot flee; win or switch.")
-                    else:
-                        obs_parts.append("WILD battle — you may flee_battle() to escape "
-                                         "if you're just passing through or HP is low.")
-                        # Suggest catching a wild Pokémon that would add to the team:
-                        # a NEW species (not already in your party) when you have balls.
-                        balls = sum(reader.read_bag().get(b, 0) for b in (1, 2, 3, 4))
-                        party_species = {p.species_id for p in state.party}
-                        if (balls > 0 and enemy and enemy.species_id
-                                and enemy.species_id not in party_species
-                                and len(state.party) < 6):
-                            obs_parts.append(
-                                f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — "
-                                "consider catch() to add it to your team. Weaken it first "
-                                "with use_move (low HP raises the catch rate).")
-                        elif balls == 0 and len(state.party) < 6:
-                            obs_parts.append(
-                                "You have no Poké Balls — buy some with shop() to catch "
-                                "wild Pokémon for your team.")
-            obs_parts.append(f"Pos: ({state.player_x},{state.player_y}) Map: {state.map_bank}/{state.map_id}")
-            # Money + key consumables (for heal/catch/shopping decisions). Cheap
-            # reads; only meaningful outside battle transitions.
-            if not in_battle and state.context in (GameContext.OVERWORLD, GameContext.IN_MENU):
-                money = reader.read_money()
-                bag = reader.read_bag()
-                balls = sum(bag.get(b, 0) for b in (1, 2, 3, 4))   # any Poké Ball type
-                potions = sum(bag.get(p, 0) for p in (13, 22, 21, 20, 19))
-                obs_parts.append(
-                    f"Bag: ¥{money} | Poké Balls: {balls} | Potions/heals: {potions}")
-                # Lead move PP — the agent is otherwise blind to PP outside battle and
-                # would run its attacking moves dry across a trainer gauntlet (it did,
-                # for 11 hours). A Pokémon Center heal restores PP, so warn while it
-                # can still retreat. (In battle the per-move PP is already in the obs.)
-                lead = state.party[0] if state.party else None
-                if lead:
-                    pp_line, pp_warn = overworld_pp_summary(lead.move_names, lead.pp)
-                    if pp_line:
-                        obs_parts.append(pp_line)
-                    if pp_warn:
-                        obs_parts.append(pp_warn)
-                # At a Mart: recommend a badge-gated, par-level restock the agent can afford.
-                if MAP_KIND.get((state.map_bank, state.map_id)) == "mart":
-                    rec = shopping_summary(bag, ltm.data["badges_earned"], money)
-                    if rec:
-                        obs_parts.append(
-                            "MART — " + rec + ". Call shop() to buy the recommended "
-                            "restock automatically.")
-            # Inside a gym: point the agent at the Leader — UNLESS this Leader is
-            # already beaten, in which case say so and tell it to leave (the agent
-            # looped in/out of Pewter Gym re-challenging Brock). go_to is useless
-            # here; you have to WALK UP to the Leader.
-            if (not in_battle and state.context == GameContext.OVERWORLD
-                    and MAP_KIND.get((state.map_bank, state.map_id)) == "gym"):
-                gym_leader = GYM_MAP_LEADER.get((state.map_bank, state.map_id))
-                if gym_leader and gym_leader in ltm.data["gyms_beaten"]:
-                    obs_parts.append(
-                        f"GYM ALREADY BEATEN: you already defeated {gym_leader} here — "
-                        "do NOT challenge them again. LEAVE the gym (walk_to the exit "
-                        "door) and head to your NEXT objective in the Navigation section.")
-                else:
-                    obs_parts.append(
-                        "GYM: to fight the Leader, call challenge_leader() — it walks up "
-                        "to them and starts the battle. (heal() and save_state first.) "
-                        "Do NOT use go_to inside a gym.")
-            if state.context == GameContext.OVERWORLD and tilemap.ready:
-                if tilemap._width and tilemap._height:
-                    obs_parts.append(f"Map size: {tilemap._width}×{tilemap._height} "
-                                     f"(walk_to needs 0≤x<{tilemap._width}, 0≤y<{tilemap._height})")
-                surr = tilemap.surroundings_str(state.player_x, state.player_y)
-                obs_parts.append(f"Tiles: {surr}")
-                balls = reader.read_item_ball_tiles()
-                if balls:
-                    where = ", ".join(f"({x},{y})" for x, y in balls[:5])
-                    obs_parts.append(
-                        f"Items on the ground: item ball(s) at {where} — call "
-                        "pick_up_items() to collect them before leaving.")
-                travel_dir = get_travel_direction(state)
-                if travel_dir:
-                    passable = tilemap.passable_directions(state.player_x, state.player_y)
-                    btn = DIRECTION_BUTTON[travel_dir]
-                    if passable.get(travel_dir):
-                        obs_parts.append(f"Suggested: press {btn} ({travel_dir} tile is floor, matches travel direction)")
-                    else:
-                        alts = [f"{DIRECTION_BUTTON[d]}({d})" for d, ok in passable.items() if ok]
-                        obs_parts.append(f"Travel {travel_dir} blocked — passable: {', '.join(alts) or 'none'} (find a detour)")
-            # Indoors: surface the door/stairs tiles so the agent can leave. The
-            # outdoor route is unreachable until it does (see get_route_guidance).
-            if tilemap.ready and infer_building_type(state.map_bank, state.map_id) == "interior":
-                # A door can span several adjacent warp tiles but usually only the
-                # CENTER one actually warps (the side tiles "arrive" without exiting).
-                # Collapse each contiguous run to its middle so we point at the tile
-                # that works (fixes suggesting an off-by-one non-functional door).
-                warps = door_centers(tilemap.read_warps())
-                if warps:
-                    px, py = state.player_x, state.player_y
-                    nearest = min(warps, key=lambda w: abs(w[0] - px) + abs(w[1] - py))
-                    steps = []
-                    if nearest[1] > py:   steps.append(f"{nearest[1]-py} Down")
-                    elif nearest[1] < py: steps.append(f"{py-nearest[1]} Up")
-                    if nearest[0] > px:   steps.append(f"{nearest[0]-px} Right")
-                    elif nearest[0] < px: steps.append(f"{px-nearest[0]} Left")
-                    toward = ", then ".join(steps) if steps else "you are next to it — step onto it"
-                    coords = ", ".join(f"({x},{y})" for x, y in warps[:4])
-                    obs_parts.append(
-                        f"EXITS (door/stairs tiles): {coords}. To leave the building, "
-                        f"call walk_to{nearest} — it will path there and step through. "
-                        f"(Nearest is {nearest}: {toward}.)")
-            # Outdoors: surface map connections (which edge leads to which map).
-            # These are seamless — walk off that edge to cross; not warp tiles.
-            elif tilemap.ready and state.context == GameContext.OVERWORLD:
-                conns = tilemap.read_connections()
-                if conns:
-                    parts = []
-                    for c in conns:
-                        name = MAP_NAMES.get((c["map_bank"], c["map_id"]),
-                                             f"{c['map_bank']}/{c['map_id']}")
-                        parts.append(f"{c['direction']}→{name}")
-                    obs_parts.append("Map edges (call go_to_map(direction) to travel there): "
-                                     + ", ".join(parts))
-            if diff.notes:
-                obs_parts.append("Changes: " + "; ".join(diff.notes))
-            # Revisit warning — explicit signal to explore new directions
-            visits = stm.visit_count(state.player_x, state.player_y)
-            if visits >= 4 and state.context == GameContext.OVERWORLD:
-                obs_parts.append(
-                    f"REVISIT #{visits}: you have been at ({state.player_x},{state.player_y}) "
-                    f"{visits} times — choose a direction you have NOT tried recently"
-                )
-
-            if stm.stuck:
-                ctx = state.context.name
-                if ctx == "IN_BATTLE":
-                    obs_parts.append("STUCK: same battle action repeating — try a different move or switch Pokémon")
-                elif ctx == "DIALOG_OPEN" or ctx == "TRANSITIONING":
-                    obs_parts.append("STUCK: dialog/transition not advancing — press A")
-                elif ctx == "IN_MENU":
-                    obs_parts.append("STUCK in a menu — press B to close it and return to the field, or navigate with the D-pad and A")
-                else:
-                    obs_parts.append("STUCK: position unchanged after repeated input — wall or obstacle ahead, try a different direction or press B to cancel any open menu")
-                    # Re-inject the area map when stuck on the overworld so the agent can re-orient
-                    if USE_VISION and pending_map_b64 is None:
-                        pending_map_b64, pending_map_name = AgentClient.load_area_map(*map_key)
-
-            # Close every turn with an explicit call to action — the state dump
-            # alone reads to some models as "no question asked", and they reply
-            # with prose instead of acting. Make the imperative unmissable.
-            obs_parts.append("→ Your turn: decide the best next action and call a tool NOW (do not reply with text only)")
-            obs = " | ".join(obs_parts)
+            obs = build_observation(state=state, diff=diff, in_battle=in_battle,
+                                    run=run, reader=reader, tilemap=tilemap,
+                                    ltm=ltm, stm=stm, map_key=map_key)
             if verbose:
                 console.print(f"[yellow]OBS:[/] {obs[:140]}")
 
             # ── Blackout check ───────────────────────────────────────────────
-            party_wiped = bool(state.party) and all(p.current_hp == 0 for p in state.party)
-            if not party_wiped:
-                blackout_active = False   # recovered (respawn/heal) → re-arm
-            if party_wiped:
-                # Fire the loss penalty ONCE per blackout, not every tick while the
-                # party stays fainted (that double-counted the penalty indefinitely).
-                if not blackout_active:
-                    blackout_active = True
-                    console.print("[red bold]BLACKOUT — all party fainted[/]")
-                    reward.reward("loss")
-                    ltm.save()
-                # Try to reload the pre-fight state. If none was saved this session
-                # the load FAILS (slot file missing) — don't pretend it worked and
-                # spin; let the game's own whiteout sequence carry the player to the
-                # last Pokémon Center by advancing its dialog with A.
-                if mgba.load_state(0):
-                    console.print("[green]Loaded slot 0 after blackout[/]")
-                    mgba.tick(60)
-                    prev_state = None
-                    battle_was_active = False
-                    blackout_active = False   # recovered via reload
-                else:
-                    console.print("[yellow]No save state in slot 0 — advancing the "
-                                  "whiteout/Nurse-Joy recovery to the Pokémon Center[/]")
-                    # The blackout plays a multi-box sequence (out of Pokémon →
-                    # scurried to a Center → warp → auto-heal) that only advances on
-                    # A. Press it several times per pass (not once) so recovery
-                    # actually progresses instead of crawling one box per tick.
-                    for _ in range(6):
-                        mgba.tap("A")
-                        mgba.tick(12)
-                        if bool(reader.read_party()) and any(
-                                p.current_hp > 0 for p in reader.read_party()):
-                            break   # auto-heal landed — party revived
+            if _handle_blackout(run, state, mgba, reader, reward, ltm):
                 continue
 
             # ── LLM decision step ────────────────────────────────────────────
             client.set_system(build_system_prompt(ltm, journal, state,
-                                                   current_enemy=current_enemy))
+                                                   current_enemy=run.current_enemy))
             screenshot = client.capture_screenshot() if USE_VISION else None
             reasoning, actions = client.step(obs, screenshot,
-                                             area_map_b64=pending_map_b64,
-                                             area_map_name=pending_map_name)
+                                             area_map_b64=run.pending_map_b64,
+                                             area_map_name=run.pending_map_name)
             # Map is attached on entry only — clear so it won't repeat next tick
-            pending_map_b64 = None
-            pending_map_name = ""
+            run.pending_map_b64 = None
+            run.pending_map_name = ""
             if actions:
                 stm.record_action(";".join(actions), state.player_x, state.player_y)
             elif reasoning:
@@ -814,8 +874,8 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             # set_opponent is now only a fallback — memory (read_enemy_lead) is
             # authoritative and refreshed each tick above. Use the tool's value
             # only if we somehow couldn't read the opponent from memory.
-            if not current_enemy and client._current_opponent:
-                current_enemy = client._current_opponent
+            if not run.current_enemy and client._current_opponent:
+                run.current_enemy = client._current_opponent
             # Clear on battle end
             if not in_battle:
                 client._current_opponent = ""
@@ -824,25 +884,25 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             # consecutive-error budget. (The transition/blackout `continue` paths
             # above don't reach here, but they don't raise either, so the counter
             # simply holds; only a real exception grows it.)
-            consecutive_errors = 0
+            run.consecutive_errors = 0
 
             # Stuck tracking: an overworld decision tick that didn't move the
             # player. A high ratio is the signature of the Route-2 "can't cross"
             # thrash — surfaced as EpisodeResult.stuck_ratio for the eval harness.
             if state.context == GameContext.OVERWORLD:
-                decision_ticks += 1
-                if prev_state is not None and \
-                        (state.player_x, state.player_y) == (prev_state.player_x, prev_state.player_y):
-                    stuck_ticks += 1
+                run.decision_ticks += 1
+                if run.prev_state is not None and \
+                        (state.player_x, state.player_y) == (run.prev_state.player_x, run.prev_state.player_y):
+                    run.stuck_ticks += 1
 
-            prev_state = state
+            run.prev_state = state
             mgba.tick()
 
-            step_count += 1
-            if max_steps and step_count >= max_steps:
+            run.step_count += 1
+            if max_steps and run.step_count >= max_steps:
                 if verbose:
                     console.print(f"[green]Reached max_steps={max_steps} — stopping. "
-                                  f"{_run_summary(reward, client, step_count)}[/]")
+                                  f"{_run_summary(reward, client, run.step_count)}[/]")
                 ltm.save()
                 return _result("max_steps", False, state)
             # Spend guards (matter for cloud endpoints; 0 = unlimited). Stop
@@ -851,13 +911,13 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             if MAX_LLM_CALLS and client.llm_calls >= MAX_LLM_CALLS:
                 if verbose:
                     console.print(f"[green]Reached MAX_LLM_CALLS={MAX_LLM_CALLS} — stopping. "
-                                  f"{_run_summary(reward, client, step_count)}[/]")
+                                  f"{_run_summary(reward, client, run.step_count)}[/]")
                 ltm.save()
                 return _result("max_llm_calls", False, state)
             if TOKEN_BUDGET and client.total_tokens >= TOKEN_BUDGET:
                 if verbose:
                     console.print(f"[green]Reached TOKEN_BUDGET={TOKEN_BUDGET} — stopping. "
-                                  f"{_run_summary(reward, client, step_count)}[/]")
+                                  f"{_run_summary(reward, client, run.step_count)}[/]")
                 ltm.save()
                 return _result("token_budget", False, state)
             # Wall-clock guard: an unattended run (esp. a local model that degrades on a
@@ -866,27 +926,27 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             if wall_deadline and time.time() >= wall_deadline:
                 if verbose:
                     console.print(f"[green]Reached wall-clock cap ({max_wall_s:.0f}s) — stopping. "
-                                  f"{_run_summary(reward, client, step_count)}[/]")
+                                  f"{_run_summary(reward, client, run.step_count)}[/]")
                 ltm.save()
                 return _result("max_wall", False, state)
 
         except KeyboardInterrupt:
             if verbose:
-                console.print(f"\n[red]Stopped.[/] {_run_summary(reward, client, step_count)}")
+                console.print(f"\n[red]Stopped.[/] {_run_summary(reward, client, run.step_count)}")
             ltm.save()
             return _result("interrupted", False)
         except Exception as e:
-            consecutive_errors += 1
+            run.consecutive_errors += 1
             _log_exception(e)
             if verbose:
-                console.print(f"[red]Error ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): "
+                console.print(f"[red]Error ({run.consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): "
                               f"{type(e).__name__}: {e}[/] — see {ERRORS_LOG}")
                 console.print_exception(max_frames=4)
-            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+            if run.consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 if verbose:
-                    console.print(f"[red bold]{consecutive_errors} consecutive errors — "
+                    console.print(f"[red bold]{run.consecutive_errors} consecutive errors — "
                                   f"stopping. Full tracebacks in {ERRORS_LOG}. "
-                                  f"{_run_summary(reward, client, step_count)}[/]")
+                                  f"{_run_summary(reward, client, run.step_count)}[/]")
                 ltm.save()
                 return _result("error_budget", False)
             time.sleep(1.0)
