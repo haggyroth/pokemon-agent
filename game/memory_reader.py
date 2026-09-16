@@ -1,6 +1,10 @@
+import logging
+
 from game.mgba_client import MGBAClient
 from game.state import GameState, PokemonStatus, StateDiff, GameContext
 from game.constants import Addr, SPECIES_NAMES, MOVE_NAMES
+
+logger = logging.getLogger(__name__)
 
 # ── Gen III XOR Decryption (Tier 2) ─────────────────────────────────────────
 
@@ -145,7 +149,8 @@ class LeafGreenReader:
                 move_ids, pp = parse_moves(sub)
                 move_names   = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in move_ids]
             except Exception:
-                pass  # decryption failed — Tier 1 data still valid
+                # decryption failed — Tier 1 data still valid
+                logger.warning("party mon decrypt failed for slot %d", slot, exc_info=True)
 
         return PokemonStatus(
             slot=slot, level=level, current_hp=current_hp, max_hp=max_hp,
@@ -256,6 +261,7 @@ class LeafGreenReader:
             try:
                 raw = self.client.read_range(sb1 + off, slots * 4)
             except Exception:
+                logger.warning("bag read failed for pocket offset %s", off, exc_info=True)
                 continue
             for i in range(0, len(raw) - 3, 4):
                 iid = raw[i] | (raw[i + 1] << 8)
@@ -283,6 +289,7 @@ class LeafGreenReader:
         try:
             raw = self.client.read_range(sb1 + Addr.ITEMS_OFFSET, Addr.ITEMS_SLOTS * 4)
         except Exception:
+            logger.warning("items pocket read failed", exc_info=True)
             return []
         for i in range(0, len(raw) - 3, 4):
             iid = raw[i] | (raw[i + 1] << 8)
@@ -313,6 +320,7 @@ class LeafGreenReader:
                 y = y - 65536 if y >= 32768 else y
                 out.append((x - Addr.OBJECT_COORD_OFFSET, y - Addr.OBJECT_COORD_OFFSET))
         except Exception:
+            logger.warning("item-ball tile read failed", exc_info=True)
             return []
         return out
 
