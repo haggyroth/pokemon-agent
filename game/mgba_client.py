@@ -3,10 +3,21 @@ import time
 from config import MGBA_HTTP_BASE, BUTTON_TAP_DELAY
 
 
+class _TimeoutSession(requests.Session):
+    """requests.Session with a default timeout, so a hung mGBA-http server can't
+    block a read/write forever. Per-call `timeout=` still overrides the default."""
+
+    DEFAULT_TIMEOUT = 10.0
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", self.DEFAULT_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
 class MGBAClient:
     def __init__(self, base_url: str = MGBA_HTTP_BASE):
         self.base = base_url.rstrip("/")
-        self.session = requests.Session()
+        self.session = _TimeoutSession()
 
     # ── Response parsing ─────────────────────────────────────────────────────
 
@@ -83,14 +94,19 @@ class MGBAClient:
     # domain-relative address.  For WRAM (0x02000000–0x02FFFFFF) subtract
     # 0x02000000.  For IWRAM (0x03000000–0x03FFFFFF) subtract 0x03000000.
 
-    def write8(self, address: int, value: int) -> None:
+    def write8(self, address: int, value: int) -> bool:
         """Write an unsigned 8-bit value at an absolute GBA bus address.
-        Only WRAM (0x02xxxxxx) addresses are supported."""
+        Only WRAM (0x02xxxxxx) addresses are supported. Returns True on success
+        so callers can detect a failed write."""
+        if not (0x02000000 <= address < 0x03000000):
+            raise ValueError(f"write8 only supports WRAM addresses, got {hex(address)}")
         wram_addr = address - 0x02000000
-        self.session.post(f"{self.base}/memorydomain/write8",
-                          params={"memoryDomain": "wram",
-                                  "address": hex(wram_addr),
-                                  "value": str(value & 0xFF)})
+        r = self.session.post(f"{self.base}/memorydomain/write8",
+                              params={"memoryDomain": "wram",
+                                      "address": hex(wram_addr),
+                                      "value": str(value & 0xFF)})
+        r.raise_for_status()
+        return True
 
     # ── State management ──────────────────────────────────────────────────────
     # slot param MUST be a string per swagger schema
