@@ -897,9 +897,11 @@ def main():
     if rt is None:
         sys.exit(1)
     result = run_episode(rt, max_steps=MAX_STEPS, verbose=True)
-    # run_episode already printed the stop line. Propagate a hard failure as a
-    # non-zero exit so a wrapping shell/CI notices the error-budget abort.
-    if result.reason == "error_budget":
+    # run_episode already printed the stop line. Propagate any non-goal stop (a
+    # budget cap, interruption, or the error budget) as a non-zero exit so a
+    # wrapping shell/CI notices the run didn't actually finish; 0 means the goal
+    # was achieved.
+    if result.reason != "goal":
         sys.exit(1)
 
 
