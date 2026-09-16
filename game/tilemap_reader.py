@@ -16,9 +16,13 @@ Empirically verified via diagnostic_tilemap.py on FRLG US (AGB-BPGE):
   - Pallet Town floor:            0x3009        → elev=3 ✓ passable
   - Pallet Town water:            0x112A        → elev=1 ✗ water (no Surf)
 """
+import logging
 from dataclasses import dataclass
+
 from game.mgba_client import MGBAClient
 from game.constants import Addr
+
+logger = logging.getLogger(__name__)
 
 ELEV_WALL  = 0
 ELEV_WATER = 1
@@ -65,6 +69,7 @@ class TilemapReader:
             self._attr_secondary = self._attr_ptr(layout_ptr + 0x14)
             return True
         except Exception:
+            logger.warning("tilemap refresh failed", exc_info=True)
             return False
 
     def _attr_ptr(self, tileset_field_addr: int) -> int | None:
@@ -76,6 +81,7 @@ class TilemapReader:
             attr = self.client.read32(tileset + 0x14)
             return attr if 0x08000000 <= attr < 0x0A000000 else None
         except Exception:
+            logger.warning("tileset metatileAttributes read failed", exc_info=True)
             return None
 
     @property
@@ -109,6 +115,7 @@ class TilemapReader:
                 return None
             return self.client.read32(attr_arr + idx * 4) & 0x1FF   # behavior bits
         except Exception:
+            logger.warning("metatile behavior read failed at (%d, %d)", x, y, exc_info=True)
             return None
 
     def is_tall_grass(self, x: int, y: int) -> bool:
@@ -152,6 +159,7 @@ class TilemapReader:
                 is_water    = elev == ELEV_WATER,
             )
         except Exception:
+            logger.warning("tile read failed at (%d, %d)", x, y, exc_info=True)
             return None
 
     def read_warps(self) -> list[tuple[int, int]]:
@@ -176,6 +184,7 @@ class TilemapReader:
                 out.append((self.client.read16(base), self.client.read16(base + 2)))
             return out
         except Exception:
+            logger.warning("warp read failed", exc_info=True)
             return []
 
     def passable_grid(self):
@@ -193,6 +202,7 @@ class TilemapReader:
         try:
             raw = self.client.read_range(self._map_ptr, w * h * 2)
         except Exception:
+            logger.warning("passable grid read failed", exc_info=True)
             return None, 0, 0
         if len(raw) < w * h * 2:
             return None, 0, 0
@@ -240,6 +250,7 @@ class TilemapReader:
                 })
             return out
         except Exception:
+            logger.warning("map connections read failed", exc_info=True)
             return []
 
     def passable_directions(self, x: int, y: int) -> dict[str, bool]:
