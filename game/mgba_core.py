@@ -102,7 +102,7 @@ class NativeMGBAClient:
             buf = ffi.buffer(self._video, self._video_bytes)
             if v is not None:
                 v.render(buf)
-            h = hash(bytes(buf)[::311])   # cheap sparse framebuffer fingerprint
+            h = hash(tuple(buf[i] for i in range(0, self._video_bytes, 311)))  # sparse fingerprint, no full-frame copy
             streak = streak + 1 if h == last else 0
             last = h
             if streak >= stable:
