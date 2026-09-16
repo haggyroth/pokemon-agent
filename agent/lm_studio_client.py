@@ -2133,7 +2133,10 @@ class AgentClient:
                 # frames are stepped, so a real-time sleep would leave the game
                 # frozen; tick() advances both backends (native steps frames, the
                 # HTTP backend sleeps while its emulator runs on its own).
-                frames = int(args.get("frames", 30))
+                # Clamp defensively — a model can ignore the schema's maximum and
+                # a huge/negative frame count would freeze the run (HTTP) or fast-
+                # forward the game thousands of steps (native).
+                frames = max(0, min(int(args.get("frames", 30)), 120))
                 self.mgba.tick(frames)
                 return f"Waited {frames} frames."
             case "record_milestone":
