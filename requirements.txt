@@ -1,7 +1,7 @@
 requests>=2.34.2
-openai>=3.13.0
+openai>=3.24.0
 rich>=15.0.0
-python-dotenv>=1.2.3
+python-dotenv>=1.2.4
 
 # Native emulator backend (MGBA_BACKEND=native): builds the in-process libmgba
 # binding. Requires Homebrew libmgba at build time: brew install mgba
