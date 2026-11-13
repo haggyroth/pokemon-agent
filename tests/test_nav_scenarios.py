@@ -15,7 +15,7 @@ import pytest
 pytest.importorskip("openai")   # AgentClient/main import openai
 
 # The native binding must be built, or there's no emulator to drive.
-pytest.importorskip("game._mgba_native")
+pytest.importorskip("game._mgba_native", exc_type=ImportError)  # also skip on dlopen failure
 
 import main  # noqa: E402
 from evals import scenarios  # noqa: E402
