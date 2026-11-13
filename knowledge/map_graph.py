@@ -559,7 +559,19 @@ WARP_ARRIVAL_REGION: dict[tuple, str] = {
     ((15, 3), (3, 20)): "N",  # Viridian Forest NORTH gate → Route 2 north
     ((1, 1), (3, 22)): "W",   # Mt. Moon 1F exit → Route 4 west (lands at 19,5)
     ((1, 2), (3, 22)): "E",   # Mt. Moon B1F exit → Route 4 east (lands at 32,5)
+    ((16, 0), (3, 22)): "W",  # Route 4 Pokémon Center exit → Route 4 WEST (door at 12,5)
 }
+
+
+# Mt. Moon's three floors are each several DISCONNECTED regions joined by ladders (B1F alone
+# has four); the data lives in knowledge/cave_regions.py. Without it BFS treated each floor
+# as one node and go_to hammered "No walkable path to (45,4)" from the wrong region forever.
+from knowledge.cave_regions import CAVE_GRIDS, CAVE_WARP_ARRIVAL, region_at  # noqa: E402
+
+for _mp, _grid in CAVE_GRIDS.items():
+    _tags = tuple(sorted({ch for row in _grid for ch in row if ch != "#"}))
+    SPLIT_MAPS[_mp] = {"tags": _tags,
+                       "region": (lambda x, y, _m=_mp: region_at(_m, x, y))}
 
 
 def node_for(bank: int, id: int, x: int | None = None, y: int | None = None):
@@ -593,7 +605,12 @@ def _build_augmented():
             a_conn.setdefault(src, {})[direction] = _resolve_dest(m, dest, "connection")
         for (x, y, dest) in MAP_WARPS.get(m, []):
             src = (m[0], m[1], split["region"](x, y)) if split else m
-            a_warp.setdefault(src, []).append((x, y, _resolve_dest(m, dest, "warp")))
+            cave = CAVE_WARP_ARRIVAL.get((m, (x, y)))
+            if cave is not None:        # per-warp arrival region (cave ladders)
+                dest_node = (cave[0][0], cave[0][1], str(cave[1]))
+            else:
+                dest_node = _resolve_dest(m, dest, "warp")
+            a_warp.setdefault(src, []).append((x, y, dest_node))
     return a_conn, a_warp
 
 
