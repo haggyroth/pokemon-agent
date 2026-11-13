@@ -3,7 +3,7 @@
 All four are "face the thing, press A, answer YES" in FRLG: the game itself checks that a party
 Pokémon knows the move and that the badge is held, and says so if not. The driver does the
 approach/facing, answers the prompt (MenuDriver) and CONFIRMS the outcome (surfing flag set /
-the object despawned), like every other skill. Teaching an HM (TM Case) and Fly / Flash (party
+the object despawned), like every other skill. Teaching an HM is teach_move (agent/skills/tmhm.py); Fly / Flash (party
 sub-menus) are not covered here.
 """
 from game.constants import Addr
@@ -47,8 +47,8 @@ class HMMixin:
         if self.reader.detect_context() != GameContext.OVERWORLD:
             return "Only usable while walking around the overworld."
         if not self._party_knows(move_id):
-            return (f"No Pokémon in your party knows {label}. Teach it first (HM from the story, "
-                    f"taught via the TM Case — not automated yet).")
+            return (f"No Pokémon in your party knows {label}. Teach it with teach_move("
+                    f"'{label}') (needs the HM item and the TM Case).")
         return self._surf() if label == "Surf" else self._use_on_object(label)
 
     # ── Surf ────────────────────────────────────────────────────────────────

@@ -171,6 +171,22 @@ TOOLS = [
         }, "required": ["level"]},
     }},
     {"type": "function", "function": {
+        "name": "teach_move",
+        "description": "Teach a TM or HM move to a party Pokémon via the TM Case (Start → Bag → Key "
+                       "Items → TM CASE → the TM → USE → Pokémon). `tm` is 'TM09', 'HM01', or the "
+                       "move name ('Cut', 'Giga Drain'). `pokemon` (species or 1-based slot) is "
+                       "optional — otherwise each party member is tried in order until one can learn "
+                       "it. If it already knows 4 moves it forgets `forget` (a move name) or, by "
+                       "default, a safe one (a status move / the weakest attack — never an HM move or "
+                       "its last attack). Confirms the move shows up. Teach Cut/Surf/Strength/"
+                       "Flash/Fly HMs this way, then use_hm.",
+        "parameters": {"type": "object", "properties": {
+            "tm": {"type": "string", "description": "e.g. 'HM01', 'TM09', 'Surf'"},
+            "pokemon": {"type": "string", "description": "optional species name or 1-based slot"},
+            "forget": {"type": "string", "description": "optional move to replace when full"},
+        }, "required": ["tm"]},
+    }},
+    {"type": "function", "function": {
         "name": "use_hm",
         "description": "Use a field HM: Surf (starts surfing at the nearest shore — then walk_to / "
                        "go_to_map cross water), Cut (nearest cut tree), Rock Smash (rock), "

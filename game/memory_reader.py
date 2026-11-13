@@ -324,6 +324,39 @@ class LeafGreenReader:
             return []
         return out
 
+    def _read_pocket(self, offset: int, slots: int) -> list[tuple[int, int]]:
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return []
+        k16 = self._encryption_key() & 0xFFFF
+        out: list[tuple[int, int]] = []
+        try:
+            raw = self.client.read_range(sb1 + offset, slots * 4)
+        except Exception:
+            logger.warning("pocket read failed", exc_info=True)
+            return []
+        for i in range(0, len(raw) - 3, 4):
+            iid = raw[i] | (raw[i + 1] << 8)
+            if iid == 0:
+                continue
+            qty = (raw[i + 2] | (raw[i + 3] << 8)) ^ k16
+            if 0 < qty <= 999:
+                out.append((iid, qty))
+        return out
+
+    def read_tmhm_pocket(self) -> list[tuple[int, int]]:
+        """TMs/HMs the player owns as ordered [(item_id, qty)] — the TM Case list order."""
+        return self._read_pocket(Addr.TMHM_OFFSET, Addr.TMHM_SLOTS)
+
+    def read_key_items(self) -> list[int]:
+        """Key item ids in bag-list order (compacted)."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return []
+        raw = self.client.read_range(sb1 + Addr.KEY_ITEMS_OFFSET, Addr.KEY_ITEMS_SLOTS * 4)
+        ids = [raw[i] | (raw[i + 1] << 8) for i in range(0, len(raw) - 3, 4)]
+        return [i for i in ids if i]
+
     def read_objects_by_gfx(self, gfx_ids) -> list[tuple[int, int]]:
         """Grid coords of loaded, active object events whose graphicsId is in gfx_ids
         (Cut trees / Rock Smash rocks / Strength boulders / item balls)."""
