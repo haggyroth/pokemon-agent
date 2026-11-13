@@ -298,7 +298,9 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
             case "flee_battle":
                 return self._flee_battle()
             case "catch":
-                return self._catch()
+                return self._catch(str(args.get("nickname", "") or ""))
+            case "enter_name":
+                return self._enter_name(str(args["name"]))
             case "grind":
                 return self._grind(int(args.get("level", 0)))
             case "read_game_state":

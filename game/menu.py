@@ -95,6 +95,8 @@ class MenuDriver:
             return ""
         if c == GameContext.DIALOG_OPEN:
             return "Dialogue box open — call advance_dialog()."
+        if c == GameContext.IN_MENU and self.mgba.read32(Addr.GMAIN_CALLBACK2) == Addr.NAMING_CB2:
+            return "Naming screen open — call enter_name('<name>') (letters/digits)."
         if c == GameContext.IN_MENU:
             if self.on_field_overlay():
                 items = self.start_menu_items()
