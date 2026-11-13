@@ -243,6 +243,23 @@ class Addr:
     #   SUMMARY_CB2    the move-summary screen shown to pick the move to forget;
     #                  SUMMARY_MOVE_CURSOR 0..3 = existing moves, 4 = the new move (gives up)
     #   Bag pocket p keeps its list cursor/scroll at BAG_LIST_CURSOR/SCROLL + 2*p (gBagPosition arrays).
+    # Region map (Fly): the cursor is a sprite, 8 px per grid cell (22 x 15), moved one cell by a 1-4
+    # frame D-pad hold. Sprite pixel pos is readable; cell = (px - corner_px) / 8 after clamping to
+    # the top-left. Live-verified.
+    REGIONMAP_CB2      = 0x080C0889
+    FLYMAP_CURSOR_X    = 0x0202063E     # low 9 bits (attr1)
+    FLYMAP_CURSOR_Y    = 0x0202063C     # low 8 bits (attr0)
+    FLAGS_OFFSET       = 0xEE0          # + [SAVEBLOCK1_PTR]; flag n = byte n>>3, bit n&7
+    FLAG_SYS_USE_STRENGTH = 0x805
+    FLAG_SYS_FLASH_ACTIVE = 0x806
+    # gBackupMapLayout (IWRAM): the LIVE, EWRAM copy of the map that the game edits when a door opens or
+    # a switch flips (Silph card-key doors, Pokémon Mansion). {s32 width+15, s32 height+14, u16* map};
+    # tile (x, y) is at map + ((y+7)*(width+15) + (x+7))*2. The ROM layout never changes, so reading it
+    # showed opened doors as walls forever. Live-verified (row 0 equals ROM on a fresh map).
+    BACKUP_MAP_LAYOUT  = 0x03005040
+    BAG_CB2            = 0x08107EB9
+    # Full-screen menus a stray A would SELECT things in (use an item, teach a TM...): back out with B.
+    FULLSCREEN_MENU_CB2 = (0x08107EB9, 0x0811EB79, 0x08137EC1, 0x0813183D, 0x080C0889)
     TM_CASE_ITEM       = 364
     TMHM_OFFSET        = 0x464          # + [SAVEBLOCK1_PTR]: 58 slots (TM01-50, HM01-08), ItemSlot x4 B
     TMHM_SLOTS         = 58

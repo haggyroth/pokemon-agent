@@ -73,6 +73,14 @@ def test_mid_fight_potion_policy():
         def read_active_battle_hp(self):
             return self.hp
 
+        def read_active_battle_species(self):
+            return 1
+
+        def read_party(self):
+            from game.state import PokemonStatus
+            return [PokemonStatus(slot=0, level=5, current_hp=self.hp, max_hp=40, status="healthy",
+                                  species_id=1)]
+
         def read_items_pocket(self):
             return self.items
 
@@ -89,3 +97,59 @@ def test_mid_fight_potion_policy():
     assert not client(10, [(14, 2)])._maybe_heal_mid_fight([])        # no healing item
     assert not client(10, [(13, 3)])._maybe_heal_mid_fight(["Potion"] * 3)   # per-battle cap
     assert client(10, [(22, 1), (13, 1)])._maybe_heal_mid_fight([])   # prefers cheapest first
+
+
+def test_stale_battle_hp_does_not_trigger_a_potion():
+    """Battle struct says low, party data says full -> do NOT open the bag (it strands the party screen)."""
+    pytest.importorskip("openai")
+    from agent.lm_studio_client import AgentClient
+
+    class M:
+        def read16(self, a):
+            return 40
+
+    class R:
+        def read_active_battle_hp(self):
+            return 5
+
+        def read_active_battle_species(self):
+            return 1
+
+        def read_party(self):
+            from game.state import PokemonStatus
+            return [PokemonStatus(slot=0, level=5, current_hp=40, max_hp=40, status="healthy", species_id=1)]
+
+        def read_items_pocket(self):
+            return [(13, 3)]
+    c = AgentClient.__new__(AgentClient)
+    c.mgba, c.reader = M(), R()
+    c._use_item = lambda n: (_ for _ in ()).throw(AssertionError("must not use an item"))
+    assert c._maybe_heal_mid_fight([]) is False
+
+
+def test_battle_advance_points_the_action_cursor_at_fight():
+    """The action menu remembers its cursor: after a Bag/Potion turn it sits on BAG, so the next A
+    reopened the Bag and stalled every following fight (regression from mid-fight Potions)."""
+    pytest.importorskip("openai")
+    from agent.lm_studio_client import AgentClient
+    writes, presses = [], []
+
+    class M:
+        def read32(self, a):
+            return 0x08011101          # battle callback: not a full-screen menu
+
+        def write8(self, a, v):
+            writes.append((a, v))
+    c = AgentClient.__new__(AgentClient)
+    c.mgba = M()
+    c._battle_press = lambda b: presses.append(b)
+    c._battle_advance()
+    assert writes == [(Addr.ACTION_CURSOR, 0)] and presses == ["A"]
+
+    class Menu(M):
+        def read32(self, a):
+            return Addr.BAG_CB2        # a full-screen menu is up: back out with B, never A
+    writes.clear(); presses.clear()
+    c.mgba = Menu()
+    c._battle_advance()
+    assert presses == ["B"] and writes == []
