@@ -237,6 +237,21 @@ class Addr:
     # gPartyMenu.slotId on the FIELD party screen (item-use / switch / HM-use target pick),
     # 0-based over party slots (live-verified by RAM diff). Cancel sits after the last mon.
     PARTY_FIELD_SLOT   = 0x0203B0A9
+    # TM Case (key item 364 -> OPEN). Live-verified by RAM diffing / screenshots:
+    #   TMCASE_CB2     gMain.callback2 while the case UI is up; TMCASE_ROW / TMCASE_SCROLL the
+    #                  highlighted row and the scroll offset (absolute list index = scroll + row)
+    #   SUMMARY_CB2    the move-summary screen shown to pick the move to forget;
+    #                  SUMMARY_MOVE_CURSOR 0..3 = existing moves, 4 = the new move (gives up)
+    #   Bag pocket p keeps its list cursor/scroll at BAG_LIST_CURSOR/SCROLL + 2*p (gBagPosition arrays).
+    TM_CASE_ITEM       = 364
+    TMHM_OFFSET        = 0x464          # + [SAVEBLOCK1_PTR]: 58 slots (TM01-50, HM01-08), ItemSlot x4 B
+    TMHM_SLOTS         = 58
+    TMCASE_CB2         = 0x0813183D
+    TMCASE_ROW         = 0x0203B114
+    TMCASE_SCROLL      = 0x0203B116
+    SUMMARY_CB2        = 0x08137EC1
+    SUMMARY_MOVE_CURSOR = 0x0203B16D
+    BAG_POCKET_KEYITEMS = 1
 
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld

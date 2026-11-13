@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- feat: `teach_move(tm, pokemon?, forget?)` — teaches a TM/HM via the TM Case (`agent/skills/tmhm.py`).
+  Start -> Bag -> Key Items -> TM CASE -> OPEN -> TM/HM -> USE -> party target -> (full moveset: YES ->
+  summary screen -> pick the move to forget). Reads the live state at every stage (callback, list
+  scroll+row, party slot, summary cursor) and confirms the outcome (move learned, forgotten move gone,
+  TM consumed / HM kept). Compatibility comes from the decomp (`tools/gen_tmhm_learnsets.py` ->
+  `knowledge/tmhm_learnsets.py`) so it never mashes A into the wrong Pokémon; the default forget policy
+  never drops an HM move or the last attack. Without `pokemon` it tries each party member in order.
+
+### Added
 - feat: field (overworld) `use_item` — Potions, Revive, status cures and Repel via Start -> Bag -> Items
   -> USE -> party target, confirmed by item count / HP / status (`agent/skills/items.py`). `use_item`
   gains an optional `target` and picks whoever needs it when omitted.

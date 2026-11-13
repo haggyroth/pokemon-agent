@@ -22,11 +22,12 @@ from agent.skills.evolution import EvolutionMixin
 from agent.skills.menu import MenuMixin
 from agent.skills.items import FieldItemMixin
 from agent.skills.hm import HMMixin
+from agent.skills.tmhm import TMHMMixin
 
 console = Console()
 
 
-class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin):
+class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -275,6 +276,9 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "teach_move":
+                return self._teach_move(str(args["tm"]), str(args.get("pokemon", "") or ""),
+                                        str(args.get("forget", "") or ""))
             case "use_hm":
                 return self._use_hm(str(args["move"]))
             case "open_menu":

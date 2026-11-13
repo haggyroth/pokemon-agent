@@ -21,26 +21,33 @@ _NO_TARGET = {86, 83, 84, 85}                 # Repels, Escape Rope
 
 class FieldItemMixin:
 
-    def _items_pocket_open(self) -> bool:
-        """Switch the open Bag to the Items pocket (L/R cycles the pockets)."""
+    def _bag_pocket_open(self, pocket: int = 0) -> bool:
+        """Switch the open Bag to `pocket` (0 Items, 1 Key Items, 2 Poké Balls; L/R cycles)."""
         idle = getattr(self.mgba, "wait_until_idle", None)
+        cell = Addr.BAG_MENU_STATE + Addr.BAG_POCKET_OFF
         for _ in range(8):
-            if self.mgba.read16(Addr.BAG_MENU_STATE + Addr.BAG_POCKET_OFF) == Addr.BAG_POCKET_ITEMS:
+            cur = self.mgba.read16(cell)
+            if cur == pocket:
                 return True
-            self.mgba.tap("Left")
+            self.mgba.tap("Left" if cur > pocket else "Right")
             if idle:
                 idle()
             self.mgba.tick(14)
-        return self.mgba.read16(Addr.BAG_MENU_STATE + Addr.BAG_POCKET_OFF) == Addr.BAG_POCKET_ITEMS
+        return self.mgba.read16(cell) == pocket
 
-    def _bag_cursor_to(self, index: int) -> bool:
+    def _items_pocket_open(self) -> bool:
+        return self._bag_pocket_open(Addr.BAG_POCKET_ITEMS)
+
+    def _bag_cursor_to(self, index: int, pocket: int = 0) -> bool:
+        """Move the Bag list to absolute `index` (scroll + cursor; each pocket keeps its own pair)."""
+        cur_a, scr_a = Addr.BAG_LIST_CURSOR + 2 * pocket, Addr.BAG_LIST_SCROLL + 2 * pocket
         for _ in range(60):
-            cur = self.mgba.read8(Addr.BAG_LIST_CURSOR) + self.mgba.read8(Addr.BAG_LIST_SCROLL)
+            cur = self.mgba.read8(cur_a) + self.mgba.read8(scr_a)
             if cur == index:
                 return True
             self.mgba.tap("Down" if cur < index else "Up")
             self.mgba.tick(14)
-        return (self.mgba.read8(Addr.BAG_LIST_CURSOR) + self.mgba.read8(Addr.BAG_LIST_SCROLL)) == index
+        return (self.mgba.read8(cur_a) + self.mgba.read8(scr_a)) == index
 
     def _pick_field_target(self, iid: int, party, target: str) -> int | None:
         """0-based party slot to use the item on: the named one, else whoever needs it."""
