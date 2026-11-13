@@ -574,14 +574,14 @@ class BattleMixin:
             self._exit_battle_menus()
             return "Couldn't reach the Items pocket — try use_item again."
         for _ in range(16):                      # walk the list cursor to the item
-            cur = self.mgba.read8(Addr.BAG_LIST_CURSOR)
+            cur = self.mgba.read8(Addr.BAG_LIST_CURSOR) + self.mgba.read8(Addr.BAG_LIST_SCROLL)
             if cur == target_index:
                 break
             self.mgba.tap("Down" if cur < target_index else "Up")
             if idle:
                 idle()
             self.mgba.tick(6)
-        if self.mgba.read8(Addr.BAG_LIST_CURSOR) != target_index:
+        if self.mgba.read8(Addr.BAG_LIST_CURSOR) + self.mgba.read8(Addr.BAG_LIST_SCROLL) != target_index:
             self._exit_battle_menus()
             return f"Couldn't select {ITEM_NAMES.get(iid, item)} in the bag — try again."
 

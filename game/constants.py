@@ -228,7 +228,15 @@ class Addr:
     # steps 0→1 on Down, back on Up. Lets use_item navigate to a specific item by its
     # position in the pocket. (It's the on-screen cursor row; for a short list — no
     # scroll — that equals the item's index in the pocket, which covers early game.)
+    # Bag list position = scroll + cursor. BAG_LIST_CURSOR is the highlighted ROW within the visible
+    # window (it stops at row 3 and the list scrolls); BAG_LIST_SCROLL (itemsAbove) counts rows
+    # scrolled off the top. The absolute list index is the SUM — using the cursor alone selected the
+    # wrong item once a pocket had more than ~6 entries (live-verified).
+    BAG_LIST_SCROLL    = 0x0203AD0A
     BAG_LIST_CURSOR    = 0x0203AD04
+    # gPartyMenu.slotId on the FIELD party screen (item-use / switch / HM-use target pick),
+    # 0-based over party slots (live-verified by RAM diff). Cancel sits after the last mon.
+    PARTY_FIELD_SLOT   = 0x0203B0A9
 
     # DEPRECATED — empirically WRONG for context detection; kept only for the
     # legacy diagnostic tool. OVERWORLD_FLAG reads 0 during free-roam overworld
@@ -291,6 +299,14 @@ class Addr:
     # id lists exactly the UNcollected balls currently on screen (pick_up_items).
     OBJECT_GFX_OFFSET   = 0x05
     OBJ_GFX_ITEM_BALL   = 92
+    # HM obstacle objects (loaded object events' graphicsId) and the avatar flags byte.
+    OBJ_GFX_CUT_TREE    = 95
+    OBJ_GFX_ROCK_SMASH  = 96
+    OBJ_GFX_BOULDER     = 97
+    # gPlayerAvatar.flags (u8): bit0 on foot, bit1 mach bike, bit2 acro, bit3 SURFING (verified:
+    # 1 -> 8 after answering YES to the Surf prompt).
+    PLAYER_AVATAR_FLAGS = 0x02037078
+    AVATAR_SURFING      = 0x08
 
 
 # Gen III character encoding (for nickname decoding)

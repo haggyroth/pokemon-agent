@@ -5,6 +5,21 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- feat: field (overworld) `use_item` — Potions, Revive, status cures and Repel via Start -> Bag -> Items
+  -> USE -> party target, confirmed by item count / HP / status (`agent/skills/items.py`). `use_item`
+  gains an optional `target` and picks whoever needs it when omitted.
+- feat: `use_hm` — Surf (starts at the nearest shore), Cut, Rock Smash, Strength (`agent/skills/hm.py`).
+  Surf is path-aware: `walk_to`/`go_to_map` treat water as walkable while surfing (`gPlayerAvatar.flags`
+  bit 3), start Surf by themselves when only water blocks the way, and `go_to` surfed Pallet -> Cinnabar.
+- feat: generated `CONN_RANGES` (which edge tiles of a seamless connection actually cross) and a
+  spread-out edge-tile search in `_go_to_map`.
+
+### Fixed
+- fix: the Bag list index is `scroll + cursor` (0x0203AD0A + 0x0203AD04). The cursor alone is the row
+  within the visible window, so pockets with more than ~6 entries selected the WRONG item (battle
+  `use_item` included).
+
 ### Fixed
 - fix: forced replacement screen after your lead faints. The party screen can't be cancelled, so
   `close_menus` pressed B 14× and failed and `use_move` said "menu did not respond". Now detected

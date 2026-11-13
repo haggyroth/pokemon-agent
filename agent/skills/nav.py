@@ -24,6 +24,10 @@ class NavMixin:
     _travel_catch_offered = False
 
 
+    def _surfing(self) -> bool:
+        fn = getattr(self.reader, "is_surfing", None)
+        return bool(fn()) if fn else False
+
     def _npc_tiles(self) -> set:
         """Grid coords of on-screen NPCs (loaded object events, excluding the
         player and invisible ones) so walk_to can path around them. Only nearby
@@ -127,9 +131,10 @@ class NavMixin:
         blocked: set[tuple[int, int]] = set()   # tiles a step failed to enter
         saw_path = False                        # ever found a route this call?
         npc_tried = False                       # already engaged a blocking NPC this call
+        surf_tried = False                      # already tried to start Surfing this call
         for _attempt in range(16):
             self.tilemap.refresh()
-            grid, w, h = self.tilemap.passable_grid()
+            grid, w, h = self.tilemap.passable_grid(surf=self._surfing())
             if grid is None:
                 self.mgba.tick(15)              # map still loading — settle & retry
                 continue
@@ -191,6 +196,14 @@ class NavMixin:
                 # If the ONLY thing in the way is an NPC standing in a chokepoint (a
                 # trainer in Mt. Moon's 2-wide B2F corridor), go talk to it / fight it
                 # rather than reporting the target unreachable forever.
+                if (not self._surfing() and not surf_tried and self._party_knows(57)):
+                    surf_tried = True
+                    sg, _w, _h = self.tilemap.passable_grid(surf=True)
+                    if sg is not None and find_path((px, py), (tx, ty), lambda x, y: sg[y][x], w, h):
+                        res = self._use_hm("surf")        # only water in the way and we can Surf
+                        if self._surfing():
+                            continue
+                        return res
                 if npcs and not npc_tried and self._engage_blocking_npc(
                         (px, py), (tx, ty), grid, w, h, npcs, blocked):
                     npc_tried = True
@@ -530,7 +543,7 @@ class NavMixin:
             before = cur
             before_pos = (px, py)
             if kind_step == "connection":
-                res = self._go_to_map(arg)
+                res = self._go_to_map(arg, dest=next_map[:2])
             else:   # warp: walk onto the door/stairs tile (walk_to steps through)
                 res = self._walk_to(*self._warp_exit_tile(arg))
 
@@ -633,7 +646,7 @@ class NavMixin:
         return ("Approached the Leader but the battle didn't start — make sure you're "
                 f"at {approach} facing them, then press A.")
 
-    def _go_to_map(self, direction: str) -> str:
+    def _go_to_map(self, direction: str, dest: tuple | None = None) -> str:
         """Cross the map connection on the given edge (walk to the edge gap, then
         step off). direction is a compass word/letter (N/S/E/W)."""
         direction = self._DIR_ALIAS.get(str(direction).strip().lower(), str(direction).title())
@@ -643,7 +656,7 @@ class NavMixin:
         conns = {c["direction"] for c in self.tilemap.read_connections()}
         if direction not in conns:
             return f"This map has no connection to the {direction} (edges: {', '.join(conns) or 'none'})."
-        grid, w, h = self.tilemap.passable_grid()
+        grid, w, h = self.tilemap.passable_grid(surf=self._surfing())
         if grid is None:
             return "Cannot read the map right now."
         side, step = self._EDGE[direction]
@@ -651,13 +664,35 @@ class NavMixin:
         elif side == "bottom": edge = [(x, h - 1) for x in range(w) if grid[h - 1][x]]
         elif side == "left":   edge = [(0, y) for y in range(h) if grid[y][0]]
         else:                  edge = [(w - 1, y) for y in range(h) if grid[y][w - 1]]
+        if not edge and not self._surfing() and self._party_knows(57):
+            # The edge is open water: start Surf, then recompute the (now water-walkable) edge.
+            self._use_hm("surf")
+            if self._surfing():
+                return self._go_to_map(direction)
         if not edge:
             return f"No walkable opening on the {direction} edge."
+        # Only edge tiles whose neighbour exists in the destination map can cross (generated spans).
+        from knowledge.map_regions import CONN_RANGES
+        here = self.reader.read_current_map()
+        spans = [rg for (m, d, dd), rg in CONN_RANGES.items()
+                 if m == here and d == direction and (dest is None or dd == tuple(dest))]
+        if spans:
+            along = (lambda c: c[0]) if direction in ("North", "South") else (lambda c: c[1])
+            narrowed = [c for c in edge if any(lo <= along(c) <= hi for lo, hi in spans)]
+            edge = narrowed or edge
         px, py = self.reader.read_player_pos()
         edge.sort(key=lambda c: abs(c[0] - px) + abs(c[1] - py))
         from game.state import GameContext
         start_map = self.reader.read_current_map()
-        for ex, ey in edge[:4]:
+        # Try tiles spread along the edge (the arrival tile in the next map may be blocked —
+        # e.g. Cinnabar's north coast — so neighbouring tiles all fail together).
+        tried: list = []
+        for ex, ey in edge:
+            if any(abs(ex - tx) + abs(ey - ty) <= 2 for tx, ty in tried):
+                continue
+            if len(tried) >= 8:
+                break
+            tried.append((ex, ey))
             self._walk_to(ex, ey)
             if self.reader.read_current_map() != start_map:
                 nb, ni = self.reader.read_current_map()
@@ -671,4 +706,14 @@ class NavMixin:
                 if self.reader.read_current_map() != start_map:
                     nb, ni = self.reader.read_current_map()
                     return f"Crossed {direction} to map {nb}/{ni} at {self.reader.read_player_pos()}."
+        if (not self._surfing() and self._party_knows(57)
+                and not getattr(self, "_surf_retry", False)):
+            # The land edge tiles lead into open water (a shore, not a crossing): Surf, retry.
+            self._surf_retry = True
+            try:
+                self._use_hm("surf")
+                if self._surfing():
+                    return self._go_to_map(direction, dest)
+            finally:
+                self._surf_retry = False
         return f"Reached the {direction} edge but could not cross."

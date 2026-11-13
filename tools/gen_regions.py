@@ -248,6 +248,27 @@ def main():
             if links and (gn in split or dst in split):
                 out.write(f"    ({gn}, \"{dr}\", {dst}): [{', '.join(f'({a!r}, {b!r})' for a, b in sorted(links, key=str))}],\n")
     out.write("}\n\n")
+    # Valid edge span per seamless connection: only src edge tiles whose neighbour exists in the dest map
+    # actually cross (Route 21 is wider than Cinnabar). nav._go_to_map restricts its target tiles to this.
+    out.write("\n# (src map, direction, dest map) -> (lo, hi): src edge coordinate (x for North/South, y for\n")
+    out.write("# East/West) range that connects to the dest map.\n")
+    out.write("CONN_RANGES: dict[tuple, tuple[int, int]] = {\n")
+    for gn in sorted(maps):
+        d = maps[gn]
+        if gn not in info:
+            continue
+        for c in d.get("connections") or []:
+            dst = c2g.get(c["map"])
+            dr = DIRW.get(c["direction"])
+            if dst not in info or not dr:
+                continue
+            vs, vd = info[gn], info[dst]
+            coords = []
+            for (x, y, tx, ty) in _edge_pairs(c["direction"], int(c["offset"]), vs["w"], vs["h"], vd["w"], vd["h"]):
+                coords.append(x if c["direction"] in ("up", "down") else y)
+            if coords:
+                out.write(f"    ({gn}, \"{dr}\", {dst}): ({min(coords)}, {max(coords)}),\n")
+    out.write("}\n\n")
     out.write("# One-way ledge hops between regions of the same map: (from tag, to tag). A region can\n")
     out.write("# use any warp/edge reachable from a region it can ledge-hop into.\n")
     out.write("LEDGE_LINKS: dict[tuple[int, int], list[tuple[str, str]]] = {\n")
