@@ -20,6 +20,9 @@ class _Lead:
 class _Reader:
     def __init__(self, level=15): self._level = level
     def read_party(self): return [_Lead(self._level)]
+    def detect_context(self):
+        from game.state import GameContext
+        return GameContext.IN_BATTLE
 
 
 def _client(level=15):
@@ -27,6 +30,7 @@ def _client(level=15):
     c._learn_armed = False
     c._lead_level_seen = None
     c._offer_resolved = 0
+    c._learn_in_battle = True      # baseline already taken for this battle
     c.reader = _Reader(level)
     c.drives = 0
     # A real box is "live" the whole time (learnMoveState lingers) — the exact trap.
@@ -77,3 +81,14 @@ def test_cleared_offer_resets_the_guard():
     cur["v"] = 79                          # same move offered again in a LATER battle
     assert c._maybe_drive_learn() == "declined Sleep Powder"   # drives again
     assert c.drives == 2
+
+
+def test_offer_lingering_at_battle_start_is_ignored():
+    """A stale gMoveToLearn + learnMoveState==1 carried in from a previous battle / a
+    loaded save state must NOT be driven on turn 1 of a new battle (Brock regression)."""
+    c = _client()
+    c._learn_in_battle = False            # fresh battle, nothing taken yet
+    c._offered_move = lambda: 79          # lingering Sleep Powder; box 'live' (lms==1)
+    assert c._maybe_drive_learn() is None
+    assert c.drives == 0
+    assert c._offer_resolved == 79

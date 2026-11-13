@@ -683,13 +683,15 @@ def nearest_of_kind(start, kind):
 GRASS_MAPS: frozenset = frozenset({(1, 0), *((3, i) for i in range(19, 44))})
 
 
-def nearest_grass(start, exclude_current: bool = False):
+def nearest_grass(start, exclude_current: bool = False, avoid=()):
     """Route to the nearest grass-bearing map (a Route or Viridian Forest).
     Returns (goal_map, steps) or None. Region-aware, mirrors nearest_of_kind. Set
     exclude_current to skip the map you're already on (when you're on grass you
-    can't reach and need a fresh entry elsewhere)."""
+    can't reach and need a fresh entry elsewhere). `avoid` is a set of (bank, id) grass
+    maps to skip (e.g. story-gated routes a previous attempt couldn't reach)."""
     from collections import deque
-    if not exclude_current and start[:2] in GRASS_MAPS:
+    avoid = {tuple(a[:2]) for a in avoid}
+    if not exclude_current and start[:2] in GRASS_MAPS and start[:2] not in avoid:
         return (start[:2], [])
     q = deque([(start, [])])
     seen = {start}
@@ -702,7 +704,7 @@ def nearest_grass(start, exclude_current: bool = False):
             if nb in seen:
                 continue
             seen.add(nb)
-            if nb[:2] in GRASS_MAPS:
+            if nb[:2] in GRASS_MAPS and nb[:2] not in avoid:
                 return (nb[:2], path + [step])
             q.append((nb, path + [step]))
     return None

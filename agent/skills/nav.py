@@ -538,11 +538,24 @@ class NavMixin:
         if not approach:
             return ("I don't have this gym's Leader position — walk_to the Leader at "
                     "the top of the gym and press A to challenge them.")
+        # Under-levelled guard: a gym loss costs half your money and a long walk back.
+        # Warn once per gym (a second consecutive call proceeds — the agent may judge
+        # that it can win with type advantage).
+        from knowledge.leafgreen_data import GYM_MAP_LEADER, GYM_ACE_LEVEL
+        leader = GYM_MAP_LEADER.get(cur, "the Gym Leader")
+        ace = GYM_ACE_LEVEL.get(leader)
+        party = self.reader.read_party()
+        top = max((p.level for p in party), default=0)
+        if ace and top < ace - 2 and getattr(self, "_gym_warned", None) != cur:
+            self._gym_warned = cur
+            return (f"Your highest-level Pokémon is L{top} but {leader}'s ace is L{ace} — "
+                    f"you will likely lose. grind({ace - 1}) first (and heal()), or call "
+                    f"challenge_leader() again to fight anyway.")
         self._walk_to(*approach)
         # Face the Leader (they stand just NORTH of the approach tile) and talk.
         for _ in range(5):
             if self.reader.detect_context() == GameContext.IN_BATTLE:
-                return "The Gym Leader battle started — attack with use_move (Vine Whip vs Brock)."
+                return f"A gym battle started (a gym trainer on the way, or {leader} himself) — attack with use_move, preferring a super-effective move. After winning, call challenge_leader() again until you hold the badge."
             self.mgba.tap("Up")     # face the Leader
             self.mgba.tap("A")      # talk → challenge
             self.mgba.tick(15)

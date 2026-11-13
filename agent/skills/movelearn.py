@@ -16,6 +16,8 @@ class MoveLearnMixin:
     # move instead of attacking, looping the whole battle. We refuse to re-drive an
     # offer whose id we've already handled until it actually clears.
     _offer_resolved = 0
+    # True while we're inside a battle whose lingering-offer baseline we've already taken.
+    _learn_in_battle = False
 
 
     # ── Level-up move learning (frame-stepped driver: never cripple the moveset) ──
@@ -173,11 +175,25 @@ class MoveLearnMixin:
         turn — which looped use_move on 'declined X' instead of attacking for a whole
         trainer gauntlet. Guard: never re-drive an offer id we've already resolved until
         it clears (a genuinely new move has a different gMoveToLearn id)."""
+        from game.state import GameContext
         party = self.reader.read_party()
         lvl = party[0].level if party else 0
         if self._lead_level_seen is not None and lvl > self._lead_level_seen:
             self._learn_armed = True     # a level-up just happened → a learn may be pending
         self._lead_level_seen = lvl
+        # Entering a battle: gMoveToLearn AND learnMoveState linger from a PREVIOUS battle
+        # (or from a loaded save state / a restarted process, where our in-Python
+        # _offer_resolved memory is gone). That stale pair reads as a live delete box on
+        # turn 1 and sent the driver mashing B/A into the opening of the Brock fight,
+        # forfeiting it. A genuine offer can only appear AFTER a level-up inside this
+        # battle, so whatever is lingering at battle start is already resolved.
+        in_battle = self.reader.detect_context() == GameContext.IN_BATTLE
+        if in_battle and not self._learn_in_battle:
+            self._learn_in_battle = True
+            if not self._learn_armed:
+                self._offer_resolved = self._offered_move()
+        elif not in_battle:
+            self._learn_in_battle = False
         off = self._offered_move()
         if off == 0:
             self._offer_resolved = 0     # offer cleared → a future offer is fresh again

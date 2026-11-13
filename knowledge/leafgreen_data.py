@@ -16,6 +16,12 @@ GYM_LEADER_APPROACH: dict[tuple[int, int], tuple[int, int]] = {
 # after a win (the agent looped in/out of Pewter Gym re-talking to Brock). Leader
 # strings match GYMS[*]["leader"] / long_term gyms_beaten. Map ids from the
 # pokefirered map_groups.json (same set as map_graph MAP_KIND == "gym").
+# Level of each leader's strongest Pokémon (FireRed/LeafGreen), by leader name.
+GYM_ACE_LEVEL: dict[str, int] = {
+    "Brock": 14, "Misty": 21, "Lt. Surge": 24, "Erika": 29,
+    "Koga": 43, "Sabrina": 43, "Blaine": 47, "Giovanni": 50,
+}
+
 GYM_MAP_LEADER: dict[tuple[int, int], str] = {
     (6, 2):  "Brock",      # Pewter City Gym
     (7, 5):  "Misty",      # Cerulean City Gym
