@@ -12,13 +12,18 @@ The cdef exposes only a small set of flat wrapper functions (opaque `void*`
 handle) — all struct layouts live in the real headers pulled in by set_source,
 so nothing here depends on libmgba's internal ABI details.
 """
+import glob
 import os
+import sys
+
 import cffi
 
-# Homebrew prefix — override with MGBA_PREFIX if libmgba lives elsewhere.
-PREFIX = os.environ.get("MGBA_PREFIX", "/opt/homebrew")
+# libmgba prefix — override with MGBA_PREFIX. Defaults: Homebrew on macOS, /usr on Linux
+# (Debian/Ubuntu `libmgba-dev`, whose libs live in a multiarch dir such as lib/x86_64-linux-gnu).
+PREFIX = os.environ.get("MGBA_PREFIX", "/opt/homebrew" if sys.platform == "darwin" else "/usr")
 INCLUDE = os.path.join(PREFIX, "include")
 LIBDIR = os.path.join(PREFIX, "lib")
+LIBDIRS = [LIBDIR, *sorted(glob.glob(os.path.join(LIBDIR, "*-linux-gnu")))]
 
 ffi = cffi.FFI()
 
@@ -146,9 +151,9 @@ ffi.set_source(
     void pycore_reset(void* h) { PyCore* pc = (PyCore*)h; pc->core->reset(pc->core); }
     """,
     include_dirs=[INCLUDE],
-    library_dirs=[LIBDIR],
+    library_dirs=LIBDIRS,
     libraries=["mgba"],
-    extra_link_args=[f"-Wl,-rpath,{LIBDIR}"],
+    extra_link_args=[f"-Wl,-rpath,{d}" for d in LIBDIRS],
 )
 
 if __name__ == "__main__":

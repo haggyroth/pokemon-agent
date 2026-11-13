@@ -1,6 +1,6 @@
 """Native libmgba binding checks — gated on availability.
 
-The compiled binding requires `brew install mgba` + `python -m game._mgba_build`;
+The compiled binding requires `brew install mgba` (macOS) or `apt install libmgba-dev` (Linux) + `python -m game._mgba_build`;
 loading a core additionally requires a real ROM at ROM_PATH (copyrighted, never
 in CI). Each test skips cleanly when its prerequisite is absent, so this file is
 safe to run everywhere while still exercising the binding where possible.

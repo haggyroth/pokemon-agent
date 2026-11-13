@@ -32,21 +32,40 @@ jobs:
         run: python -m pytest
 
   binding:
+    # NOTE: the name is a required status check in branch protection — keep it in sync (it says
+    # "macOS" for historical reasons; it runs wherever BINDING_RUNNER points).
     name: build native libmgba binding (macOS)
-    runs-on: macos-latest
+    # The runner is configurable. Default: GitHub's macOS image. To use your own box (e.g. a Linux
+    # VM on Proxmox) set the repo variable BINDING_RUNNER to a JSON label list, e.g.
+    #   gh variable set BINDING_RUNNER --body '["self-hosted","linux","pokemon-binding"]'
+    # (Ubuntu/Debian with passwordless sudo, or libmgba-dev + build-essential pre-installed.)
+    runs-on: ${{ fromJSON(vars.BINDING_RUNNER || '"macos-latest"') }}
+    # A self-hosted runner executes whatever the PR contains: never run FORK pull requests on it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install libmgba
+      - name: Install libmgba (macOS)
+        if: runner.os == 'macOS'
         run: brew install mgba
+      - name: Install libmgba (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          dpkg -s libmgba-dev build-essential python3-dev >/dev/null 2>&1 \
+            || sudo apt-get install -y libmgba-dev build-essential python3-dev
       - name: Install build + test dependencies
         run: pip install cffi setuptools -r requirements-test.txt
-      - name: Build the cffi binding
+      - name: Build the cffi binding (macOS)
+        if: runner.os == 'macOS'
         # Point the builder at Homebrew's prefix (works on both ARM and Intel runners).
         run: MGBA_PREFIX="$(brew --prefix)" python -m game._mgba_build
+      - name: Build the cffi binding (Linux)
+        if: runner.os == 'Linux'
+        # Debian/Ubuntu libmgba-dev: headers in /usr/include, libs in a multiarch dir (auto-detected).
+        run: python -m game._mgba_build
       - name: Pytest (binding symbol checks; ROM tests skip)
         # ROM is copyrighted and never present in CI, so load/framebuffer tests
         # skip; the symbol test confirms the binding compiled and imports.
