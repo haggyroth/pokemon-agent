@@ -40,6 +40,25 @@ def canonical_menu_name(name: str) -> str | None:
     return None
 
 
+def forced_party_screen(mgba, reader) -> bool:
+    """True while the game is forcing a Pokémon choice after your active mon fainted: the party
+    screen is up mid-battle (gBattleOutcome still 0, an active battler whose HP is 0). B cannot
+    cancel it — you must pick a healthy mon. A stale battle struct on the FIELD party menu is
+    excluded: after any finished battle gBattleOutcome is non-zero."""
+    if mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_PARTY_MENU:
+        return False
+    if mgba.read8(Addr.BATTLE_OUTCOME) != 0:
+        return False
+    return reader.read_active_battle_species() != 0 and reader.read_active_battle_hp() == 0
+
+
+def _healthy_roster(reader) -> str:
+    party = reader.read_party()
+    alive = [f"{i + 1}:{p.species_name} (HP {p.current_hp}/{p.max_hp})"
+             for i, p in enumerate(party) if p.current_hp > 0 and p.species_name]
+    return ", ".join(alive) or "none"
+
+
 class MenuDriver:
     def __init__(self, mgba, reader):
         self.mgba = mgba
@@ -93,6 +112,9 @@ class MenuDriver:
         c = self.ctx()
         if c == GameContext.OVERWORLD:
             return ""
+        if forced_party_screen(self.mgba, self.reader):
+            return (f"FORCED switch: your Pokémon fainted — B can't cancel. Call "
+                    f"switch_pokemon('<name or slot>'). Healthy: {_healthy_roster(self.reader)}.")
         if c == GameContext.DIALOG_OPEN:
             return "Dialogue box open — call advance_dialog()."
         if c == GameContext.IN_MENU and self.mgba.read32(Addr.GMAIN_CALLBACK2) == Addr.NAMING_CB2:
@@ -215,6 +237,10 @@ class MenuDriver:
 
     def close_menus(self, max_presses: int = 14) -> str:
         """Back out of every menu/prompt/dialogue to the free field with B."""
+        if forced_party_screen(self.mgba, self.reader):
+            return (f"Can't close this: your Pokémon fainted and the game FORCES a replacement "
+                    f"(B does nothing). Call switch_pokemon('<name or slot>'). "
+                    f"Healthy: {_healthy_roster(self.reader)}.")
         stable = 0
         for i in range(max_presses):
             c = self.ctx()

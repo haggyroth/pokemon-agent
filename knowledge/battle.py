@@ -184,3 +184,21 @@ def battle_summary(move_names: list[str],
         lines.append(f"WARNING: HP at {player_hp_pct:.0%} — consider healing (Start > Bag) or using a Potion")
 
     return " | ".join(lines)
+
+
+_BATTLE_SKILLS = ("use_move", "catch", "flee_battle", "switch_pokemon", "use_item")
+
+
+def battle_idle_nudge(action_history: list[str], best_move: str | None, limit: int = 3) -> str:
+    """A warning when the model has spent the last `limit` decisions IN battle pressing buttons /
+    waiting / reading state instead of calling a battle skill (the gym-trainer stall: ~20 calls
+    of press A and wait_frames between two use_moves). '' when it is acting normally. Pure."""
+    if len(action_history) < limit:
+        return ""
+    recent = action_history[-limit:]
+    if any(sk in entry for entry in recent for sk in _BATTLE_SKILLS):
+        return ""
+    move = f"use_move('{best_move}')" if best_move else "use_move(<move>)"
+    return (f"⚠ IDLE IN BATTLE: your last {limit} actions were buttons/waits, not a battle skill. "
+            f"Battle text advances by itself — call {move} now (or catch / flee_battle / "
+            f"switch_pokemon). Do not press A or wait_frames.")

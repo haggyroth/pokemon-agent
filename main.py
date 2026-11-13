@@ -502,6 +502,15 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                                       attacker_types=lead_types,
                                       opponent_status=enemy.status if enemy else "")
             obs_parts.append(bsummary)
+            from agent.lm_studio_client import AgentClient as _AC
+            from knowledge.battle import battle_idle_nudge
+            _nudge = battle_idle_nudge(
+                stm.action_history,
+                _AC._best_damaging_move(lead.move_names, lead.pp, lead_types,
+                                        POKEMON_TYPES.get((enemy.species_name or "").upper().strip(), ())
+                                        if enemy else ()))
+            if _nudge:
+                obs_parts.append(_nudge)
             if enemy:
                 obs_parts.append(f"Opponent HP: {enemy.current_hp}/{enemy.max_hp} (L{enemy.level})")
             # Tell the model whether it can flee (wild) or must fight (trainer).

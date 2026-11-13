@@ -41,6 +41,10 @@ class BattleMixin:
         battle ended). Single-battle scope (player = battler 0)."""
         from game.constants import Addr
         from game.state import GameContext
+        from game.menu import _healthy_roster, forced_party_screen
+        if forced_party_screen(self.mgba, self.reader):
+            return (f"Your Pokémon fainted — the game is forcing a replacement. Call "
+                    f"switch_pokemon('<name or slot>') first. Healthy: {_healthy_roster(self.reader)}.")
         party = self.reader.read_party()
         if not party:
             return "No active Pokémon."
@@ -84,7 +88,11 @@ class BattleMixin:
         if learn:
             return learn
 
+        forced_msg = ("Your Pokémon fainted — the game is forcing a replacement. Call "
+                      "switch_pokemon('<name or slot>'). Healthy: {}.")
         for _ in range(20):
+            if forced_party_screen(self.mgba, self.reader):
+                return forced_msg.format(_healthy_roster(self.reader))
             if self.reader.detect_context() != GameContext.IN_BATTLE:
                 if self._battle_truly_over():
                     self._settle_evolution()   # a level-up this battle may now evolve
@@ -113,8 +121,11 @@ class BattleMixin:
             # Let the turn resolve — advance result text until OUR move's PP drops,
             # the battle truly ends, or the next action menu appears.
             for _ in range(24):
+                if forced_party_screen(self.mgba, self.reader):
+                    return (f"Used {move_label}, but your Pokémon fainted — " +
+                            forced_msg.format(_healthy_roster(self.reader)))
                 if self.reader.read_active_battle_moves()[2][slot] < pp_before:
-                    return f"Used {move_label}."          # our move landed
+                    return f"Used {move_label}.{self._turn_summary()}"   # our move landed
                 # A KO can trigger a level-up move-learn while we're still advancing
                 # result text — catch it (offered set ~16 frames before the box) and
                 # resolve per policy rather than mashing A into an overwrite.
@@ -138,6 +149,8 @@ class BattleMixin:
                 if hasattr(self.mgba, "wait_until_idle"):
                     self.mgba.wait_until_idle()
                 self.mgba.hold("A", 18)
+        if forced_party_screen(self.mgba, self.reader):
+            return forced_msg.format(_healthy_roster(self.reader))
         return f"Could not use {name} — the battle menu did not respond as expected."
 
     def _flee_battle(self) -> str:
@@ -396,6 +409,54 @@ class BattleMixin:
                 return s
         return field_slot
 
+    def _send_next_mon(self) -> str | None:
+        """Resolve the FORCED replacement screen after a faint by sending the healthiest
+        remaining Pokémon. Returns the switch result, or None if no forced screen is up."""
+        from game.menu import forced_party_screen
+        if not forced_party_screen(self.mgba, self.reader):
+            return None
+        party = self.reader.read_party()
+        alive = [(i, p) for i, p in enumerate(party) if p.current_hp > 0]
+        if not alive:
+            return None
+        i, _p = max(alive, key=lambda ip: (ip[1].current_hp / max(ip[1].max_hp, 1), ip[1].level))
+        return self._switch_pokemon(str(i + 1))
+
+    def _turn_summary(self) -> str:
+        """One line after a move resolves: both HP and the explicit next step. The model used to
+        get a bare "Used Vine Whip." mid-gym-trainer fight, decide it had to wait/press A, and
+        burn ~20 calls idling instead of attacking again."""
+        from game.constants import Addr
+        from game.state import GameContext
+        try:
+            # Let the whole turn play out (our hit, the foe's reply) — until the next action menu
+            # is up — so the HP numbers reflect it rather than lagging one exchange behind.
+            for _ in range(20):
+                if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (
+                        Addr.CTRL_CHOOSE_ACTION, Addr.CTRL_CHOOSE_ACTION_ALT):
+                    break
+                if self.reader.detect_context() != GameContext.IN_BATTLE:
+                    break
+                self.mgba.tick(15)
+            self.mgba.tick(20)
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                return ""
+            foe = self.reader.read_enemy_lead()
+            mine = self.reader.read_active_battle_hp()
+            mx = self.mgba.read16(Addr.BATTLE_MON0_SPECIES + 0x2C)
+            bits = []
+            if foe and foe.max_hp:
+                bits.append("foe fainted" if foe.current_hp == 0
+                            else f"foe {foe.species_name or '?'} {foe.current_hp}/{foe.max_hp}")
+            if mx:
+                bits.append(f"yours {mine}/{mx}")
+            if not bits:
+                return ""
+            return (f" [{'; '.join(bits)}] Still in battle — call use_move again "
+                    f"(do NOT press A or wait).")
+        except Exception:
+            return ""
+
     def _switch_pokemon(self, target: str) -> str:
         """Switch the active Pokémon in battle to another party member (by species name
         or 1-based slot). Opens the party menu (POKEMON), moves the cursor to the target
@@ -404,7 +465,9 @@ class BattleMixin:
         it to gain a type advantage or save a low mon, not casually."""
         from game.constants import Addr
         from game.state import GameContext
-        if self.reader.detect_context() != GameContext.IN_BATTLE:
+        from game.menu import forced_party_screen
+        forced = forced_party_screen(self.mgba, self.reader)
+        if not forced and self.reader.detect_context() != GameContext.IN_BATTLE:
             return "switch_pokemon is only for battles."
         party = self.reader.read_party()
         if len(party) < 2:
@@ -417,11 +480,11 @@ class BattleMixin:
         if mon.current_hp == 0:
             return f"{mon.species_name} has fainted — pick a Pokémon with HP left."
         active_species = self.mgba.read16(Addr.BATTLE_MON0_SPECIES)
-        if mon.species_id == active_species:
+        if mon.species_id == active_species and not forced:
             return f"{mon.species_name} is already the one battling."
         target_species = mon.species_id
         idle = getattr(self.mgba, "wait_until_idle", None)
-        if not self._open_party_menu():
+        if not forced and not self._open_party_menu():
             return "Couldn't open the party menu — try switch_pokemon again."
         if idle:
             idle()
@@ -615,10 +678,40 @@ class BattleMixin:
         return (POKEMON_TYPES.get(me.upper().strip(), ()),
                 POKEMON_TYPES.get(foe.upper().strip(), ()))
 
+    _POTION_HP_FLOOR = 0.35          # heal mid-fight below this fraction of max HP
+    _POTIONS_PER_BATTLE = 3
+    # (item id, name) cheapest first; heals 20 / 50 / 200 HP.
+    _POTIONS = ((13, "Potion"), (22, "Super Potion"), (21, "Hyper Potion"))
+
+    def _maybe_heal_mid_fight(self, used: list) -> bool:
+        """Drink a Potion when the ACTIVE battler is low, instead of auto-fighting it down to
+        a faint (a grind used to pause at 3% HP — one hit from losing the mon). Capped per
+        battle, cheapest potion first. Returns True if it spent the turn on an item."""
+        from game.constants import Addr
+        if len(used) >= self._POTIONS_PER_BATTLE:
+            return False
+        hp = self.reader.read_active_battle_hp()
+        mx = self.mgba.read16(Addr.BATTLE_MON0_SPECIES + 0x2C)
+        if not mx or hp <= 0 or hp / mx >= self._POTION_HP_FLOOR:
+            return False
+        have = dict(self.reader.read_items_pocket())
+        for iid, name in self._POTIONS:
+            if have.get(iid, 0) > 0:
+                out = self._use_item(name)
+                used.append(name)
+                return out.startswith("Used")
+        return False
+
     def _auto_fight(self) -> None:
         """Fight the current battle to the end with the best damaging move each turn."""
         from game.state import GameContext
+        potions_used: list = []
         for _ in range(24):
+            if self._send_next_mon():          # lead fainted: the game forces a replacement
+                continue
+            if self.reader.detect_context() == GameContext.IN_BATTLE \
+                    and self._maybe_heal_mid_fight(potions_used):
+                continue
             if self._maybe_drive_learn():      # a KO offered a level-up move
                 continue
             if self.reader.detect_context() != GameContext.IN_BATTLE:
