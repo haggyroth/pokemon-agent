@@ -19,11 +19,12 @@ from agent.skills.overworld import OverworldMixin
 from agent.skills.battle import BattleMixin
 from agent.skills.movelearn import MoveLearnMixin
 from agent.skills.evolution import EvolutionMixin
+from agent.skills.menu import MenuMixin
 
 console = Console()
 
 
-class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin):
+class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -272,6 +273,14 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "open_menu":
+                return self._open_menu(str(args["menu"]))
+            case "answer_prompt":
+                return self._answer_prompt(str(args["answer"]))
+            case "advance_dialog":
+                return self._advance_dialog()
+            case "close_menus":
+                return self._close_menus()
             case "heal":
                 return self._heal()
             case "shop":

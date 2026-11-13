@@ -448,6 +448,11 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
     # (game RAM can hold stale badge data from old saves/sessions).
     obs_parts = [f"Context: {state.context.name}",
                  f"Badges: {ltm.data['badges_earned']}/8"]
+    if not in_battle and state.context in (GameContext.IN_MENU, GameContext.DIALOG_OPEN):
+        from game.menu import MenuDriver
+        _hint = MenuDriver(reader.client, reader).describe()   # read-only
+        if _hint:
+            obs_parts.append(f"MENU: {_hint}")
     if run.prev_state is not None:
         dx = state.player_x - run.prev_state.player_x
         dy = state.player_y - run.prev_state.player_y

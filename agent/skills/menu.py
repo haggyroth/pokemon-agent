@@ -1,0 +1,24 @@
+"""Menu / prompt / dialogue skills (see game.menu.MenuDriver). Mixed into AgentClient."""
+from game.menu import MenuDriver
+
+
+class MenuMixin:
+
+    @property
+    def _menus(self) -> MenuDriver:
+        d = getattr(self, "_menu_driver", None)
+        if d is None:
+            d = self._menu_driver = MenuDriver(self.mgba, self.reader)
+        return d
+
+    def _open_menu(self, name: str) -> str:
+        return self._menus.open_menu(name)
+
+    def _answer_prompt(self, answer: str) -> str:
+        return self._menus.answer_prompt(answer)
+
+    def _advance_dialog(self) -> str:
+        return self._menus.advance_dialog()
+
+    def _close_menus(self) -> str:
+        return self._menus.close_menus()
