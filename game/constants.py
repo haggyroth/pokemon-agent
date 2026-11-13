@@ -148,6 +148,9 @@ class Addr:
     #                     at runtime before use)
     #   NAMING_CURSOR_X/Y u16 cursor key column/row on the sprite (button column = column count)
     #   BATTLE_YESNO_CURSOR  u8 battle Yes/No box cursor (nickname prompt): 0=YES 1=NO
+    # CB2_UpdatePartyMenu — the party screen (field Pokémon menu AND the in-battle switch screen,
+    # including the FORCED one after your lead faints, which B cannot cancel).
+    CB2_PARTY_MENU     = 0x0811EB79
     NAMING_CB2         = 0x0809FB45
     NAMING_TEXT        = 0x0200FF34
     NAMING_CURSOR_X    = 0x0202066A

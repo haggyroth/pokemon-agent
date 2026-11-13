@@ -5,6 +5,19 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- fix: forced replacement screen after your lead faints. The party screen can't be cancelled, so
+  `close_menus` pressed B 14× and failed and `use_move` said "menu did not respond". Now detected
+  (`game.menu.forced_party_screen`): `close_menus`/`use_move`/the `MENU:` hint say to
+  `switch_pokemon` (with the healthy roster), `switch_pokemon` works from that screen, and
+  `_auto_fight` auto-sends the healthiest mon.
+- fix: `grind`/`_auto_fight` drink a Potion (Potion→Super→Hyper, max 3/battle) when the active mon
+  drops below 35% instead of fighting it to ~3% HP.
+- fix: idle-in-battle stall. `use_move` now ends with both HPs and "Still in battle — call
+  use_move again (do NOT press A or wait)", and the observation adds an `IDLE IN BATTLE` warning with
+  the best move after 3 non-battle actions in a row (the overnight run burned ~20 calls on
+  press A / wait_frames mid gym-trainer fight).
+
 ### Added
 - feat: naming-screen driver (`game/naming.py`) + `catch(nickname=…)` and `enter_name(name)` tools.
   Types key by key across the UPPER/lower/symbol pages (cursor read from RAM, START jumps to OK)
