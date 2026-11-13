@@ -5,6 +5,22 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added (work in progress — see the WIP PR; partly unverified)
+- feat: `fly_to(town)` (party sub-menu -> region map; live-verified to all 11 towns) and Flash via
+  `use_hm('Flash')` (menu navigation + FLAG_SYS_FLASH_ACTIVE verified; not yet in a real dark cave).
+- feat: story/capability gates in `go_to` (`knowledge/gates.py`): Silph Scope, Poké Flute, Tea, Surf,
+  Strength, 8 badges — explains what to get instead of walking into a locked road.
+- feat: Silph card-key door / Pokémon Mansion switch tiles from the decomp (`tools/gen_puzzle_tiles.py`)
+  and a `walk_to` solver; live map buffer (gBackupMapLayout) + collision-aware passability.
+
+### Fixed
+- fix: **regression from #176** — the battle action menu remembers its cursor, so after a mid-fight Potion
+  (Bag) the next A reopened the Bag and every following fight stalled ("tough trainer battle isn't
+  resolving"). `_battle_advance` now points the cursor at FIGHT first and backs out of full-screen
+  menus with B. Also: the mid-fight Potion is cross-checked against party HP, `_exit_battle_menus` /
+  `_advance_to_control` never press A inside a full-screen menu, and a forced replacement screen is
+  resolved inside `_advance_to_control`. Bisected: #175 fine, #176 broke the Pewter->Cerulean trip.
+
 ### Added
 - feat: `teach_move(tm, pokemon?, forget?)` — teaches a TM/HM via the TM Case (`agent/skills/tmhm.py`).
   Start -> Bag -> Key Items -> TM CASE -> OPEN -> TM/HM -> USE -> party target -> (full moveset: YES ->

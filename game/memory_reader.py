@@ -344,6 +344,13 @@ class LeafGreenReader:
                 out.append((iid, qty))
         return out
 
+    def read_flag(self, n: int) -> bool:
+        """A gSaveBlock1 event/system flag (relocation-safe)."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return False
+        return bool(self.client.read8(sb1 + Addr.FLAGS_OFFSET + (n >> 3)) >> (n & 7) & 1)
+
     def read_tmhm_pocket(self) -> list[tuple[int, int]]:
         """TMs/HMs the player owns as ordered [(item_id, qty)] — the TM Case list order."""
         return self._read_pocket(Addr.TMHM_OFFSET, Addr.TMHM_SLOTS)

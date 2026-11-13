@@ -67,10 +67,33 @@ class TilemapReader:
             # queries behavior across many tiles per call.
             self._attr_primary   = self._attr_ptr(layout_ptr + 0x10)
             self._attr_secondary = self._attr_ptr(layout_ptr + 0x14)
+            self._refresh_live()
             return True
         except Exception:
             logger.warning("tilemap refresh failed", exc_info=True)
             return False
+
+    _live_ptr: int | None = None
+    _live_stride: int = 0
+
+    def _refresh_live(self) -> None:
+        """Locate the game's EWRAM copy of the map (it, not the ROM, reflects opened doors/switches)."""
+        self._live_ptr = None
+        try:
+            bw = self.client.read32(Addr.BACKUP_MAP_LAYOUT)
+            bh = self.client.read32(Addr.BACKUP_MAP_LAYOUT + 4)
+            bp = self.client.read32(Addr.BACKUP_MAP_LAYOUT + 8)
+            if (bw == self._width + 15 and bh == self._height + 14
+                    and 0x02000000 <= bp < 0x02040000):
+                self._live_ptr, self._live_stride = bp, bw
+        except Exception:
+            self._live_ptr = None
+
+    def _entry(self, x: int, y: int) -> int:
+        """The u16 map entry at (x, y): live EWRAM copy when available, else ROM."""
+        if self._live_ptr is not None:
+            return self.client.read16(self._live_ptr + ((y + 7) * self._live_stride + (x + 7)) * 2)
+        return self.client.read16(self._map_ptr + (y * self._width + x) * 2)
 
     def _attr_ptr(self, tileset_field_addr: int) -> int | None:
         """Read Tileset* at the layout field, then its metatileAttributes ptr."""
@@ -106,7 +129,7 @@ class TilemapReader:
         if not (0 <= x < self._width and 0 <= y < self._height):
             return None
         try:
-            mid = self.client.read16(self._map_ptr + (y * self._width + x) * 2) & 0x3FF
+            mid = self._entry(x, y) & 0x3FF
             if mid < 640:
                 attr_arr, idx = self._attr_primary, mid
             else:
@@ -147,8 +170,7 @@ class TilemapReader:
         if not (0 <= x < self._width and 0 <= y < self._height):
             return None
         try:
-            raw  = self.client.read_range(self._map_ptr + (y * self._width + x) * 2, 2)
-            tile = int.from_bytes(raw, "little")
+            tile = self._entry(x, y)
             elev = (tile >> 12) & 0xF
             return TileInfo(
                 tile_u16    = tile,
@@ -201,7 +223,13 @@ class TilemapReader:
             return None, 0, 0
         w, h = self._width, self._height
         try:
-            raw = self.client.read_range(self._map_ptr, w * h * 2)
+            if self._live_ptr is not None:           # live copy (padded): gather the w*h interior
+                stride = self._live_stride
+                big = self.client.read_range(self._live_ptr, stride * (h + 14) * 2)
+                raw = b"".join(big[((y + 7) * stride + 7) * 2:((y + 7) * stride + 7 + w) * 2]
+                               for y in range(h))
+            else:
+                raw = self.client.read_range(self._map_ptr, w * h * 2)
         except Exception:
             logger.warning("passable grid read failed", exc_info=True)
             return None, 0, 0
@@ -214,7 +242,9 @@ class TilemapReader:
             for x in range(w):
                 i = base + x * 2
                 elev = ((raw[i] | (raw[i + 1] << 8)) >> 12) & 0xF
-                row[x] = elev == ELEV_FLOOR or (surf and elev == ELEV_WATER)
+                coll = ((raw[i] | (raw[i + 1] << 8)) >> 10) & 0x3
+                # collision bits != 0 are walls whatever the elevation (closed barriers, boulder pits)
+                row[x] = coll == 0 and (elev == ELEV_FLOOR or (surf and elev == ELEV_WATER))
         return grid, w, h
 
     # Gen III connection direction codes (gMapHeader.connections).

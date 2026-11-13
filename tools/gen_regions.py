@@ -10,7 +10,8 @@ treated every map as a single node, so each new cave needed a hand-made fix. Thi
 the regions mechanically, so any map is handled by the same router:
 
   * passability  = exactly what game/tilemap_reader.passable_grid() uses: a block is
-                   walkable iff its elevation nibble == 3 (map.bin u16: id | collision<<10 | elev<<12)
+                   walkable iff elevation nibble == 3 AND collision bits == 0 (map.bin u16:
+                   id | collision<<10 | elev<<12)
   * regions      = 4-connected components of the walkable tiles
   * "interesting"= a region that touches a warp or a seamless-connection edge. A map with
                    >= 2 interesting regions is "split"; its routing nodes are (bank, id, tag).
@@ -99,7 +100,7 @@ def grid_for(pf, layout):
             i = (y * w + x) * 2
             if i + 1 < len(raw):
                 v = raw[i] | (raw[i + 1] << 8)
-                g[y][x] = ((v >> 12) & 0xF) == ELEV_FLOOR
+                g[y][x] = ((v >> 12) & 0xF) == ELEV_FLOOR and ((v >> 10) & 0x3) == 0   # collision==0
     return g, w, h
 
 

@@ -58,6 +58,90 @@ class NavMixin:
 
     _MOVE_DELTA = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
 
+    def _press_on_tile(self, stand: tuple, face: str, yesno: bool = False) -> bool:
+        """Walk to `stand`, face `face`, press A, then clear the result (a 'press the switch?' YES/NO,
+        or just text)."""
+        from game.state import GameContext
+        self._in_puzzle = True                   # the walk to the tile must not start another puzzle
+        try:
+            for _ in range(6):                   # wild battles interrupt long walks: finish + resume
+                self._walk_to(*stand)
+                if self.reader.read_player_pos() == stand:
+                    break
+                if self.reader.detect_context() == GameContext.IN_BATTLE:
+                    self._handle_travel_battle("the puzzle tile")
+        finally:
+            self._in_puzzle = False
+        if self.reader.read_player_pos() != stand:
+            return False
+        self.mgba.tap(face)
+        self.mgba.tick(8)
+        self.mgba.tap("A")
+        self.mgba.tick(30)
+        if yesno or self._menus.choice_live():
+            for _ in range(4):
+                if self._menus.choice_live():
+                    self._menus.answer_prompt("yes")
+                    break
+                self.mgba.tap("A")
+                self.mgba.tick(20)
+        self._advance_to_control(tries=20)
+        return True
+
+    def _solve_puzzle_tiles(self, start, goal, grid, w, h, npcs, blocked) -> bool:
+        """The route exists only if a puzzle tile is used: a Silph Co. card-key door (face it + A; needs
+        the Card Key) or a Pokémon Mansion statue switch (A -> YES flips every barrier). Tile positions
+        come from the decomp (knowledge/puzzle_tiles.py); the live (EWRAM) map then shows the result.
+        Returns True if it acted (caller replans)."""
+        from game.pathfinding import find_path
+        from knowledge.puzzle_tiles import PUZZLE_TILES
+        tiles = PUZZLE_TILES.get(self.reader.read_current_map())
+        if not tiles:
+            return False
+        step = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
+
+        def passable(extra):
+            return lambda x, y: (x, y) == goal or (
+                (grid[y][x] or (x, y) in extra) and (x, y) not in npcs and (x, y) not in blocked)
+
+        doors = {(x, y) for x, y, k in tiles if k == "cardkey"}
+        if doors:
+            clusters, seen = [], set()
+            for d in doors:
+                if d in seen:
+                    continue
+                comp, stack = set(), [d]
+                while stack:
+                    t = stack.pop()
+                    if t in comp or t not in doors:
+                        continue
+                    comp.add(t)
+                    stack += [(t[0] + dx, t[1] + dy) for dx, dy in step.values()]
+                seen |= comp
+                clusters.append(comp)
+            best = None
+            for cl in clusters:
+                pth = find_path(start, goal, passable(cl), w, h)
+                if pth and (best is None or len(pth) < len(best[0])):
+                    best = (pth, cl)
+            if best:
+                pth, cl = best
+                x, y = start
+                for mv in pth:
+                    dx, dy = step[mv]
+                    if (x + dx, y + dy) in cl:
+                        return self._press_on_tile((x, y), mv)
+                    x, y = x + dx, y + dy
+        switches = sorted(((x, y) for x, y, k in tiles if k == "switch"),
+                          key=lambda t: abs(t[0] - start[0]) + abs(t[1] - start[1]))
+        for sx, sy in switches:
+            for face, (dx, dy) in (("Up", (0, 1)), ("Down", (0, -1)), ("Left", (1, 0)), ("Right", (-1, 0))):
+                nx, ny = sx + dx, sy + dy              # stand below the statue and face Up, etc.
+                if 0 <= nx < w and 0 <= ny < h and grid[ny][nx] and (
+                        (nx, ny) == tuple(start) or find_path(start, (nx, ny), passable(()), w, h)):
+                    return self._press_on_tile((nx, ny), face, yesno=True)
+        return False
+
     def _engage_blocking_npc(self, start, goal, grid, w, h, npcs, blocked) -> bool:
         """The route to `goal` exists only THROUGH an NPC. Walk to the tile in front of
         the first NPC on that route, face it and press A (a trainer fights, a plain NPC
@@ -132,6 +216,7 @@ class NavMixin:
         saw_path = False                        # ever found a route this call?
         npc_tried = False                       # already engaged a blocking NPC this call
         surf_tried = False                      # already tried to start Surfing this call
+        puzzle_tries = 0                        # card-key door / mansion switch uses this call
         for _attempt in range(16):
             self.tilemap.refresh()
             grid, w, h = self.tilemap.passable_grid(surf=self._surfing())
@@ -204,6 +289,10 @@ class NavMixin:
                         if self._surfing():
                             continue
                         return res
+                if puzzle_tries < 1 and not getattr(self, "_in_puzzle", False) and self._solve_puzzle_tiles(
+                        (px, py), (tx, ty), grid, w, h, npcs, blocked):
+                    puzzle_tries += 1
+                    continue
                 if npcs and not npc_tried and self._engage_blocking_npc(
                         (px, py), (tx, ty), grid, w, h, npcs, blocked):
                     npc_tried = True
@@ -443,8 +532,20 @@ class NavMixin:
             ctx = self.reader.detect_context()
             if ctx in (GameContext.OVERWORLD, GameContext.IN_BATTLE):
                 return ctx
-            self.mgba.tap("A")
-            self.mgba.tick(10)
+            sender = getattr(self, "_send_next_mon", None)
+            if sender is not None:
+                try:
+                    if sender():               # forced replacement after a faint: B can't cancel it
+                        continue
+                except Exception:
+                    pass
+            # A stray full-screen menu (Bag / party / summary / TM Case / map): A would USE or
+            # SELECT things in it (that is how a left-open Bag drank potions in a loop) — back out.
+            from game.constants import Addr
+            rd = getattr(self.mgba, "read32", None)
+            in_screen = bool(rd) and rd(Addr.GMAIN_CALLBACK2) in Addr.FULLSCREEN_MENU_CB2
+            self.mgba.tap("B" if in_screen else "A")
+            self.mgba.tick(30 if in_screen else 10)    # menu inputs drop mid-fade: give B time
         return self.reader.detect_context()
 
     def _register_go_to_stall(self, target_name: str, end_map) -> str | None:
@@ -489,6 +590,43 @@ class NavMixin:
                 f"here or an HM you don't have yet (Cut/Surf/Strength). Do something "
                 f"else (explore {here}, review objectives, or heal) rather than "
                 f"repeating this route.")
+
+    def _gate_ok(self, req) -> bool:
+        """Does the player currently meet a knowledge.gates.Req?"""
+        from knowledge.gates import HM_BADGE
+        try:
+            if req.alt_flag is not None and self.reader.read_flag(req.alt_flag):
+                return True
+            if req.kind == "key_item":
+                return int(req.value) in self.reader.read_key_items()
+            if req.kind == "badges":
+                return self.reader.read_badges()[0] >= int(req.value)
+            if req.kind == "hm":
+                move_id, bit = HM_BADGE[req.value]
+                return self._party_knows(move_id) and bool(self.reader.read_badges()[1] >> bit & 1)
+        except Exception:
+            return True                       # never block travel on a read hiccup
+        return True
+
+    def _respect_gates(self, cur_node, target_map, route, avoid):
+        """If `route` enters a map whose story requirement isn't met (Silph Scope, Poké Flute, Tea, Surf,
+        Strength, badges), look for a route that avoids it; else return (route, hint) so go_to explains
+        what to get first instead of walking into a locked road. Returns (route, None) when fine."""
+        from knowledge.gates import unmet_gates
+        from knowledge.map_graph import route_to
+        blocked = set(avoid)
+        for _ in range(4):
+            unmet = unmet_gates(route, self._gate_ok)
+            if not unmet:
+                return route, None
+            idx, req = unmet[0]
+            prev = cur_node if idx == 0 else route[idx - 1][2]
+            blocked.add((prev, route[idx][0], route[idx][1]))
+            alt = route_to(cur_node, target_map, avoid_edges=blocked)
+            if not alt:
+                return route, req.hint
+            route = alt
+        return route, None
 
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
@@ -539,6 +677,9 @@ class NavMixin:
             if not route:
                 return (f"No route to {target_name} from {MAP_NAMES.get(cur, cur)} "
                         f"(it may be behind a locked/blocked area).")
+            route, why = self._respect_gates(cur_node, target_map, route, avoid)
+            if why:
+                return f"Can't get to {target_name} yet: {why}"
             kind_step, arg, next_map = route[0]
             before = cur
             before_pos = (px, py)
