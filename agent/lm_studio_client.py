@@ -20,11 +20,13 @@ from agent.skills.battle import BattleMixin
 from agent.skills.movelearn import MoveLearnMixin
 from agent.skills.evolution import EvolutionMixin
 from agent.skills.menu import MenuMixin
+from agent.skills.items import FieldItemMixin
+from agent.skills.hm import HMMixin
 
 console = Console()
 
 
-class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin):
+class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -273,6 +275,8 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "use_hm":
+                return self._use_hm(str(args["move"]))
             case "open_menu":
                 return self._open_menu(str(args["menu"]))
             case "answer_prompt":
@@ -288,7 +292,10 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
             case "pick_up_items":
                 return self._pick_up_items()
             case "use_item":
-                return self._use_item(args["item"])
+                from game.state import GameContext
+                if self.reader.detect_context() == GameContext.IN_BATTLE:
+                    return self._use_item(args["item"])
+                return self._field_use_item(args["item"], str(args.get("target", "") or ""))
             case "switch_pokemon":
                 return self._switch_pokemon(str(args["target"]))
             case "challenge_leader":

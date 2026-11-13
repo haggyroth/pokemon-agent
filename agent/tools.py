@@ -124,10 +124,18 @@ TOOLS = [
                        "Heal). Drives the Bag → Items pocket → item → your lead for you, "
                        "and confirms it worked. Using an item spends your turn, so heal "
                        "when your lead is low rather than risking a faint. Check the "
-                       "'Bag:' line for what you have.",
+                       "'Bag:' line for what you have. OUTSIDE battle it works too: opens "
+                       "Start → Bag, uses the item on the Pokémon that needs it (or the "
+                       "`target` you name — species or 1-based slot), and also handles "
+                       "Revive and Repel. Free actions out of battle: heal a hurt mon here "
+                       "instead of walking to a Pokémon Center.",
         "parameters": {"type": "object", "properties": {
             "item": {"type": "string",
-                     "description": "Item name, e.g. 'Potion', 'Super Potion', 'Antidote'."},
+                     "description": "Item name, e.g. 'Potion', 'Super Potion', 'Antidote', "
+                                    "'Revive', 'Repel'."},
+            "target": {"type": "string",
+                       "description": "Optional (field use): species name or 1-based party "
+                                      "slot. Omit to auto-pick whoever needs it."},
         }, "required": ["item"]},
     }},
     {"type": "function", "function": {
@@ -161,6 +169,17 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "level": {"type": "integer", "description": "target lead level, e.g. 13"},
         }, "required": ["level"]},
+    }},
+    {"type": "function", "function": {
+        "name": "use_hm",
+        "description": "Use a field HM: Surf (starts surfing at the nearest shore — then walk_to / "
+                       "go_to_map cross water), Cut (nearest cut tree), Rock Smash (rock), "
+                       "Strength (boulder; then walk into it to push). A Pokémon in your party must "
+                       "know the move and you need its badge. walk_to also starts Surf by itself "
+                       "when only water blocks the route.",
+        "parameters": {"type": "object", "properties": {
+            "move": {"type": "string", "enum": ["Surf", "Cut", "Rock Smash", "Strength"]},
+        }, "required": ["move"]},
     }},
     {"type": "function", "function": {
         "name": "open_menu",

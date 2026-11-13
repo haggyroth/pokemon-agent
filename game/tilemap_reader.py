@@ -187,11 +187,12 @@ class TilemapReader:
             logger.warning("warp read failed", exc_info=True)
             return []
 
-    def passable_grid(self):
+    def passable_grid(self, surf: bool = False):
         """Snapshot the whole map's passability in one bulk read.
 
         Returns (grid, width, height) where grid[y][x] is True if walkable, or
-        (None, 0, 0) on error. Reading the map[] array once is far cheaper than a
+        (None, 0, 0) on error. With surf=True water tiles (elevation 1) are walkable too — used
+        while the player is surfing (the shoreline still counts as floor). Reading the map[] array once is far cheaper than a
         per-tile read for A* over a 24×20+ map.
         """
         if not self.ready:
@@ -213,7 +214,7 @@ class TilemapReader:
             for x in range(w):
                 i = base + x * 2
                 elev = ((raw[i] | (raw[i + 1] << 8)) >> 12) & 0xF
-                row[x] = elev == ELEV_FLOOR
+                row[x] = elev == ELEV_FLOOR or (surf and elev == ELEV_WATER)
         return grid, w, h
 
     # Gen III connection direction codes (gMapHeader.connections).

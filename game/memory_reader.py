@@ -324,6 +324,31 @@ class LeafGreenReader:
             return []
         return out
 
+    def read_objects_by_gfx(self, gfx_ids) -> list[tuple[int, int]]:
+        """Grid coords of loaded, active object events whose graphicsId is in gfx_ids
+        (Cut trees / Rock Smash rocks / Strength boulders / item balls)."""
+        ids = set(gfx_ids)
+        out: list[tuple[int, int]] = []
+        try:
+            for i in range(Addr.OBJECT_EVENT_COUNT):
+                b = Addr.OBJECT_EVENTS + i * Addr.OBJECT_EVENT_STRIDE
+                if not (self.client.read8(b) & 1):
+                    continue
+                if self.client.read8(b + Addr.OBJECT_GFX_OFFSET) not in ids:
+                    continue
+                x = self.client.read16(b + 0x10)
+                y = self.client.read16(b + 0x12)
+                x = x - 65536 if x >= 32768 else x
+                y = y - 65536 if y >= 32768 else y
+                out.append((x - Addr.OBJECT_COORD_OFFSET, y - Addr.OBJECT_COORD_OFFSET))
+        except Exception:
+            logger.warning("object read failed", exc_info=True)
+            return []
+        return out
+
+    def is_surfing(self) -> bool:
+        return bool(self.client.read8(Addr.PLAYER_AVATAR_FLAGS) & Addr.AVATAR_SURFING)
+
     def read_player_pos(self) -> tuple[int, int]:
         """
         Read live player tile coordinates via the DMA-protected map block.

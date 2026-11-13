@@ -42,7 +42,7 @@ class FakeWorld:
     def refresh(self):
         return True
 
-    def passable_grid(self):
+    def passable_grid(self, surf=False):
         return [row[:] for row in self.grid], self.w, self.h
 
     def read_warps(self):
@@ -85,7 +85,7 @@ class LoadingWorld(FakeWorld):
     def tick(self, *a):
         self.ticks += 1
 
-    def passable_grid(self):
+    def passable_grid(self, surf=False):
         if self.ticks < self.stale_for:
             return [[True, True], [True, True]], 2, 2      # stale 2x2
         return super().passable_grid()
