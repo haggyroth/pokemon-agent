@@ -5,6 +5,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- fix: Mt. Moon routing. Each cave floor is several disconnected regions joined by ladders
+  (B1F has four); the router treated floors as one node, so `go_to('Cerulean City')` looped on
+  "No walkable path to (45,4)" from B1F for ~100 calls in an overnight run. Region labels +
+  per-warp arrival regions (`knowledge/cave_regions.py`, from live flood fills + the decomp
+  warp pairing) now route 1F -> B1F -> B2F -> B1F -> Route 4 east. Also: the Route 4 Pokémon
+  Center exit lands on the west half (it had no route out at all).
+- fix: `walk_to` engages an NPC that is the sole chokepoint (trainers in B2F's 2-wide corridor)
+  instead of reporting the target unreachable.
+
 ### Added
 - feat: menu / prompt / dialogue driver (`game/menu.py`, `agent/skills/menu.py`) with new
   tools `open_menu`, `answer_prompt`, `advance_dialog`, `close_menus`. Start-menu rows are

@@ -61,10 +61,10 @@ def test_route4_west_to_cerulean_routes_through_mt_moon():
     assert route is not None
     assert route[-1] == ("connection", "East", (3, 3))   # ends by entering Cerulean
     maps = [step[2] for step in route]
-    assert (1, 1) in maps, "route must pass through Mt. Moon 1F"
+    assert (1, 1, "0") in maps, "route must pass through Mt. Moon 1F"
     assert (3, 22, "E") in maps, "must emerge on Route 4's east side"
     # The first hop off the west side is the Mt. Moon entrance warp, not a seam.
-    assert route[0] == ("warp", (19, 5), (1, 1))
+    assert route[0] == ("warp", (19, 5), (1, 1, "0"))
 
 
 def test_route4_east_to_cerulean_is_direct_seam():

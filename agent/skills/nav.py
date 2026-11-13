@@ -54,6 +54,54 @@ class NavMixin:
 
     _MOVE_DELTA = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
 
+    def _engage_blocking_npc(self, start, goal, grid, w, h, npcs, blocked) -> bool:
+        """The route to `goal` exists only THROUGH an NPC. Walk to the tile in front of
+        the first NPC on that route, face it and press A (a trainer fights, a plain NPC
+        talks / steps aside), then clear the resulting battle/dialogue. Returns True if
+        it acted (caller replans), False if there's no such NPC-only route."""
+        from game.pathfinding import find_path
+        from game.state import GameContext
+        # Which single NPC is the real chokepoint? Clear each in turn and keep the ones whose
+        # removal opens a route (a 2-wide corridor needs two NPCs, but removing either frees
+        # it) — choosing the shortest such route, so we don't pick an NPC that merely stands
+        # on the straight-line path while a way round it exists.
+        best = None
+        for n in npcs:
+            pth = find_path(start, goal,
+                            lambda x, y, n=n: (x, y) == goal or (
+                                grid[y][x] and (x, y) not in blocked
+                                and ((x, y) not in npcs or (x, y) == n)),
+                            w, h)
+            if pth and (best is None or len(pth) < len(best[0])):
+                best = (pth, n)
+        if best is None:
+            return False
+        path, npc = best
+        step = {"Up": (0, -1), "Down": (0, 1), "Left": (-1, 0), "Right": (1, 0)}
+        x, y = start
+        for mv in path:
+            dx, dy = step[mv]
+            if (x + dx, y + dy) == npc:
+                break
+            x, y = x + dx, y + dy
+        else:
+            return False
+        stand = (x, y)                       # tile in front of the NPC
+        face = mv
+        if stand != start:
+            self._walk_to(*stand)
+            if self.reader.read_player_pos() != stand:
+                return False
+        for _ in range(3):
+            self.mgba.tap(face); self.mgba.tick(6)
+            self.mgba.tap("A"); self.mgba.tick(20)
+            if self.reader.detect_context() in (GameContext.IN_BATTLE, GameContext.DIALOG_OPEN):
+                break
+        if self.reader.detect_context() == GameContext.IN_BATTLE:
+            self._auto_fight()
+        self._advance_to_control(tries=30)
+        return True
+
     def _walk_to(self, tx: int, ty: int) -> str:
         """Deterministically walk the player to tile (tx, ty) on the current map
         via A* over the tilemap. Replans if a step is unexpectedly blocked and
@@ -78,6 +126,7 @@ class NavMixin:
         warps = set(self.tilemap.read_warps())
         blocked: set[tuple[int, int]] = set()   # tiles a step failed to enter
         saw_path = False                        # ever found a route this call?
+        npc_tried = False                       # already engaged a blocking NPC this call
         for _attempt in range(16):
             self.tilemap.refresh()
             grid, w, h = self.tilemap.passable_grid()
@@ -139,6 +188,13 @@ class NavMixin:
                 # the only corridor, a not-yet-settled map). Settle and retry a few
                 # times rather than bailing on the first None; report "no path" only
                 # if we never found one across the whole attempt budget.
+                # If the ONLY thing in the way is an NPC standing in a chokepoint (a
+                # trainer in Mt. Moon's 2-wide B2F corridor), go talk to it / fight it
+                # rather than reporting the target unreachable forever.
+                if npcs and not npc_tried and self._engage_blocking_npc(
+                        (px, py), (tx, ty), grid, w, h, npcs, blocked):
+                    npc_tried = True
+                    continue
                 self.mgba.tick(8)
                 continue
             saw_path = True
