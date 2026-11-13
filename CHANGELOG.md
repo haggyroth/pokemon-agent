@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions use [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- feat: menu / prompt / dialogue driver (`game/menu.py`, `agent/skills/menu.py`) with new
+  tools `open_menu`, `answer_prompt`, `advance_dialog`, `close_menus`. Start-menu rows are
+  read from `sStartMenuCursorPos`/`sStartMenuOrder` (0x020370F4..), small menus (Yes/No,
+  Save prompt) from `sMenu.cursorPos` (0x0203ADE6, probed for liveness since it goes stale).
+  The observation carries a `MENU:` hint. Bag/Party list cursors live in heap memory, so
+  those screens are opened/closed deterministically but navigated with the D-pad.
+- docs: Ollama endpoint example (`gemma4:31b-cloud`) in `.env.example`.
+
 ## [0.31.2]
 
 ### Fixed

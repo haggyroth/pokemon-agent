@@ -74,6 +74,10 @@ section — don't repeat the thing you just finished.
 - **`walk_to(x, y)`** moves to a tile on the CURRENT map (path-finds around walls
   and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
   building.
+- **Menus & dialogue:** `open_menu("Bag"|"Pokemon"|"Save"|…)` opens a Start-menu screen
+  for you; `advance_dialog()` presses A through NPC/sign text (it stops at a choice);
+  `answer_prompt("yes"|"no")` answers a Yes/No box; `close_menus()` backs out of
+  anything with B. Prefer these over blind `press_button` mashing.
 - Use `press_button` directions only for menus, dialog, and short nudges — not for
   travel. If a tool says it's blocked, try a different target or `go_to` elsewhere.
 - Direction map: Up=North (Y decreases), Down=South (Y increases), Left=West (X decreases), Right=East (X increases)

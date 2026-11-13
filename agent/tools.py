@@ -163,6 +163,38 @@ TOOLS = [
         }, "required": ["level"]},
     }},
     {"type": "function", "function": {
+        "name": "open_menu",
+        "description": "Open a Start-menu entry and land on its screen: Pokemon (party), "
+                       "Bag, Pokedex, Player (trainer card), Save, Option, or Exit. Moves "
+                       "the Start-menu cursor for you and confirms the screen opened. "
+                       "Then navigate inside with press_button; close_menus() exits.",
+        "parameters": {"type": "object", "properties": {
+            "menu": {"type": "string",
+                     "enum": ["Pokemon", "Bag", "Pokedex", "Player", "Save", "Option", "Exit"]},
+        }, "required": ["menu"]},
+    }},
+    {"type": "function", "function": {
+        "name": "answer_prompt",
+        "description": "Answer an open YES/NO box (e.g. 'Would you like to save?', shop or "
+                       "NPC questions). Waits for the box to take input, sets the cursor, "
+                       "and confirms. Not for battle menus.",
+        "parameters": {"type": "object", "properties": {
+            "answer": {"type": "string", "enum": ["yes", "no"]},
+        }, "required": ["answer"]},
+    }},
+    {"type": "function", "function": {
+        "name": "advance_dialog",
+        "description": "Press A through NPC/sign/system dialogue until it finishes or a "
+                       "choice (Yes/No / menu) needs your decision. Safer than mashing A.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "close_menus",
+        "description": "Back out of every open menu, prompt and dialogue with B until you "
+                       "are on the free field again. Use when stuck in a menu.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "flee_battle",
         "description": "Run away from a WILD battle to keep moving. Use when you're "
                        "just travelling through a route/forest/cave and don't need "

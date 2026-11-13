@@ -131,6 +131,17 @@ class Addr:
     # The scene flickers between TRANSITIONING and IN_MENU, so the agent kept dismissing
     # it with B (which CANCELS the evolution). Advance it with A instead. Derived live.
     CB2_EVOLUTION   = 0x080CE6E5
+    # Field "Start menu" state (live-verified via RAM diffing; EWRAM statics in start_menu.c):
+    #   START_MENU_CURSOR  u8 sStartMenuCursorPos — highlighted row (persists after close)
+    #   START_MENU_COUNT   u8 sNumStartMenuItems
+    #   START_MENU_ORDER   u8[] sStartMenuOrder — row → action id (see START_MENU_NAMES)
+    START_MENU_CURSOR = 0x020370F4
+    START_MENU_COUNT  = 0x020370F5
+    START_MENU_ORDER  = 0x020370F6
+    # sMenu.cursorPos — the generic small-menu cursor (Yes/No box 0=YES 1=NO, Save
+    # prompt, context menus). Clamps at the ends. STALE after the menu closes, so
+    # only trust it while an interactivity probe (game/menu.py) says a menu is live.
+    MENU_CURSOR       = 0x0203ADE6
     SCREEN_FADE     = 0x03000F9C   # u8: 1 while a menu is on screen OR mid-fade; clears when the menu closes
     SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
     # Field-menu flag. Non-zero for EVERY field menu (Start, Bag, Party, Trainer
