@@ -100,7 +100,7 @@ class BattleMixin:
                     return "Battle is over."
                 # Transient (a fainted foe being replaced by the Leader's next
                 # Pokémon reads as a brief menu/transition) — advance, don't bail.
-                self._battle_press("A")
+                self._battle_advance()
                 continue
             if hasattr(self.mgba, "wait_until_idle"):
                 self.mgba.wait_until_idle()
@@ -110,7 +110,7 @@ class BattleMixin:
                 learn = self._maybe_drive_learn()
                 if learn:
                     return learn
-                self._battle_press("A")   # advance intro/result text, or open FIGHT
+                self._battle_advance()    # advance intro/result text, or open FIGHT
                 continue
             # Move menu is up: pick the slot and commit. PP is read from the ACTIVE
             # battler (gBattleMons[0]) — the live in-battle PP that decrements when the
@@ -221,6 +221,22 @@ class BattleMixin:
                 self.mgba.hold("A", 20)
             self.mgba.tick(6)
         return self._battle_bag_open()
+
+    def _battle_advance(self) -> None:
+        """One 'advance' input in battle: A for text / to open FIGHT, but B when a full-screen menu is up.
+        (The trainer's 'Will you switch POKéMON?' defaults to YES: A there opens the party screen; B backs
+        out of it and the battle carries on.) Deliberately NO Yes/No probing here: nudging Down/Up at an
+        action menu whose controller value varies by turn moves its cursor to BAG/POKéMON and the next A
+        opens the wrong thing."""
+        from game.constants import Addr
+        if self.mgba.read32(Addr.GMAIN_CALLBACK2) in Addr.FULLSCREEN_MENU_CB2:
+            self._battle_press("B")
+            return
+        # The action menu REMEMBERS its cursor: after a Potion/Bag turn it sits on BAG, so the next A
+        # would reopen the Bag instead of FIGHT (this stalled every fight that followed a mid-fight Potion).
+        # Point it at FIGHT first; harmless when no action menu is up.
+        self.mgba.write8(Addr.ACTION_CURSOR, 0)
+        self._battle_press("A")
 
     def _battle_yesno_live(self) -> bool:
         """True iff the battle's Yes/No box (the post-catch nickname prompt) is taking input.
@@ -629,6 +645,9 @@ class BattleMixin:
             self.mgba.tick(8)
             if self.reader.detect_context() in (GameContext.IN_BATTLE, GameContext.OVERWORLD):
                 return
+            from game.constants import Addr
+            if self.mgba.read32(Addr.GMAIN_CALLBACK2) in Addr.FULLSCREEN_MENU_CB2:
+                continue                      # never press A inside a full-screen menu (it selects)
             self.mgba.tap("A")
             self.mgba.tick(8)
 
@@ -693,6 +712,12 @@ class BattleMixin:
         hp = self.reader.read_active_battle_hp()
         mx = self.mgba.read16(Addr.BATTLE_MON0_SPECIES + 0x2C)
         if not mx or hp <= 0 or hp / mx >= self._POTION_HP_FLOOR:
+            return False
+        # Cross-check against the party data: a stale/odd battle struct must not make us drink a Potion
+        # on a full-HP mon ("It won't have any effect" strands the party screen).
+        sp = self.reader.read_active_battle_species()
+        mine = next((p for p in self.reader.read_party() if p.species_id == sp), None)
+        if mine is None or mine.max_hp == 0 or mine.current_hp / mine.max_hp >= self._POTION_HP_FLOOR:
             return False
         have = dict(self.reader.read_items_pocket())
         for iid, name in self._POTIONS:
