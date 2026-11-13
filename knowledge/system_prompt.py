@@ -74,6 +74,7 @@ section — don't repeat the thing you just finished.
 - **`walk_to(x, y)`** moves to a tile on the CURRENT map (path-finds around walls
   and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
   building.
+- **Nicknames:** `catch(nickname="Sparky")` names the Pokémon you catch (max 10 letters/digits); without it the prompt is declined. `enter_name("Name")` types on any open naming screen.
 - **Menus & dialogue:** `open_menu("Bag"|"Pokemon"|"Save"|…)` opens a Start-menu screen
   for you; `advance_dialog()` presses A through NPC/sign text (it stops at a choice);
   `answer_prompt("yes"|"no")` answers a Yes/No box; `close_menus()` backs out of

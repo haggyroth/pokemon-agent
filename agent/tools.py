@@ -214,8 +214,21 @@ TOOLS = [
                        "greatly raises the catch rate); it may break free, so you can "
                        "catch() again. Use it on wild Pokémon that would help your team "
                        "(a new species, a good type). You can't catch a trainer's "
-                       "Pokémon. Needs Poké Balls (buy them with shop()).",
-        "parameters": {"type": "object", "properties": {}},
+                       "Pokémon. Needs Poké Balls (buy them with shop()). Optional "
+                       "`nickname` (max 10 letters/digits) gives the caught Pokémon a name "
+                       "via the naming screen; omit it to decline the nickname prompt.",
+        "parameters": {"type": "object", "properties": {
+            "nickname": {"type": "string", "description": "optional name for the catch"},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "enter_name",
+        "description": "Type a name on the naming screen when one is open (a nickname, or "
+                       "the player/rival name in a new game) and confirm it. Types key by "
+                       "key, switching UPPER/lower/symbol pages and verifying every letter.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "letters, digits, space . , ! ?"},
+        }, "required": ["name"]},
     }},
     {"type": "function", "function": {
         "name": "read_game_state",

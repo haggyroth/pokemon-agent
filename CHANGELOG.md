@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- feat: naming-screen driver (`game/naming.py`) + `catch(nickname=…)` and `enter_name(name)` tools.
+  Types key by key across the UPPER/lower/symbol pages (cursor read from RAM, START jumps to OK)
+  and confirms every letter against the Gen III text buffer, self-correcting dropped presses.
+  The post-catch Yes/No is detected with a settle+bidirectional probe on the battle cursor
+  (it clamps and initialises lazily); without a nickname the prompt is still declined.
+
 ### Changed
 - feat: generic region-aware routing for EVERY map (`tools/gen_regions.py` ->
   `knowledge/map_regions.py`, replaces the hand-built Mt. Moon data). Regions are derived

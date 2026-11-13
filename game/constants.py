@@ -142,6 +142,17 @@ class Addr:
     # prompt, context menus). Clamps at the ends. STALE after the menu closes, so
     # only trust it while an interactivity probe (game/menu.py) says a menu is live.
     MENU_CURSOR       = 0x0203ADE6
+    # Naming screen (nickname after a catch, player/rival name). Live-verified by RAM diffing:
+    #   NAMING_CB2        gMain.callback2 while the keyboard is up (CB2_NamingScreen)
+    #   NAMING_TEXT       u8[] textBuffer, Gen III chars, 0xFF-filled when empty (heap — validated
+    #                     at runtime before use)
+    #   NAMING_CURSOR_X/Y u16 cursor key column/row on the sprite (button column = column count)
+    #   BATTLE_YESNO_CURSOR  u8 battle Yes/No box cursor (nickname prompt): 0=YES 1=NO
+    NAMING_CB2         = 0x0809FB45
+    NAMING_TEXT        = 0x0200FF34
+    NAMING_CURSOR_X    = 0x0202066A
+    NAMING_CURSOR_Y    = 0x0202066C
+    BATTLE_YESNO_CURSOR = 0x02023E83
     SCREEN_FADE     = 0x03000F9C   # u8: 1 while a menu is on screen OR mid-fade; clears when the menu closes
     SCRIPT_RAM      = 0x03000EB0   # script-engine block; byte[0] != 0 = map script running
     # Field-menu flag. Non-zero for EVERY field menu (Start, Bag, Party, Trainer

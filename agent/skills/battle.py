@@ -209,11 +209,50 @@ class BattleMixin:
             self.mgba.tick(6)
         return self._battle_bag_open()
 
-    def _catch(self) -> str:
+    def _battle_yesno_live(self) -> bool:
+        """True iff the battle's Yes/No box (the post-catch nickname prompt) is taking input.
+        The box zeroes the cursor lazily and clamps at the ends, so settle first, then nudge
+        Down and Up and call it live if the cursor moved on EITHER nudge. Text boxes and the
+        action menu leave gBattleCommunication's cursor alone."""
+        from game.constants import Addr
+        cur = Addr.BATTLE_YESNO_CURSOR
+        self.mgba.tick(24)
+        r0 = self.mgba.read8(cur)
+        self.mgba.tap("Down"); self.mgba.tick(24)
+        r1 = self.mgba.read8(cur)
+        self.mgba.tap("Up"); self.mgba.tick(24)
+        r2 = self.mgba.read8(cur)
+        return r1 != r0 or r2 != r1
+
+    def _give_nickname(self, nickname: str) -> str:
+        """At the 'Give a nickname?' Yes/No: choose YES, wait for the keyboard, type, confirm."""
+        from game.constants import Addr
+        from game.naming import NamingDriver
+        for _ in range(3):                       # cursor to YES (0), then A
+            if self.mgba.read8(Addr.BATTLE_YESNO_CURSOR) == 0:
+                break
+            self.mgba.tap("Up"); self.mgba.tick(8)
+        self.mgba.tap("A")
+        nd = NamingDriver(self.mgba)
+        for _ in range(40):                      # screen fades in over ~1s
+            self.mgba.tick(10)
+            if nd.active():
+                break
+        if not nd.active():
+            return "(nickname screen never opened)"
+        return nd.enter_name(nickname)
+
+    def _enter_name(self, name: str) -> str:
+        """Type `name` on the naming screen if it is open (nickname / player / rival name)."""
+        from game.naming import NamingDriver
+        return NamingDriver(self.mgba).enter_name(name)
+
+    def _catch(self, nickname: str = "") -> str:
         """Throw a Poké Ball at the wild Pokémon. Opens the Bag, switches to the Poké
         Balls pocket (via gBagMenuState.pocket), throws the top ball, and reports the
         outcome (caught / broke free). Weaken the foe with use_move first for a better
-        rate. Can't catch trainer battles."""
+        rate. Can't catch trainer battles. With `nickname`, answers YES to the post-catch
+        "give a nickname?" prompt and types it on the naming screen (else declines it)."""
         from game.constants import Addr
         from game.state import GameContext
         if self.reader.detect_context() != GameContext.IN_BATTLE:
@@ -267,19 +306,25 @@ class BattleMixin:
         # mon broke free (still battling).
         OUTCOME = Addr.BATTLE_OUTCOME
         caught = False
-        for _ in range(60):
+        named = ""
+        for _ in range(60 if not nickname else 120):
             if idle:
                 idle()
             self.mgba.tick(10)
             if self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT:
                 caught = True
-                break
+                if not nickname or named:
+                    break            # (with a nickname the Yes/No prompt is still ahead)
             if self.reader.detect_context() == GameContext.OVERWORLD:
                 break
+            if nickname and not named and self._battle_yesno_live():
+                named = self._give_nickname(nickname)    # YES -> naming screen -> OK
+                continue
             self.mgba.tap("B")
         self._exit_battle_menus()            # clear any prompt; never strand in a menu
-        if caught or self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT:
-            return "Gotcha! Caught the wild Pokémon — it's on your team now."
+        if caught or self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT or named.startswith("Named"):
+            extra = f" {named}" if named else ""
+            return f"Gotcha! Caught the wild Pokémon — it's on your team now.{extra}"
         return ("It broke free! Weaken it more with use_move (bring its HP low, or "
                 "inflict a status like sleep), then catch() again.")
 
