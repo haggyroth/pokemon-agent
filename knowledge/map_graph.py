@@ -471,9 +471,11 @@ MAP_WARPS: dict[tuple[int, int], list[tuple[int, int, tuple[int, int]]]] = {
 # (fight the trainer blocking you, keep pushing to the far-side exit), NOT a gated city
 # road — so _register_go_to_stall gives maze guidance instead of the wrong "you need an
 # HM / story event" message that made the agent give up and backtrack inside Mt. Moon.
-DUNGEON_MAPS: frozenset = frozenset({
-    (1, 1), (1, 2), (1, 3),   # Mt. Moon 1F / B1F / B2F
-})
+# Bank 1 is the game's "dungeons" map group (Viridian Forest, Mt. Moon, Rock Tunnel, Seafoam,
+# Pokémon Tower/Mansion, Silph Co., Victory Road, …) — derived, so new caves need no entry.
+DUNGEON_MAPS: frozenset = frozenset(
+    m for m in {*MAP_CONNECTIONS, *MAP_WARPS} if m[0] == 1
+)
 
 MAP_KIND: dict[tuple[int, int], str] = {
     (5, 1): "gym",
@@ -518,103 +520,115 @@ MAP_KIND: dict[tuple[int, int], str] = {
 }
 
 
-# ── Split-map region model (curated overlay on the generated graph, #59) ──────
-# A few maps are ONE map id but several DISCONNECTED walkable regions. Route 2
-# (3,20) is split by Viridian Forest's gate buildings into a north half (borders
-# Pewter) and a south half (borders Viridian); the impassable forest band sits
-# between them, so the only way across is to WARP through Viridian Forest via the
-# two gate buildings. Treating (3,20) as a single node makes routing emit a
-# "cross the North edge → Pewter" step that is unreachable from the south region,
-# and the agent thrashes on it forever ("reached the North edge but could not
-# cross"). We fix this by expanding split maps into region-qualified nodes
-# (bank, id, tag) so the graph routes through the forest.
+# ── Region-aware routing (generated data; see tools/gen_regions.py) ───────────
+# Many maps are ONE map id but several DISCONNECTED walkable regions (Route 2/4, every
+# cave floor, Silph Co., …). knowledge/map_regions.py is generated from the decomp for ALL
+# maps: REGION_GRIDS (tile -> region tag), WARP_ARRIVAL (which region a warp lands in) and
+# CONN_LINKS (which regions a seamless edge joins). Split maps become region-qualified
+# routing nodes (bank, id, tag); everything else stays a plain (bank, id). No per-map
+# hand data: a new cave needs nothing but a regeneration.
 #
-# region(x, y) -> tag. Route 2's forest band is ~y13–51; y>=32 is unambiguously
-# the south half, y<32 the north half.
-SPLIT_MAPS: dict[tuple[int, int], dict] = {
-    (3, 20): {"tags": ("N", "S"), "region": lambda x, y: "S" if y >= 32 else "N"},
-    # Route 4 is one map cut in two by Mt. Moon: the WEST half (from Route 3, holds the
-    # Mt. Moon entrance at 19,5 + the Poké Center at 12,5) and the EAST half (the B1F
-    # exit at 32,5 + the seam into Cerulean). No walkable tiles bridge them — the only
-    # W→E path is THROUGH Mt. Moon — so without this split BFS took the 1-hop East seam
-    # and the agent walked into the mountain wall (#… Cerulean routing).
-    (3, 22): {"tags": ("W", "E"), "region": lambda x, y: "E" if x >= 26 else "W"},
-}
-# Which region owns each OUTGOING seamless connection edge of a split map.
-SPLIT_CONN_REGION: dict[tuple[int, int], dict[str, str]] = {
-    (3, 20): {"North": "N", "South": "S"},
-    (3, 22): {"East": "E", "South": "W"},   # East→Cerulean is east; South→Route 3 is west
-}
-# Which region you ARRIVE in when a neighbor's connection lands on a split map
-# (MAP_CONNECTIONS carries no arrival coords). Keyed (from_map, split_dest_map).
-CONN_ARRIVAL_REGION: dict[tuple, str] = {
-    ((3, 1), (3, 20)): "S",   # Viridian City → Route 2 (enter at the south end)
-    ((3, 2), (3, 20)): "N",   # Pewter City   → Route 2 (enter at the north end)
-    ((3, 21), (3, 22)): "W",  # Route 3 → Route 4 (arrive on the west/Mt. Moon side)
-    ((3, 3), (3, 22)): "E",   # Cerulean City → Route 4 (arrive on the east side)
-}
-# Same, for warps that land on a split map (Viridian Forest's two gates; Mt. Moon).
-WARP_ARRIVAL_REGION: dict[tuple, str] = {
-    ((15, 0), (3, 20)): "S",  # Viridian Forest SOUTH gate → Route 2 south
-    ((15, 3), (3, 20)): "N",  # Viridian Forest NORTH gate → Route 2 north
-    ((1, 1), (3, 22)): "W",   # Mt. Moon 1F exit → Route 4 west (lands at 19,5)
-    ((1, 2), (3, 22)): "E",   # Mt. Moon B1F exit → Route 4 east (lands at 32,5)
-    ((16, 0), (3, 22)): "W",  # Route 4 Pokémon Center exit → Route 4 WEST (door at 12,5)
-}
+# Dynamic blockers the tiles can't show (HM obstacles, card-key/switch doors, boulders)
+# are not modelled: route_to falls back to the coarse (region-blind) graph when the strict
+# region graph finds no route, and the runtime learns failed edges (nav._go_to).
+from collections import deque  # noqa: E402
+
+from knowledge.map_regions import CONN_LINKS, LEDGE_LINKS, REGION_GRIDS, WARP_ARRIVAL  # noqa: E402
+
+SPLIT_MAPS: frozenset = frozenset(REGION_GRIDS)
 
 
-# Mt. Moon's three floors are each several DISCONNECTED regions joined by ladders (B1F alone
-# has four); the data lives in knowledge/cave_regions.py. Without it BFS treated each floor
-# as one node and go_to hammered "No walkable path to (45,4)" from the wrong region forever.
-from knowledge.cave_regions import CAVE_GRIDS, CAVE_WARP_ARRIVAL, region_at  # noqa: E402
+def region_at(mp: tuple, x: int, y: int) -> str | None:
+    """Region tag of tile (x, y) on a split map (a door/warp tile borrows a walkable
+    neighbour). None for a plain map or an unwalkable/pocket tile."""
+    rows = REGION_GRIDS.get(mp[:2])
+    if rows is None:
+        return None
+    h, w = len(rows), len(rows[0])
+    for nx, ny in ((x, y), (x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)):
+        if 0 <= nx < w and 0 <= ny < h and rows[ny][nx] != "#":
+            return rows[ny][nx]
+    return None
 
-for _mp, _grid in CAVE_GRIDS.items():
-    _tags = tuple(sorted({ch for row in _grid for ch in row if ch != "#"}))
-    SPLIT_MAPS[_mp] = {"tags": _tags,
-                       "region": (lambda x, y, _m=_mp: region_at(_m, x, y))}
+
+def _all_tags(mp: tuple) -> list:
+    return sorted({c for row in REGION_GRIDS[mp] for c in row if c != "#"})
+
+
+def _with_ledge_ancestors(mp: tuple, tags) -> set:
+    """A region can use anything reachable from a region it can ledge-hop DOWN into
+    (ledges are one-way), so add every region that reaches one of `tags` via ledges."""
+    out = set(tags)
+    links = LEDGE_LINKS.get(mp, [])
+    changed = bool(links)
+    while changed:
+        changed = False
+        for a, b in links:
+            if b in out and a not in out:
+                out.add(a)
+                changed = True
+    return out
+
+
+def _departure_tags(mp: tuple, x: int, y: int) -> list:
+    rows = REGION_GRIDS[mp]
+    h, w = len(rows), len(rows[0])
+    tags = {rows[ny][nx] for nx, ny in ((x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+            if 0 <= nx < w and 0 <= ny < h and rows[ny][nx] != "#"}
+    return sorted(_with_ledge_ancestors(mp, tags)) if tags else _all_tags(mp)
 
 
 def node_for(bank: int, id: int, x: int | None = None, y: int | None = None):
-    """Live (bank, id[, x, y]) → routing node. Split maps need x,y to pick the
-    region and yield (bank, id, tag); everything else is the plain (bank, id)."""
-    split = SPLIT_MAPS.get((bank, id))
-    if split and x is not None and y is not None:
-        return (bank, id, split["region"](x, y))
+    """Live (bank, id[, x, y]) -> routing node. Split maps need x,y to pick the region
+    and yield (bank, id, tag); everything else is the plain (bank, id)."""
+    if (bank, id) in REGION_GRIDS and x is not None and y is not None:
+        tag = region_at((bank, id), x, y)
+        if tag is not None:
+            return (bank, id, tag)
     return (bank, id)
 
 
-def _resolve_dest(src_map: tuple, dest_map: tuple, kind: str):
-    """Region-qualify a step's destination when it lands on a split map."""
-    if dest_map not in SPLIT_MAPS:
-        return dest_map
-    table = WARP_ARRIVAL_REGION if kind == "warp" else CONN_ARRIVAL_REGION
-    tag = table.get((src_map, dest_map))
-    return (dest_map[0], dest_map[1], tag) if tag is not None else dest_map
+def _nodes_of(mp: tuple, tag, departing: bool = False):
+    if tag is not None:
+        if departing:
+            return [(mp[0], mp[1], t) for t in sorted(_with_ledge_ancestors(mp, {tag}))]
+        return [(mp[0], mp[1], tag)]
+    if mp in REGION_GRIDS:                      # split map, region unknown: any region
+        return [(mp[0], mp[1], t) for t in _all_tags(mp)]
+    return [mp]
 
 
-def _build_augmented():
-    """Expand the generated (bank,id) graph into region-aware nodes for split maps.
-    Returns (A_CONN, A_WARP): node -> {dir: dest_node} and node -> [(x,y,dest_node)]."""
-    a_conn: dict = {}
-    a_warp: dict = {}
+def _build_region_graph():
+    """node -> [(direction, dest_node)] and node -> [(x, y, dest_node)] (strict graph)."""
+    conn: dict = {}
+    warp: dict = {}
     for m in set(MAP_CONNECTIONS) | set(MAP_WARPS):
-        split = SPLIT_MAPS.get(m)
         for direction, dest in MAP_CONNECTIONS.get(m, {}).items():
-            tag = SPLIT_CONN_REGION.get(m, {}).get(direction) if split else None
-            src = (m[0], m[1], tag) if tag else m
-            a_conn.setdefault(src, {})[direction] = _resolve_dest(m, dest, "connection")
+            if (m, direction, dest) not in CONN_LINKS:      # neither side split: plain edge
+                conn.setdefault(m, []).append((direction, dest))
         for (x, y, dest) in MAP_WARPS.get(m, []):
-            src = (m[0], m[1], split["region"](x, y)) if split else m
-            cave = CAVE_WARP_ARRIVAL.get((m, (x, y)))
-            if cave is not None:        # per-warp arrival region (cave ladders)
-                dest_node = (cave[0][0], cave[0][1], str(cave[1]))
+            if m in REGION_GRIDS:
+                srcs = [(m[0], m[1], t) for t in _departure_tags(m, x, y)]
             else:
-                dest_node = _resolve_dest(m, dest, "warp")
-            a_warp.setdefault(src, []).append((x, y, dest_node))
-    return a_conn, a_warp
+                srcs = [m]
+            arr = WARP_ARRIVAL.get((m, (x, y)))
+            dns = [(arr[0][0], arr[0][1], arr[1])] if arr else _nodes_of(dest, None)
+            for src in srcs:
+                for dn in dns:
+                    warp.setdefault(src, []).append((x, y, dn))
+    for (m, direction, dm), pairs in CONN_LINKS.items():
+        for st, dt in pairs:
+            for src in _nodes_of(m, st, departing=True):
+                for dn in _nodes_of(dm, dt):
+                    if (direction, dn) not in conn.setdefault(src, []):
+                        conn[src].append((direction, dn))
+    return conn, warp
 
 
-_A_CONN, _A_WARP = _build_augmented()
+_R_CONN, _R_WARP = _build_region_graph()
+# Coarse (region-blind) graph — the optimistic fallback.
+_C_CONN = {m: sorted(d.items()) for m, d in MAP_CONNECTIONS.items()}
+_C_WARP = MAP_WARPS
 
 
 def _matches(node, goal) -> bool:
@@ -623,74 +637,77 @@ def _matches(node, goal) -> bool:
     return node == goal or (len(goal) == 2 and node[:2] == goal)
 
 
+def _search(start, conn, warp, accept, warps=True, avoid_edges=()):
+    """BFS. accept(node) -> truthy ends the search; returns (node, steps) or None.
+    avoid_edges: set of (from_node, kind, arg) the runtime has learned are blocked."""
+    q = deque([(start, [])])
+    seen = {start}
+    while q:
+        cur, path = q.popleft()
+        cand = [("connection", d, n) for d, n in sorted(conn.get(cur, []), key=str)]
+        if warps:
+            cand += [("warp", (x, y), n) for (x, y, n) in warp.get(cur, [])]
+        for step in cand:
+            if (cur, step[0], step[1]) in avoid_edges:
+                continue
+            nb = step[2]
+            if nb in seen:
+                continue
+            seen.add(nb)
+            if accept(nb, step):
+                return nb, path + [step]
+            q.append((nb, path + [step]))
+    return None
+
+
+def _coarse(node):
+    return node[:2]
+
+
 def bfs_route(start, goal):
-    """Connection-only route [(direction, next_map), ...] — kept for callers that
-    only want seamless edges. [] if already there, None if no connection route.
-    Note: gated maps (e.g. Route 2 → Pewter) have NO connection-only route now —
-    they require warps through the gate — so this returns None for those."""
+    """Connection-only route [(direction, next_map), ...]. [] if already there, None if
+    no connection route (gated maps like Route 2 -> Pewter need warps, so None)."""
     steps = route_to(start, goal, warps=False)
     if steps is None:
         return None
     return [(d, m) for kind, d, m in steps]
 
 
-def route_to(start, goal, warps=True):
+def route_to(start, goal, warps=True, avoid_edges=()):
     """Shortest route from start to goal over connections (and warps if warps=True).
     Returns a list of steps, [] if already there, or None if unreachable:
-      ("connection", direction, next_map)  — cross a seamless edge
-      ("warp", (x, y), next_map)           — walk onto a door/stairs tile
+      ("connection", direction, next_node)  — cross a seamless edge
+      ("warp", (x, y), next_node)           — walk onto a door/stairs tile
 
-    start/goal are (bank, id) or region-qualified (bank, id, tag) nodes. A plain
-    goal map matches any region of that map. Split maps (Route 2) are routed
-    region-aware so the path goes THROUGH the gate rather than at a sealed edge.
+    Tries the strict region graph first (a floor split into regions is routed through
+    the right ladders); if that finds nothing, falls back to the coarse region-blind graph
+    (optimistic about HM/puzzle obstacles the tiles can't show). `avoid_edges` removes
+    edges the runtime learned are blocked, as (from_node, kind, arg).
     """
-    from collections import deque
     if _matches(start, goal):
         return []
-    q = deque([(start, [])])
-    seen = {start}
-    while q:
-        cur, path = q.popleft()
-        for direction, nb in sorted(_A_CONN.get(cur, {}).items()):
-            step = ("connection", direction, nb)
-            if _matches(nb, goal):
-                return path + [step]
-            if nb not in seen:
-                seen.add(nb)
-                q.append((nb, path + [step]))
-        if warps:
-            for (x, y, nb) in _A_WARP.get(cur, []):
-                step = ("warp", (x, y), nb)
-                if _matches(nb, goal):
-                    return path + [step]
-                if nb not in seen:
-                    seen.add(nb)
-                    q.append((nb, path + [step]))
-    return None
+    hit = _search(start, _R_CONN, _R_WARP, lambda n, s: _matches(n, goal), warps, avoid_edges)
+    if hit is None and warps:
+        # coarse fallback: plain maps; a learned-blocked edge is keyed by region node, so
+        # also match it by its plain map to keep the avoidance effective.
+        coarse_avoid = {(_coarse(f), k, a) for (f, k, a) in avoid_edges}
+        c_goal = goal[:2]
+        hit = _search(_coarse(start), _C_CONN, {m: [(x, y, n) for (x, y, n) in w]
+                                               for m, w in _C_WARP.items()},
+                      lambda n, s: n == c_goal, warps, coarse_avoid)
+    return hit[1] if hit else None
 
 
 def nearest_of_kind(start, kind):
     """Route to the nearest map of a kind ("pokecenter"/"mart"/"gym").
-    Returns (goal_map, steps) or None. Region-aware over the augmented graph;
-    the returned goal_map is the plain (bank, id) of the destination."""
-    from collections import deque
+    Returns (goal_map, steps) or None. Region-aware with a coarse fallback; the returned
+    goal_map is the plain (bank, id) of the destination."""
     if MAP_KIND.get(start[:2]) == kind:
         return (start[:2], [])
-    q = deque([(start, [])])
-    seen = {start}
-    while q:
-        cur, path = q.popleft()
-        neighbours = [("connection", d, m) for d, m in sorted(_A_CONN.get(cur, {}).items())]
-        neighbours += [("warp", (x, y), m) for (x, y, m) in _A_WARP.get(cur, [])]
-        for step in neighbours:
-            nb = step[2]
-            if nb in seen:
-                continue
-            seen.add(nb)
-            if MAP_KIND.get(nb[:2]) == kind:
-                return (nb[:2], path + [step])
-            q.append((nb, path + [step]))
-    return None
+    hit = _search(start, _R_CONN, _R_WARP, lambda n, s: MAP_KIND.get(n[:2]) == kind)
+    if hit is None:
+        hit = _search(start[:2], _C_CONN, _C_WARP, lambda n, s: MAP_KIND.get(n[:2]) == kind)
+    return (hit[0][:2], hit[1]) if hit else None
 
 
 # Maps that carry tall grass — grind relocates to the nearest of these when it's
@@ -702,26 +719,17 @@ GRASS_MAPS: frozenset = frozenset({(1, 0), *((3, i) for i in range(19, 44))})
 
 def nearest_grass(start, exclude_current: bool = False, avoid=()):
     """Route to the nearest grass-bearing map (a Route or Viridian Forest).
-    Returns (goal_map, steps) or None. Region-aware, mirrors nearest_of_kind. Set
+    Returns (goal_map, steps) or None. Region-aware with a coarse fallback. Set
     exclude_current to skip the map you're already on (when you're on grass you
     can't reach and need a fresh entry elsewhere). `avoid` is a set of (bank, id) grass
     maps to skip (e.g. story-gated routes a previous attempt couldn't reach)."""
-    from collections import deque
     avoid = {tuple(a[:2]) for a in avoid}
     if not exclude_current and start[:2] in GRASS_MAPS and start[:2] not in avoid:
         return (start[:2], [])
-    q = deque([(start, [])])
-    seen = {start}
-    while q:
-        cur, path = q.popleft()
-        neighbours = [("connection", d, m) for d, m in sorted(_A_CONN.get(cur, {}).items())]
-        neighbours += [("warp", (x, y), m) for (x, y, m) in _A_WARP.get(cur, [])]
-        for step in neighbours:
-            nb = step[2]
-            if nb in seen:
-                continue
-            seen.add(nb)
-            if nb[:2] in GRASS_MAPS and nb[:2] not in avoid:
-                return (nb[:2], path + [step])
-            q.append((nb, path + [step]))
-    return None
+
+    def ok(n, s):
+        return n[:2] in GRASS_MAPS and n[:2] not in avoid
+    hit = _search(start, _R_CONN, _R_WARP, ok)
+    if hit is None:
+        hit = _search(start[:2], _C_CONN, _C_WARP, ok)
+    return (hit[0][:2], hit[1]) if hit else None

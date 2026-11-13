@@ -23,58 +23,50 @@ def test_multi_hop_pallet_to_viridian_is_clean_norths():
     assert route[-1][2] == (3, 1)
 
 
-def test_pallet_to_pewter_routes_through_viridian_forest():
-    # Pewter sits past Route 2, which is split by Viridian Forest's gates (#59).
-    # A correct route must WARP through the forest (1,0), not walk a sealed edge.
+def test_pallet_to_pewter_uses_a_warp_across_the_split_route2():
+    # Route 2 is split into disconnected regions (#59); the walk must WARP across (a gate
+    # building or Viridian Forest), never "cross the North edge" from the sealed south half.
     route = route_to((3, 0), (3, 2))
     assert route is not None
-    assert route[-1][2] == (3, 2)                        # ends at Pewter
-    maps = [step[2] for step in route]
-    assert (1, 0) in maps, "route must pass through Viridian Forest"
-    # It reaches Route 2's NORTH region and crosses North into Pewter from there.
-    assert route[-1][:2] == ("connection", "North")
-    assert (3, 20, "N") in maps                          # the north region node
+    assert route[-1][:2] == ("connection", "North")      # ends entering Pewter
+    assert route[-1][2][:2] == (3, 2)
+    assert any(step[0] == "warp" for step in route), "must cross Route 2 via a warp"
 
 
-def test_route2_south_needs_the_forest_but_north_is_direct():
-    # From the south region the north edge is unreachable → route via the forest.
-    south = route_to((3, 20, "S"), (3, 2))
-    assert [s[0] for s in south[:4]] == ["warp", "warp", "warp", "warp"]
-    assert south[-1] == ("connection", "North", (3, 2))
-    # From the north region it's a single seamless edge.
-    assert route_to((3, 20, "N"), (3, 2)) == [("connection", "North", (3, 2))]
+def test_route2_south_needs_a_warp_but_north_is_direct():
+    south = route_to(node_for(3, 20, 5, 60), (3, 2))
+    assert south[0][0] == "warp"                         # not the sealed north edge
+    assert south[-1][:2] == ("connection", "North")
+    north = route_to(node_for(3, 20, 5, 14), (3, 2))
+    assert [s[:2] for s in north] == [("connection", "North")]
 
 
-def test_node_for_regionizes_split_map_by_y():
-    assert node_for(3, 20, 5, 60) == (3, 20, "S")     # south half
-    assert node_for(3, 20, 5, 14) == (3, 20, "N")     # north half
+def test_node_for_regionizes_split_map():
+    south, north = node_for(3, 20, 5, 60), node_for(3, 20, 5, 14)
+    assert south[:2] == north[:2] == (3, 20) and south != north and len(south) == 3
     assert node_for(3, 1) == (3, 1)                    # non-split map unchanged
     assert node_for(3, 1, 10, 10) == (3, 1)
 
 
 def test_route4_west_to_cerulean_routes_through_mt_moon():
-    # Route 4 is one map split by Mt. Moon: you arrive from Route 3 on the WEST
-    # side, and Cerulean's seam is on the EAST side — reachable only THROUGH the
-    # cave. Without the split, BFS took the 1-hop East seam and the agent walked
-    # into the mountain wall. From the west region the route must enter Mt. Moon.
+    # Route 4 is one map split by Mt. Moon: you arrive from Route 3 on the WEST side and
+    # Cerulean's seam is on the EAST side — reachable only THROUGH the cave.
     route = route_to(node_for(3, 22, 19, 6), (3, 3))   # west side of Route 4
     assert route is not None
-    assert route[-1] == ("connection", "East", (3, 3))   # ends by entering Cerulean
-    maps = [step[2] for step in route]
-    assert (1, 1, "0") in maps, "route must pass through Mt. Moon 1F"
-    assert (3, 22, "E") in maps, "must emerge on Route 4's east side"
-    # The first hop off the west side is the Mt. Moon entrance warp, not a seam.
-    assert route[0] == ("warp", (19, 5), (1, 1, "0"))
+    assert route[-1][:2] == ("connection", "East") and route[-1][2][:2] == (3, 3)
+    maps = [step[2][:2] for step in route]
+    assert (1, 1) in maps, "route must pass through Mt. Moon 1F"
+    assert route[0][:2] == ("warp", (19, 5))           # first hop = the cave entrance warp
 
 
 def test_route4_east_to_cerulean_is_direct_seam():
-    # Once you've emerged on the east side, Cerulean is a single seamless edge.
-    assert route_to((3, 22, "E"), (3, 3)) == [("connection", "East", (3, 3))]
+    east = node_for(3, 22, 32, 5)                      # B1F exit / Cerulean side
+    route = route_to(east, (3, 3))
+    assert [s[:2] for s in route] == [("connection", "East")]
 
 
-def test_node_for_regionizes_route4_by_x():
-    assert node_for(3, 22, 19, 6) == (3, 22, "W")      # Mt. Moon entrance side
-    assert node_for(3, 22, 32, 5) == (3, 22, "E")      # B1F exit / Cerulean side
+def test_node_for_regionizes_route4_by_position():
+    assert node_for(3, 22, 19, 6) != node_for(3, 22, 32, 5)
 
 
 def test_connection_only_route_to_pewter_is_not_the_naive_four_norths():

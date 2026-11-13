@@ -5,6 +5,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- feat: generic region-aware routing for EVERY map (`tools/gen_regions.py` ->
+  `knowledge/map_regions.py`, replaces the hand-built Mt. Moon data). Regions are derived
+  from the decomp (walkable-tile flood fill, ledge hops, Cut/Rock Smash/boulder/Snorlax
+  objects as blockers, warp pairing, connection offsets), so Rock Tunnel, Silph Co., Pokémon
+  Tower/Mansion, Seafoam, etc. route like Mt. Moon with no per-cave fixes. `route_to` tries the
+  strict region graph first and falls back to the optimistic coarse graph for HM/puzzle
+  obstacles the tiles can't express; `go_to` learns hops that keep failing and re-plans around
+  them. `DUNGEON_MAPS` is now derived (map bank 1). Re-run the generator after bumping the decomp.
+
 ### Fixed
 - fix: Mt. Moon routing. Each cave floor is several disconnected regions joined by ladders
   (B1F has four); the router treated floors as one node, so `go_to('Cerulean City')` looped on

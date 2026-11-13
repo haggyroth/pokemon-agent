@@ -517,7 +517,12 @@ class NavMixin:
             # differently) so a split map is crossed via its gate, not a sealed edge.
             px, py = self.reader.read_player_pos()
             cur_node = node_for(*cur, px, py)
-            route = route_to(cur_node, target_map)
+            fails = self.__dict__.setdefault("_edge_fail", {})
+            avoid = {k for k, n in fails.items() if n >= 2}
+            route = route_to(cur_node, target_map, avoid_edges=avoid)
+            if not route and avoid:
+                fails.clear()          # every known path is blocked — forget and retry fresh
+                route = route_to(cur_node, target_map)
             if not route:
                 return (f"No route to {target_name} from {MAP_NAMES.get(cur, cur)} "
                         f"(it may be behind a locked/blocked area).")
@@ -537,6 +542,8 @@ class NavMixin:
                 continue   # escaped; resume travelling
 
             after = self.reader.read_current_map()
+            if after != before:
+                fails.pop((cur_node, kind_step, arg), None)   # this edge works (again)
             if after == before:
                 # Map didn't change — but in a big maze/dungeon one walk_to hop only
                 # gets PART of the way to the exit warp. If the player still moved,
@@ -544,6 +551,11 @@ class NavMixin:
                 # truly pinned (same map AND didn't move at all this hop).
                 if self.reader.read_player_pos() != before_pos:
                     continue
+                # Learn the dead edge: after two failures of the SAME hop (a puzzle door, an
+                # HM obstacle, a switch we haven't hit) route_to avoids it and picks another
+                # ladder/exit — so one new puzzle doesn't need a hand-made routing fix.
+                edge = (cur_node, kind_step, arg)
+                fails[edge] = fails.get(edge, 0) + 1
                 guidance = self._register_go_to_stall(target_name, before)
                 if guidance:
                     return guidance
