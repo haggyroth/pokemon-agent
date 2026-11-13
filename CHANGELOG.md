@@ -13,6 +13,13 @@ All notable changes to this project are documented here. Format loosely follows
 - feat: Silph card-key door / Pokémon Mansion switch tiles from the decomp (`tools/gen_puzzle_tiles.py`)
   and a `walk_to` solver; live map buffer (gBackupMapLayout) + collision-aware passability.
 
+### Verified live in this batch
+- Pokémon Mansion: one `walk_to` onto a barrier tile presses the statue (A -> YES), the barrier opens, and it
+  arrives. Silph Co. 2F: `walk_to` opened card-key door 1 and door 2 and arrived behind each (note: the
+  game checks FLAG_HIDE_SILPH_CO_5F_CARD_KEY 0x192, not the bag item). `go_to` explains story gates.
+- passability: script-opened barriers (elevation 0 / collision 0 that differ from the ROM) are walkable;
+  a wall goal on a puzzle map now yields 'no path' so the solvers run instead of bumping forever.
+
 ### Fixed
 - fix: in-battle party switching used an unreliable cursor variable (0x020207FE read 0/1/0 while the
   real cursor went 0/1/2 with 3 mons): forced switches stalled in a slow loop. Now uses gPartyMenu.slotId

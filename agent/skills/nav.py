@@ -261,9 +261,13 @@ class NavMixin:
             # them). The goal itself is always allowed: door/stairs warp tiles sit
             # on "wall" tiles but are steppable-onto from a passable neighbour.
             npcs = self._npc_tiles()   # refresh each attempt — NPCs move
+            from knowledge.puzzle_tiles import PUZZLE_TILES as _PT
+            on_puzzle_map = start_map in _PT       # barrier maps: a wall goal is really blocked
             def _passable(x, y):
                 if (x, y) == (tx, ty):
-                    return True
+                    # A goal wall that is NOT a door/warp is genuinely blocked (e.g. a closed barrier):
+                    # report "no path" so the puzzle/NPC solvers can act, instead of bumping it forever.
+                    return bool(grid[y][x]) or (tx, ty) in warps or not on_puzzle_map
                 return grid[y][x] and (x, y) not in npcs and (x, y) not in blocked
             # One-way ledges: A* may hop a ledge in its facing direction (Route 1's
             # downhill trap). Exclude any ledge a prior jump failed on (marked
@@ -615,18 +619,20 @@ class NavMixin:
         from knowledge.gates import unmet_gates
         from knowledge.map_graph import route_to
         blocked = set(avoid)
+        first_hint = None
         for _ in range(4):
             unmet = unmet_gates(route, self._gate_ok)
             if not unmet:
                 return route, None
             idx, req = unmet[0]
+            first_hint = first_hint or req.hint          # explain the SHORTEST route's gate, not a detour's
             prev = cur_node if idx == 0 else route[idx - 1][2]
             blocked.add((prev, route[idx][0], route[idx][1]))
             alt = route_to(cur_node, target_map, avoid_edges=blocked)
             if not alt:
-                return route, req.hint
+                return route, first_hint
             route = alt
-        return route, None
+        return route, first_hint
 
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon

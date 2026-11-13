@@ -235,6 +235,15 @@ class TilemapReader:
             return None, 0, 0
         if len(raw) < w * h * 2:
             return None, 0, 0
+        # Opened barriers (Pokémon Mansion, Silph card-key doors) become elevation-0 / collision-0 tiles —
+        # walkable, but plain elevation-0 tiles elsewhere are void/wall. Tell them apart by "this tile was
+        # changed by a script": live entry != the ROM's original entry.
+        rom = None
+        if self._live_ptr is not None:
+            try:
+                rom = self.client.read_range(self._map_ptr, w * h * 2)
+            except Exception:
+                rom = None
         grid = [[False] * w for _ in range(h)]
         for y in range(h):
             row = grid[y]
@@ -244,7 +253,9 @@ class TilemapReader:
                 elev = ((raw[i] | (raw[i + 1] << 8)) >> 12) & 0xF
                 coll = ((raw[i] | (raw[i + 1] << 8)) >> 10) & 0x3
                 # collision bits != 0 are walls whatever the elevation (closed barriers, boulder pits)
-                row[x] = coll == 0 and (elev == ELEV_FLOOR or (surf and elev == ELEV_WATER))
+                opened = (rom is not None and elev == ELEV_WALL and len(rom) > i + 1
+                          and (rom[i] != raw[i] or rom[i + 1] != raw[i + 1]))
+                row[x] = coll == 0 and (elev == ELEV_FLOOR or opened or (surf and elev == ELEV_WATER))
         return grid, w, h
 
     # Gen III connection direction codes (gMapHeader.connections).
