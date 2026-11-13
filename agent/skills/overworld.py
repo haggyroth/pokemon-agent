@@ -347,17 +347,31 @@ class OverworldMixin:
         (which it tends to ignore). Returns True if we end up somewhere with grass."""
         from knowledge.map_graph import nearest_grass
         bank, mid = self.reader.read_current_map()
-        found = nearest_grass((bank, mid), exclude_current=exclude_current)
-        if found is None:
-            return False
-        goal_map = found[0]
-        if goal_map == (bank, mid):
-            return self._nearest_grass() is not None
-        name = MAP_NAMES.get(goal_map)
-        if not name:
-            return False
-        self._go_to(name)                       # resumable; may stop on battle/dialog
-        return self._nearest_grass() is not None
+        avoid: set = set()
+        for _attempt in range(3):
+            found = nearest_grass((bank, mid), exclude_current=exclude_current, avoid=avoid)
+            if found is None:
+                return False
+            goal_map = found[0]
+            if goal_map == (bank, mid):
+                return self._nearest_grass() is not None
+            name = MAP_NAMES.get(goal_map)
+            if not name:
+                avoid.add(goal_map)
+                continue
+            # go_to is resumable and stops early (battle/dialog/guard shuffles). Keep
+            # calling it until we land there; if the route is story-gated (e.g. Route 3
+            # before Brock) it never arrives, so skip that route and try the next-nearest.
+            for _ in range(6):
+                out = self._go_to(name)
+                if self.reader.read_current_map() == goal_map:
+                    break
+                if out.startswith("Blocked") or "gated" in out:
+                    break
+            if self.reader.read_current_map() == goal_map and self._nearest_grass() is not None:
+                return True
+            avoid.add(goal_map)
+        return False
 
     _GRIND_HP_FLOOR = 0.35
 

@@ -52,6 +52,14 @@ class BattleMixin:
         in_battle = self.reader.detect_context() == GameContext.IN_BATTLE
         if in_battle:
             _ids, move_names, pp = self.reader.read_active_battle_moves()
+            # During the battle intro / a send-out animation gBattleMons[0] can still be
+            # unpopulated (all blank) even though cb2 already says IN_BATTLE; that made a
+            # perfectly valid move read as "not a known move". Give it a moment to fill.
+            for _ in range(10):
+                if any(move_names):
+                    break
+                self.mgba.tick(30)
+                _ids, move_names, pp = self.reader.read_active_battle_moves()
         else:
             move_names, pp = party[0].move_names, party[0].pp
         names = [n.lower() for n in move_names]
@@ -517,24 +525,50 @@ class BattleMixin:
             self.mgba.tick(8)
 
     @staticmethod
-    def _best_damaging_move(move_names, pp) -> str | None:
-        """From parallel (move_names, pp) lists, the highest-power move that still has PP,
-        or (if none has listed power) the first move with PP. None only if every move is
-        out of PP. Empty slots (name "") are skipped, so a mon with <4 moves is safe."""
-        from knowledge.leafgreen_data import MOVE_POWER
-        best, best_pow = None, 0
+    def _best_damaging_move(move_names, pp, attacker_types=(), defender_types=()) -> str | None:
+        """From parallel (move_names, pp) lists, the best damaging move that still has PP.
+        Ranked by power × STAB × type effectiveness when the types are known (a 4×
+        Vine Whip must beat a neutral Tackle of equal power vs Brock's Rock/Ground);
+        with no type info it's plain highest power. Falls back to the first move with
+        PP if none has listed power; None only if every move is out of PP. Empty slots
+        (name "") are skipped, so a mon with <4 moves is safe."""
+        from knowledge.leafgreen_data import MOVE_POWER, MOVE_TYPE
+        from knowledge.battle import effectiveness_vs
+        best, best_score = None, 0.0
         for name, p in zip(move_names, pp):
             if not name or p <= 0:
                 continue
             pw = MOVE_POWER.get(name, 0)
-            if pw > best_pow:
-                best, best_pow = name, pw
+            if pw <= 0:
+                continue
+            score = float(pw)
+            mt = MOVE_TYPE.get(name)
+            if mt:
+                if defender_types:
+                    score *= effectiveness_vs(mt, tuple(defender_types))
+                if mt in attacker_types:
+                    score *= 1.5
+            if score > best_score:
+                best, best_score = name, score
         if best is not None:
             return best
         for name, p in zip(move_names, pp):   # fallback: any move with PP
             if name and p > 0:
                 return name
         return None
+
+    def _battle_types(self) -> tuple[tuple, tuple]:
+        """(attacker_types, defender_types) for the active battle, () when unknown."""
+        from game.constants import SPECIES_NAMES
+        from knowledge.leafgreen_data import POKEMON_TYPES
+        try:
+            me = SPECIES_NAMES.get(self.reader.read_active_battle_species(), "")
+            en = self.reader.read_enemy_lead()
+            foe = (en.species_name or "") if en else ""
+        except Exception:
+            return (), ()
+        return (POKEMON_TYPES.get(me.upper().strip(), ()),
+                POKEMON_TYPES.get(foe.upper().strip(), ()))
 
     def _auto_fight(self) -> None:
         """Fight the current battle to the end with the best damaging move each turn."""
@@ -547,7 +581,8 @@ class BattleMixin:
             # Pick from the ACTIVE battler's moves (gBattleMons[0]), not the lead — the
             # mon fighting may be a switched-in / sent-out teammate with a different set.
             _ids, names, pp = self.reader.read_active_battle_moves()
-            mv = self._best_damaging_move(names, pp)
+            atk, dfn = self._battle_types()
+            mv = self._best_damaging_move(names, pp, atk, dfn)
             if mv:
                 self._use_move(mv)
             else:

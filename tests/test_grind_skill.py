@@ -37,3 +37,15 @@ def test_best_move_falls_back_to_any_move_with_pp():
 def test_best_move_none_when_all_out_of_pp():
     mon = _mon(["Tackle", "Growl", "", ""], [0, 0, 0, 0])
     assert AgentClient._best_damaging_move(*mon) is None
+
+
+def test_best_move_is_type_aware():
+    # Vine Whip and Tackle tie on power; vs Rock/Ground (Geodude) Vine Whip is 4x.
+    mon = _mon(["Tackle", "Growl", "Leech Seed", "Vine Whip"], [35, 40, 10, 10])
+    assert AgentClient._best_damaging_move(*mon) == "Tackle"          # type-blind tie → first
+    assert AgentClient._best_damaging_move(*mon, ("GRS", "POI"), ("ROC", "GRD")) == "Vine Whip"
+
+
+def test_best_move_avoids_immune_move():
+    mon = _mon(["Tackle", "Shadow Ball", "", ""], [35, 15, 0, 0])
+    assert AgentClient._best_damaging_move(*mon, (), ("GHO",)) == "Shadow Ball"
