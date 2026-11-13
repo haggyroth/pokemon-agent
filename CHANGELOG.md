@@ -7,13 +7,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added (work in progress — see the WIP PR; partly unverified)
 - feat: `fly_to(town)` (party sub-menu -> region map; live-verified to all 11 towns) and Flash via
-  `use_hm('Flash')` (menu navigation + FLAG_SYS_FLASH_ACTIVE verified; not yet in a real dark cave).
+  `use_hm('Flash')` (verified in the real Rock Tunnel: lights the cave, flag set, control returns).
 - feat: story/capability gates in `go_to` (`knowledge/gates.py`): Silph Scope, Poké Flute, Tea, Surf,
   Strength, 8 badges — explains what to get instead of walking into a locked road.
 - feat: Silph card-key door / Pokémon Mansion switch tiles from the decomp (`tools/gen_puzzle_tiles.py`)
   and a `walk_to` solver; live map buffer (gBackupMapLayout) + collision-aware passability.
 
 ### Fixed
+- fix: in-battle party switching used an unreliable cursor variable (0x020207FE read 0/1/0 while the
+  real cursor went 0/1/2 with 3 mons): forced switches stalled in a slow loop. Now uses gPartyMenu.slotId
+  (0x0203B0A9). Live-verified: forced + 5 voluntary switches across 3 Pokémon.
 - fix: **regression from #176** — the battle action menu remembers its cursor, so after a mid-fight Potion
   (Bag) the next A reopened the Bag and every following fight stalled ("tough trainer battle isn't
   resolving"). `_battle_advance` now points the cursor at FIGHT first and backs out of full-screen

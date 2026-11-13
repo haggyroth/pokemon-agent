@@ -31,6 +31,8 @@ class Addr:
     # Live cursor (slotId) in the in-battle party menu, 0-based over party slots.
     # Derived live: steps 0→1 on Down, back on Up. switch_pokemon navigates it to the
     # target slot before selecting.
+    # (UNRELIABLE with 3+ mons — it read 0/1/0 while the real cursor went 0/1/2; use PARTY_FIELD_SLOT
+    # 0x0203B0A9, gPartyMenu.slotId, which is also what the in-battle party screen uses.)
     PARTY_MENU_SLOT     = 0x020207FE
     # gBattlePartyCurrentOrder — packed nibbles mapping each in-battle party-menu
     # DISPLAY slot to a field party id (slot even → high nibble, odd → low nibble of

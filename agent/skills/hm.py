@@ -118,7 +118,12 @@ class HMMixin:
         err = self._party_field_move(148)
         if err:
             return err
-        lit = self.reader.read_flag(Addr.FLAG_SYS_FLASH_ACTIVE)
+        lit = False
+        for _ in range(40):                          # the flag lands a second or so after the press
+            lit = self.reader.read_flag(Addr.FLAG_SYS_FLASH_ACTIVE)
+            if lit:
+                break
+            self.mgba.tick(20)
         for _ in range(30):                          # the light-up fade/animation takes a moment
             if self.reader.detect_context() == GameContext.OVERWORLD:
                 break
