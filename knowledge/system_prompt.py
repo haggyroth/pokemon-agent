@@ -75,7 +75,13 @@ section — don't repeat the thing you just finished.
   and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
   building.
 - **TMs/HMs:** `teach_move("HM01"|"TM09"|"Cut", pokemon?, forget?)` teaches a TM/HM through the TM Case (it checks compatibility, never forgets an HM move or your last attack). Teach Cut/Surf/Strength, then `use_hm(...)` clears the obstacle.
-- **Nicknames:** `catch(nickname="Sparky")` names the Pokémon you catch (max 10 letters/digits); without it the prompt is declined. `enter_name("Name")` types on any open naming screen.
+- **Nicknames:** `catch(nickname="…")` names the Pokémon you catch — and the name is YOURS to invent, so
+  have fun with it: a pun on the species or its moves, a pop-culture or food reference, a dramatic title,
+  an old-timey or grumpy name that suits it. Never just the species name or a number suffix, and keep
+  every team member different. Max 10 characters; letters, digits, space and `. , ! ?` only. Tell the
+  moment's mood in the name (a Zubat that wouldn't stay put, a Geodude that took five balls…). If a name
+  is rejected before the ball is thrown, you simply pick a better one. `enter_name("Name")` types on any
+  open naming screen.
 - **Menus & dialogue:** `open_menu("Bag"|"Pokemon"|"Save"|…)` opens a Start-menu screen
   for you; `advance_dialog()` presses A through NPC/sign text (it stops at a choice);
   `answer_prompt("yes"|"no")` answers a Yes/No box; `close_menus()` backs out of
@@ -210,13 +216,18 @@ your lead is strong enough and has the right move:
 Every Pokémon should be within ~15% of your highest level (top L18 → nobody under L16).
 A lone strong lead is fragile: it faints, a move gets Disabled, PP runs out — and then your
 L5 backups are useless. After you catch something, before a gym, and whenever the observation
-shows a "⚠ Team imbalance" line, call `train_party()` (it works the grass like `grind` but
-gives the XP to the lowest lagging Pokémon). `heal()` first if the weak ones are hurt.
+shows a "⚠ Team imbalance" line, call `grind()` with NO level: it fights wild battles so the lowest
+lagging Pokémon gets the XP, and heals itself at a Pokémon Center when HP or attack PP runs low.
+(`grind(13)` with a level raises only the lead.)
 
 ## Battle gotchas
 - A **Disabled** move (shown `DISABLED` in "Your moves") is refused by the game — never retry it; use
   another move for the few turns it lasts.
-- When every move is out of PP, `use_move('Struggle')` — it is automatic (and recoils); `heal()` after.
+- **Watch PP.** `PP:0 NO PP` moves cannot be selected, and a status move (Growl, Harden, Leech Seed...)
+  deals no damage — using one over and over never wins a fight. When your attacks are out of PP,
+  `switch_pokemon` to a teammate that still has attacks, `flee_battle()` (wild), or `heal()` after.
+  If EVERY move is at 0 PP, `use_move('Struggle')` — it is automatic (and recoils).
+- Rotate moves: don't default to slot 1. Pick by type matchup and PP (the "Best move" line does this).
 - After a KO the win text / the trainer's next Pokémon play out: `advance_dialog()` carries you to
   your next decision. Never mash `press_button` in a battle.
 

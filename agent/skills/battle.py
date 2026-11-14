@@ -166,7 +166,7 @@ class BattleMixin:
                     return (f"Used {move_label}, but your Pokémon fainted — " +
                             forced_msg.format(_healthy_roster(self.reader)))
                 if self.reader.read_active_battle_moves()[2][slot] < pp_before:
-                    return f"Used {move_label}.{self._turn_summary()}"   # our move landed
+                    return f"Used {move_label}.{self._turn_summary()}{self._status_streak_note(move_label)}"   # landed
                 # A KO can trigger a level-up move-learn while we're still advancing
                 # result text — catch it (offered set ~16 frames before the box) and
                 # resolve per policy rather than mashing A into an overwrite.
@@ -193,6 +193,20 @@ class BattleMixin:
         if forced_party_screen(self.mgba, self.reader):
             return forced_msg.format(_healthy_roster(self.reader))
         return f"Could not use {name} — the battle menu did not respond as expected."
+
+    def _status_streak_note(self, move_label: str) -> str:
+        """Warn when the same no-damage move is used turn after turn (Growl/Harden spam)."""
+        from knowledge.leafgreen_data import MOVE_POWER
+        if MOVE_POWER.get(move_label, 0) > 0:
+            self._status_streak = (None, 0)
+            return ""
+        last, n = getattr(self, "_status_streak", (None, 0))
+        n = n + 1 if last == move_label else 1
+        self._status_streak = (move_label, n)
+        if n >= 2:
+            return (f" ⚠ {move_label} deals no damage and this is {n}× in a row — it will never win the "
+                    "fight. Attack with a damaging move, switch_pokemon, or flee_battle().")
+        return ""
 
     def _struggle(self) -> str:
         """All moves are out of PP / Disabled: FIGHT -> the game auto-uses Struggle. Press A at the
@@ -225,6 +239,30 @@ class BattleMixin:
                         "Heal at a Pokémon Center soon — it restores PP.")
             self._battle_advance()
         return "Struggle did not resolve — call advance_dialog, then use_move again."
+
+    def _no_attack_turn(self) -> str:
+        """The active Pokémon has no damaging move that can hurt the foe (attacks out of PP / Disabled /
+        immune, or it only knows status moves like Harden). Spamming a status move never ends the fight
+        (the 2026-11-13 zero-PP loop), so in order: no PP at all -> Struggle; a teammate that can still
+        attack -> switch to it; a wild battle -> run; last resort (trainer, nobody left) -> whatever
+        move has PP, preferring a damaging one."""
+        from game.constants import Addr
+        from knowledge.leafgreen_data import MOVE_POWER
+        from knowledge.party import can_attack
+        _ids, names, pp, _d, _t = self._active_moves_view()
+        if not any(n and q > 0 for n, q in zip(names, pp)):
+            return self._struggle()
+        party = self.reader.read_party()
+        active = self.reader.read_active_battle_species()
+        cands = [(q.level, i) for i, q in enumerate(party)
+                 if q.species_id != active and q.max_hp and q.current_hp / q.max_hp >= 0.3
+                 and can_attack(q)]
+        if cands:
+            return self._switch_pokemon(str(max(cands)[1] + 1))
+        if not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
+            return self._flee_battle()
+        usable = [(MOVE_POWER.get(n, 0), n) for n, q in zip(names, pp) if n and q > 0]
+        return self._use_move(max(usable)[1])
 
     def _flee_battle(self) -> str:
         """Run from a WILD battle. Drives the action menu to RUN (writes the action
@@ -403,6 +441,24 @@ class BattleMixin:
         balls0 = self._ball_count()
         if balls0 <= 0:
             return "No Poké Balls — buy some at a Mart with shop(), then catch."
+        # Vet the nickname BEFORE spending a ball: the naming keyboard only types letters, digits,
+        # space and . , ! ? — and the model's first idea is often just the species name ("Zubat",
+        # "Kakuna1"). Refuse ONCE per species with the reason (no ball thrown) so it invents something
+        # better; a second try is accepted as sanitized, so this can never loop.
+        if nickname:
+            from knowledge.nicknames import critique, sanitize
+            foe = self.reader.read_enemy_lead()
+            species = (foe.species_name or "") if foe else ""
+            taken = [p.nickname for p in self.reader.read_party()]
+            why = critique(nickname, species, taken)
+            asked = getattr(self, "_nick_refused", None)
+            if why and asked != species:
+                self._nick_refused = species
+                return (f"No ball thrown — {why}. Pick a more inventive nickname for this {species or 'Pokémon'} "
+                        "(a pun, a pop-culture nod, a funny title — your call; max 10 chars, letters/digits/"
+                        "space/. , ! ? only) and call catch(nickname=...) again.")
+            self._nick_refused = None
+            nickname = sanitize(nickname)
         idle = getattr(self.mgba, "wait_until_idle", None)
         if not self._open_battle_bag():
             return "Couldn't open the Bag in battle — try catch again."
@@ -831,9 +887,9 @@ class BattleMixin:
         """From parallel (move_names, pp) lists, the best damaging move that still has PP.
         Ranked by power × STAB × type effectiveness when the types are known (a 4×
         Vine Whip must beat a neutral Tackle of equal power vs Brock's Rock/Ground);
-        with no type info it's plain highest power. Falls back to the first move with
-        PP if none has listed power; None only if every move is out of PP. Empty slots
-        (name "") are skipped, so a mon with <4 moves is safe."""
+        with no type info it's plain highest power. None when no damaging move with PP can
+        hurt the foe (all out of PP, only status moves, or all immune) — NEVER a status
+        move. Empty slots (name "") are skipped, so a mon with <4 moves is safe."""
         from knowledge.leafgreen_data import MOVE_POWER, MOVE_TYPE
         from knowledge.battle import effectiveness_vs
         best, best_score = None, 0.0
@@ -852,12 +908,10 @@ class BattleMixin:
                     score *= 1.5
             if score > best_score:
                 best, best_score = name, score
-        if best is not None:
-            return best
-        for name, p in zip(move_names, pp):   # fallback: any move with PP
-            if name and p > 0:
-                return name
-        return None
+        # No fallback to a status move: a mon whose attacks are out of PP (or immune) that keeps
+        # using Growl/Harden never ends the fight (the 2026-11-13 zero-PP loop). None tells the caller
+        # to switch / flee / Struggle instead (see _no_attack_turn).
+        return best
 
     def _battle_types(self) -> tuple[tuple, tuple]:
         """(attacker_types, defender_types) for the active battle, () when unknown."""
@@ -924,5 +978,5 @@ class BattleMixin:
             if mv:
                 self._use_move(mv)
             else:
-                self._struggle()          # no usable move (all PP 0 / Disabled) → forced Struggle
+                self._no_attack_turn()    # PP gone / status-only: Struggle, switch, or flee — never spam Growl
         self._settle_evolution()   # let a level-up evolution play out (A, never B)

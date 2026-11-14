@@ -159,28 +159,20 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "grind",
-        "description": "Level up your lead Pokémon by grinding wild battles. Stand in "
-                       "TALL GRASS (a route or Viridian Forest) and call grind(level) — "
-                       "it wanders to trigger wild battles and auto-fights each one for "
-                       "you until your lead reaches the target level (no need to fight "
-                       "them one at a time yourself). Use it to prepare for a gym, e.g. "
-                       "grind(13) so Bulbasaur learns Vine Whip before Brock. It pauses "
-                       "if HP gets low (then heal() and grind again).",
+        "description": "Level up by fighting wild Pokémon in tall grass (auto-fights every battle, and "
+                       "heals itself at a Pokémon Center when HP or attack PP runs low, then walks "
+                       "back — one call does a lot of work). Two modes: grind(level=13) raises your "
+                       "LEAD to L13 (e.g. before Brock so Bulbasaur has Vine Whip); grind() with NO "
+                       "level BALANCES the team — every Pokémon should be within ~15% of your highest "
+                       "(top L18 → nobody under L16), because weak backups can't carry a gym, a "
+                       "dungeon or a forced switch. In balance mode the lowest lagging Pokémon is "
+                       "sent in first for the XP and a strong teammate finishes tough fights. "
+                       "Evolutions complete automatically. Use grind() after catching new Pokémon "
+                       "and before gyms/dungeons.",
         "parameters": {"type": "object", "properties": {
-            "level": {"type": "integer", "description": "target lead level, e.g. 13"},
-        }, "required": ["level"]},
-    }},
-    {"type": "function", "function": {
-        "name": "train_party",
-        "description": "Even out your team's levels. Every Pokémon should be within ~15% of your "
-                       "highest-level one (e.g. top L18 → nobody under L16): weak members can't carry "
-                       "a dungeon, a gym or a forced switch, and you will NEED them. Works the tall "
-                       "grass like grind(), but each wild fight is fought so the lowest lagging "
-                       "Pokémon earns the XP (it is sent in first; a strong teammate finishes tough "
-                       "fights, and a Pokémon that was in the battle shares the XP). Evolutions "
-                       "complete automatically. Pauses if the trainee is hurt (heal(), then call "
-                       "again). Use it after catching new Pokémon and before gyms/dungeons.",
-        "parameters": {"type": "object", "properties": {}},
+            "level": {"type": "integer",
+                      "description": "target LEAD level, e.g. 13. Omit (or 0) to balance the whole team."},
+        }, "required": []},
     }},
     {"type": "function", "function": {
         "name": "teach_move",
@@ -272,11 +264,16 @@ TOOLS = [
                        "greatly raises the catch rate); it may break free, so you can "
                        "catch() again. Use it on wild Pokémon that would help your team "
                        "(a new species, a good type). You can't catch a trainer's "
-                       "Pokémon. Needs Poké Balls (buy them with shop()). Optional "
-                       "`nickname` (max 10 letters/digits) gives the caught Pokémon a name "
-                       "via the naming screen; omit it to decline the nickname prompt.",
+                       "Pokémon. Needs Poké Balls (buy them with shop()). ALWAYS pass a "
+                       "`nickname` — you invent it, so make it memorable and a bit funny (a pun on "
+                       "the species or its moves, a pop-culture or food reference, a dramatic or "
+                       "grumpy title); never just the species name or a number, and no two team "
+                       "members alike. Max 10 characters; letters, digits, space . , ! ? only "
+                       "(typed on the naming screen for you).",
         "parameters": {"type": "object", "properties": {
-            "nickname": {"type": "string", "description": "optional name for the catch"},
+            "nickname": {"type": "string",
+                         "description": "name YOU invent for this catch — inventive/funny, max 10 chars, "
+                                        "not the species name. Omit only to skip naming."},
         }},
     }},
     {"type": "function", "function": {
