@@ -159,28 +159,20 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "grind",
-        "description": "Level up your lead Pokémon by grinding wild battles. Stand in "
-                       "TALL GRASS (a route or Viridian Forest) and call grind(level) — "
-                       "it wanders to trigger wild battles and auto-fights each one for "
-                       "you until your lead reaches the target level (no need to fight "
-                       "them one at a time yourself). Use it to prepare for a gym, e.g. "
-                       "grind(13) so Bulbasaur learns Vine Whip before Brock. It pauses "
-                       "if HP gets low (then heal() and grind again).",
+        "description": "Level up by fighting wild Pokémon in tall grass (auto-fights every battle, and "
+                       "heals itself at a Pokémon Center when HP or attack PP runs low, then walks "
+                       "back — one call does a lot of work). Two modes: grind(level=13) raises your "
+                       "LEAD to L13 (e.g. before Brock so Bulbasaur has Vine Whip); grind() with NO "
+                       "level BALANCES the team — every Pokémon should be within ~15% of your highest "
+                       "(top L18 → nobody under L16), because weak backups can't carry a gym, a "
+                       "dungeon or a forced switch. In balance mode the lowest lagging Pokémon is "
+                       "sent in first for the XP and a strong teammate finishes tough fights. "
+                       "Evolutions complete automatically. Use grind() after catching new Pokémon "
+                       "and before gyms/dungeons.",
         "parameters": {"type": "object", "properties": {
-            "level": {"type": "integer", "description": "target lead level, e.g. 13"},
-        }, "required": ["level"]},
-    }},
-    {"type": "function", "function": {
-        "name": "train_party",
-        "description": "Even out your team's levels. Every Pokémon should be within ~15% of your "
-                       "highest-level one (e.g. top L18 → nobody under L16): weak members can't carry "
-                       "a dungeon, a gym or a forced switch, and you will NEED them. Works the tall "
-                       "grass like grind(), but each wild fight is fought so the lowest lagging "
-                       "Pokémon earns the XP (it is sent in first; a strong teammate finishes tough "
-                       "fights, and a Pokémon that was in the battle shares the XP). Evolutions "
-                       "complete automatically. Pauses if the trainee is hurt (heal(), then call "
-                       "again). Use it after catching new Pokémon and before gyms/dungeons.",
-        "parameters": {"type": "object", "properties": {}},
+            "level": {"type": "integer",
+                      "description": "target LEAD level, e.g. 13. Omit (or 0) to balance the whole team."},
+        }, "required": []},
     }},
     {"type": "function", "function": {
         "name": "teach_move",

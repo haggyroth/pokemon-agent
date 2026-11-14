@@ -76,6 +76,23 @@ class OverworldMixin:
         party = self.reader.read_party()
         return bool(party) and all(m.current_hp == m.max_hp for m in party)
 
+    def _party_needs_heal(self) -> bool:
+        """Hurt, OR a mon whose every attacking move is at 0 PP (a Pokémon Center restores PP too —
+        full HP alone must not make heal() refuse, or an out-of-PP team can never recover)."""
+        from knowledge.party import attack_pp
+        party = self.reader.read_party()
+        if not party:
+            return False
+        if any(m.current_hp != m.max_hp for m in party):
+            return True
+        return any(m.move_names and m.max_hp and any(m.move_names) and attack_pp(m) == 0
+                   and self._has_attack(m) for m in party)
+
+    @staticmethod
+    def _has_attack(mon) -> bool:
+        from knowledge.leafgreen_data import MOVE_POWER
+        return any(n and MOVE_POWER.get(n, 0) > 0 for n in (mon.move_names or []))
+
     def _heal(self) -> str:
         """Heal the whole party at a Pokémon Center. Travels to the nearest one if
         not already inside, walks to Nurse Joy, and advances the heal dialogue
@@ -83,8 +100,8 @@ class OverworldMixin:
         the trip, it stops and reports so the caller can resume."""
         from game.state import GameContext
         from knowledge.map_graph import MAP_KIND
-        if self._party_full_hp():
-            return "Party is already at full HP — no need to heal."
+        if not self._party_needs_heal():
+            return "Party is already at full HP and PP — no need to heal."
         # Get inside a Pokémon Center first (resumable travel).
         if MAP_KIND.get(self.reader.read_current_map()) != "pokecenter":
             res = self._go_to("Pokemon Center")
@@ -100,7 +117,7 @@ class OverworldMixin:
         # Advance greeting → YES/NO (YES is default) → heal → closing. A-mash and
         # watch for full HP; nudge Up before confirming so the cursor sits on YES.
         for _ in range(40):
-            if self._party_full_hp():
+            if not self._party_needs_heal():
                 # Advance the nurse's closing dialogue AND wait out the heal fade until
                 # we're back in real OVERWORLD control. A fixed few A-taps left the
                 # player standing on the counter tile still flagged IN_MENU, where
@@ -450,117 +467,149 @@ class OverworldMixin:
             if mv:
                 self._use_move(mv)
             else:
-                self._struggle()
+                self._no_attack_turn()
         self._settle_evolution()
 
+    _GRIND_HP_FLOOR = 0.35
+    _AUTO_HEALS = 8          # Pokémon Center round-trips one grind() call may make by itself
+
     def _train_party(self) -> str:
-        """Level up the Pokémon that lag the team (more than ~15% under the top level). Works the
-        grass like grind(), but each wild fight is fought so the lowest lagging mon gets the XP
-        (see _train_fight). Stops when everyone is within ~15%, when the trainee's HP gets low,
-        or when grass can't be reached. Evolutions are completed automatically."""
+        """Legacy alias: grind() with no target level (balance the team)."""
+        return self._grind(0)
+
+    def _restock(self, why: str) -> str | None:
+        """Heal at a Pokémon Center (restores HP *and* PP) and walk back to grass, so a long grind
+        needs no LLM round-trips. The trip can be interrupted by wild/trainer battles (go_to stops on
+        a new species): flee or finish them, then resume. Returns None when ready to continue, else
+        an abort message."""
+        from game.state import GameContext
+        out = ""
+        for _ in range(8):
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                from game.constants import Addr
+                if not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
+                    self._flee_battle()
+                if self.reader.detect_context() == GameContext.IN_BATTLE:
+                    self._auto_fight()
+                continue
+            out = self._heal()
+            if not self._party_needs_heal():
+                break
+        else:
+            return f"Needed a heal ({why}) but couldn't finish it: {out} Call heal(), then grind() again."
+        if self.reader.detect_context() != GameContext.OVERWORLD:
+            self._advance_to_control(tries=24)
+        if self._nearest_grass() is None and not self._relocate_to_grass():
+            return "Healed, but no tall grass is reachable from here — go_to a grassy route, then grind() again."
+        return None
+
+    def _grind(self, target_level: int = 0) -> str:
+        """Level up by fighting wild Pokémon in tall grass; every fight is auto-fought (the LLM drives
+        none of them) with the best damaging move, and the loop heals itself at a Pokémon Center when
+        HP or attack PP runs low, then walks back to grass.
+
+        target_level > 0  → raise the LEAD to that level (e.g. grind(13) before Brock).
+        target_level == 0 → BALANCE the team: every Pokémon within ~15% of the top level. Each wild
+                            fight is fought so the lowest lagging Pokémon earns the XP (it is sent in
+                            first; a strong teammate finishes tough fights; a mon that was in the
+                            battle shares the XP). Evolutions complete automatically."""
         from game.constants import Addr
         from game.state import GameContext
+        from knowledge.party import attack_pp, can_attack, healthy_enough, party_needs_restock
         party = self.reader.read_party()
-        if len(party) < 2:
-            return "You only have one Pokémon — nothing to balance. Catch a team first."
-        if not self._lagging_mons(party):
-            lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
-            return f"Party is balanced (all within ~15% of L{max(p.level for p in party)}): {lv}."
+        if not party:
+            return "No Pokémon to grind with."
+        balance = int(target_level or 0) <= 0
+        if balance:
+            if len(party) < 2:
+                return "You only have one Pokémon — nothing to balance. Catch a team first, or grind(<level>)."
+            if not self._lagging_mons(party):
+                lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
+                return f"Party is balanced (all within ~15% of L{max(p.level for p in party)}): {lv}."
+            again = "grind()"
+        else:
+            target_level = max(1, min(int(target_level), 100))
+            if party[0].level >= target_level:
+                return f"Lead is already L{party[0].level} (target L{target_level}) — no need to grind."
+            again = f"grind({target_level})"
+
+        # No grass here ⇒ travel to the nearest grass route ourselves rather than bouncing a
+        # "go find grass" message off the model (it ignores it).
         if self._nearest_grass() is None and not self._relocate_to_grass():
             return ("No tall grass reachable from here — go_to a route with grass "
-                    "(Route 1/2, Viridian Forest), then call train_party() again.")
-        start = {(p.species_id, p.max_hp): p.level for p in party}
-        battles = 0
+                    f"(e.g. 'Route 1'/'Route 2' or Viridian Forest), then call {again} again.")
+
+        start = {p.species_id: p.level for p in party}      # keyed by species: max HP changes on level-up
+        start_lead = party[0].level
+        battles = heals = 0
         st = {"stuck": 0, "reloc": 0}
-        for _ in range(500):
+        for _ in range(1500 if balance else 600):
             party = self.reader.read_party()
-            lag = self._lagging_mons(party)
-            if not lag:
+            if not party:
                 break
-            # The trainee: the lowest lagging mon that is healthy enough to fight.
-            ok = [(i, p) for i, p in lag if p.max_hp and p.current_hp / p.max_hp >= self._GRIND_HP_FLOOR]
-            if not ok:
-                names = ", ".join(f"{p.species_name} L{p.level}" for _, p in lag)
-                return (f"Training paused — the lagging Pokémon ({names}) are too hurt. "
-                        "Call heal(), then train_party() again.")
-            ti, trainee = ok[0]
+            lag = self._lagging_mons(party) if balance else []
+            if balance and not lag:
+                break
+            if not balance and party[0].level >= target_level:
+                break
             ctx = self.reader.detect_context()
             if ctx == GameContext.IN_BATTLE:
-                if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
-                    self._auto_fight()           # never experiment in a trainer battle
+                if balance and not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
+                    ok = [p for _, p in lag if healthy_enough(p, self._GRIND_HP_FLOOR)]
+                    if ok:
+                        self._train_fight((ok[0].species_id, ok[0].max_hp))
+                    else:
+                        self._auto_fight()
                 else:
-                    self._train_fight((trainee.species_id, trainee.max_hp))
+                    self._auto_fight()
                 battles += 1
                 st["stuck"] = 0
             elif ctx == GameContext.OVERWORLD:
-                abort = self._grass_step(st, "train_party()")
+                # Between fights: top up HP/PP before the next one rather than into a stalemate.
+                if balance:
+                    why = party_needs_restock(party, self._GRIND_HP_FLOOR)
+                    if not why and not any(healthy_enough(p, self._GRIND_HP_FLOOR) for _, p in lag):
+                        why = "the lagging Pokémon are hurt"
+                else:
+                    lead = party[0]
+                    why = ""
+                    if lead.max_hp and lead.hp_percent < self._GRIND_HP_FLOOR:
+                        why = f"{lead.species_name or 'the lead'} HP is low ({lead.hp_percent:.0%})"
+                    elif not can_attack(lead) or attack_pp(lead) <= 2:
+                        why = f"{lead.species_name or 'the lead'} is out of attack PP"
+                if why:
+                    if heals >= self._AUTO_HEALS:
+                        return (f"Grinding paused ({why}) after {heals} automatic heals. "
+                                f"Call heal(), then {again} again.")
+                    heals += 1
+                    abort = self._restock(why)
+                    if abort:
+                        return abort
+                    continue
+                abort = self._grass_step(st, again)
                 if abort:
                     return abort
+            elif ctx == GameContext.IN_MENU:
+                # A field menu / party screen is open: A would SELECT inside it (it opened a
+                # SHIFT/SUMMARY submenu and spun there for 1400 iterations). Back out instead.
+                self._close_menus()
             else:
-                self.mgba.tap("A")
+                self.mgba.tap("A")        # advance a dialog/transition
                 self.mgba.tick()
         party = self.reader.read_party()
         lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
         gains = []
         for p in party:
-            before = start.get((p.species_id, p.max_hp))
+            before = start.get(p.species_id)
             if before is not None and p.level > before:
                 gains.append(f"{p.species_name} L{before}→L{p.level}")
-        done = not self._lagging_mons(party)
-        head = "Party balanced" if done else "Training progress"
-        return (f"{head} after {battles} battles ({'; '.join(gains) or 'no level-ups yet'}). Team: {lv}."
-                + ("" if done else " Call train_party() again to continue."))
-
-    _GRIND_HP_FLOOR = 0.35
-
-    def _grind(self, target_level: int) -> str:
-        """Grind wild battles until the lead reaches target_level. Wanders the
-        current area to trigger encounters and auto-fights each with the best
-        damaging move — the LLM doesn't drive each battle. Routes the player onto
-        tall grass first (real metatile detection), so it works even if called from
-        a path tile. Stops at the target level, when the lead's HP gets low (heal,
-        then grind again), or if the current map has no grass at all."""
-        from game.state import GameContext
-        party = self.reader.read_party()
-        if not party:
-            return "No Pokémon to grind with."
-        target_level = max(1, min(int(target_level), 100))
-        start = party[0].level
-        if start >= target_level:
-            return f"Lead is already L{start} (target L{target_level}) — no need to grind."
-
-        # No grass on this map ⇒ travel to the nearest grass route ourselves rather
-        # than bouncing a "go find grass" message off the model (it ignores it).
-        if self._nearest_grass() is None and not self._relocate_to_grass():
-            return ("No tall grass reachable from here — go_to a route with grass "
-                    "(e.g. 'Route 1'/'Route 2' or Viridian Forest), then call "
-                    f"grind({target_level}) again.")
-
-        battles = 0
-        st = {"stuck": 0, "reloc": 0}   # overworld bookkeeping shared with train_party
-        for _ in range(400):
-            party = self.reader.read_party()
-            if not party:
-                break
-            lvl = party[0].level
-            if lvl >= target_level:
-                return (f"Grinded L{start}→L{lvl} in {battles} battles. "
-                        f"heal(), then head to the gym.")
-            if party[0].max_hp and party[0].hp_percent < self._GRIND_HP_FLOOR:
-                return (f"Grinding paused at L{lvl} — lead HP low "
-                        f"({party[0].hp_percent:.0%}). Call heal(), then grind({target_level}) again.")
-            ctx = self.reader.detect_context()
-            if ctx == GameContext.IN_BATTLE:
-                self._auto_fight()
-                battles += 1
-                st["stuck"] = 0
-            elif ctx == GameContext.OVERWORLD:
-                abort = self._grass_step(st, f"grind({target_level})")
-                if abort:
-                    return abort
-            else:
-                self.mgba.tap("A")        # advance a dialog/transition
-                self.mgba.tick()
-        party = self.reader.read_party()
-        lvl = party[0].level if party else start
-        return f"Grinded L{start}→L{lvl} in {battles} battles. Call grind({target_level}) again to continue."
+        extra = f", {heals} automatic heal(s)" if heals else ""
+        if balance:
+            done = not self._lagging_mons(party)
+            head = "Party balanced" if done else "Training progress"
+            return (f"{head} after {battles} battles{extra} ({'; '.join(gains) or 'no level-ups yet'}). "
+                    f"Team: {lv}." + ("" if done else " Call grind() again to continue."))
+        lvl = party[0].level if party else start_lead
+        if lvl >= target_level:
+            return f"Grinded L{start_lead}→L{lvl} in {battles} battles{extra}. Team: {lv}."
+        return f"Grinded L{start_lead}→L{lvl} in {battles} battles{extra}. Call {again} again to continue."

@@ -28,10 +28,10 @@ def test_best_move_skips_out_of_pp():
     assert AgentClient._best_damaging_move(*mon) == "Tackle"
 
 
-def test_best_move_falls_back_to_any_move_with_pp():
-    # Only status moves have PP (all 0 listed power) → return the first with PP.
+def test_best_move_never_falls_back_to_a_status_move():
+    # Only status moves have PP: returning Growl made the grind spam it forever (zero-PP loop).
     mon = _mon(["Growl", "Leech Seed", "", ""], [40, 10, 0, 0])
-    assert AgentClient._best_damaging_move(*mon) in ("Growl", "Leech Seed")
+    assert AgentClient._best_damaging_move(*mon) is None
 
 
 def test_best_move_none_when_all_out_of_pp():

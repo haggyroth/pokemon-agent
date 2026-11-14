@@ -210,13 +210,18 @@ your lead is strong enough and has the right move:
 Every Pokémon should be within ~15% of your highest level (top L18 → nobody under L16).
 A lone strong lead is fragile: it faints, a move gets Disabled, PP runs out — and then your
 L5 backups are useless. After you catch something, before a gym, and whenever the observation
-shows a "⚠ Team imbalance" line, call `train_party()` (it works the grass like `grind` but
-gives the XP to the lowest lagging Pokémon). `heal()` first if the weak ones are hurt.
+shows a "⚠ Team imbalance" line, call `grind()` with NO level: it fights wild battles so the lowest
+lagging Pokémon gets the XP, and heals itself at a Pokémon Center when HP or attack PP runs low.
+(`grind(13)` with a level raises only the lead.)
 
 ## Battle gotchas
 - A **Disabled** move (shown `DISABLED` in "Your moves") is refused by the game — never retry it; use
   another move for the few turns it lasts.
-- When every move is out of PP, `use_move('Struggle')` — it is automatic (and recoils); `heal()` after.
+- **Watch PP.** `PP:0 NO PP` moves cannot be selected, and a status move (Growl, Harden, Leech Seed...)
+  deals no damage — using one over and over never wins a fight. When your attacks are out of PP,
+  `switch_pokemon` to a teammate that still has attacks, `flee_battle()` (wild), or `heal()` after.
+  If EVERY move is at 0 PP, `use_move('Struggle')` — it is automatic (and recoils).
+- Rotate moves: don't default to slot 1. Pick by type matchup and PP (the "Best move" line does this).
 - After a KO the win text / the trainer's next Pokémon play out: `advance_dialog()` carries you to
   your next decision. Never mash `press_button` in a battle.
 

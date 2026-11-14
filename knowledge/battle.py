@@ -87,6 +87,11 @@ def annotate_moves(move_names: list[str],
             pp_tag += " WON'T STICK (already statused)"
 
         mtype = MOVE_TYPE.get(name)
+        if name in STATUS_MOVES:
+            # No damage, so type effectiveness is meaningless (it used to read "Leech Seed ×4 SUPER").
+            tl = f"{_type_label(mtype)}/" if mtype else ""
+            parts.append(f"[{slot}]{name}[{tl}Status — deals NO damage{pp_tag}]")
+            continue
         if mtype is None:
             parts.append(f"[{slot}]{name}[?{pp_tag}]")
             continue
@@ -126,7 +131,8 @@ def battle_summary(move_names: list[str],
                    attacker_types: tuple[str, ...] = (),
                    opponent_status: str = "",
                    disabled_slot: int | None = None,
-                   disabled_turns: int = 0) -> str:
+                   disabled_turns: int = 0,
+                   backup_hint: str = "") -> str:
     """Full battle analysis block injected into the obs string during IN_BATTLE.
 
     `attacker_types` (the acting Pokémon's types) enables a STAB bonus when
@@ -151,6 +157,22 @@ def battle_summary(move_names: list[str],
             n and idx < len(pp_list) and pp_list[idx] > 0 for idx, n in enumerate(move_names)):
         lines.append("No usable move left (all out of PP or Disabled): call use_move('Struggle') — it is "
                      "automatic — or switch_pokemon to a Pokémon that still has moves.")
+
+    if pp_list is not None and move_names:
+        from knowledge.leafgreen_data import MOVE_POWER
+        usable_attack = any(
+            n and n not in STATUS_MOVES and MOVE_POWER.get(n, 1) > 0 and idx < len(pp_list)
+            and pp_list[idx] > 0 and idx != disabled_slot
+            for idx, n in enumerate(move_names))
+        has_pp = any(n and idx < len(pp_list) and pp_list[idx] > 0 for idx, n in enumerate(move_names))
+        if has_pp and not usable_attack:
+            lines.append("⚠ NO ATTACKING MOVE WITH PP — status moves deal no damage and repeating one never "
+                         "wins. " + (backup_hint or "switch_pokemon to a teammate that can attack, "
+                                     "flee_battle() if wild, and heal() afterwards (restores PP)."))
+        elif usable_attack and pp_list and sum(
+                pp_list[i] for i, n in enumerate(move_names)
+                if n and n not in STATUS_MOVES and i < len(pp_list) and i != disabled_slot) <= 3:
+            lines.append("⚠ Attack PP almost gone — heal() soon (a Pokémon Center restores PP).")
 
     if opp_types:
         # Suggest the best *damaging* move, ranked by an approximate expected

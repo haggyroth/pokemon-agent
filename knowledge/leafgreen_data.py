@@ -469,3 +469,24 @@ POKEMON_TYPES: dict[str, tuple[str, ...]] = {
     "DRATINI": ("DRG",),         "DRAGONAIR": ("DRG",),      "DRAGONITE": ("DRG", "FLY"),
     "MEWTWO": ("PSY",),          "MEW": ("PSY",),
 }
+
+
+# ── Complete move coverage (generated) ────────────────────────────────────────
+# The curated tables above miss many real moves (Thunder Shock, Horn Attack, Take Down, Facade...).
+# A missing move used to read as "no power" → treated as a status move. Fill every gap from the
+# generated decomp table; the hand-tuned values above always win. Power 1 in the decomp means a
+# fixed-damage move (Seismic Toss, Dragon Rage, Sonic Boom...) — rank it as a modest 40.
+def _merge_generated_moves() -> None:
+    global STATUS_MOVES
+    from knowledge.move_data import MOVE_DATA
+    extra_status = set()
+    for _name, (_pw, _typ, _pp) in MOVE_DATA.items():
+        MOVE_TYPE.setdefault(_name, _typ)
+        if _pw > 0:
+            MOVE_POWER.setdefault(_name, 40 if _pw == 1 else _pw)
+        elif _name not in MOVE_POWER:
+            extra_status.add(_name)
+    STATUS_MOVES = frozenset(STATUS_MOVES | extra_status)
+
+
+_merge_generated_moves()

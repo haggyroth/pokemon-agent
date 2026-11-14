@@ -502,7 +502,7 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 _top = max(p.level for p in state.party)
                 obs_parts.append(
                     "⚠ Team imbalance: " + ", ".join(f"{p.species_name} L{p.level}" for _, p in _lag)
-                    + f" trail your top L{_top} by >15% — call train_party() (heal() first if hurt) so "
+                    + f" trail your top L{_top} by >15% — call grind() with no level (it heals itself) so "
                     "the backups can actually fight.")
         # Under-levelled-for-Brock nudge: no badges yet and lead below the
         # ~L13 Vine Whip breakpoint → grind before challenging the gym.
@@ -523,11 +523,18 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 move_names, pp_view, d_slot, d_turns = list(lead.move_names), lead.pp, None, 0
             lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
             enemy = reader.read_enemy_lead()
+            from knowledge.party import can_attack as _can_attack, healthy_enough as _healthy
+            _act = reader.read_active_battle_species()
+            _backups = [f"{p.species_name} (slot {i + 1})" for i, p in enumerate(state.party)
+                        if p.species_id != _act and _healthy(p, 0.3) and _can_attack(p)]
+            _hint = (("Teammates that can still attack: " + ", ".join(_backups) +
+                      " — switch_pokemon to one.") if _backups else "")
             bsummary = battle_summary(move_names, run.current_enemy,
                                       lead.hp_percent, pp_view,
                                       attacker_types=lead_types,
                                       opponent_status=enemy.status if enemy else "",
-                                      disabled_slot=d_slot, disabled_turns=d_turns)
+                                      disabled_slot=d_slot, disabled_turns=d_turns,
+                                      backup_hint=_hint)
             obs_parts.append(bsummary)
             from agent.lm_studio_client import AgentClient as _AC
             from knowledge.battle import battle_idle_nudge

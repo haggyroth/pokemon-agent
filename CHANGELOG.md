@@ -5,6 +5,23 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — zero-PP loop + grind/train_party merge (second watched run)
+- fix(battle): `_best_damaging_move` no longer falls back to a status move. With attacks out of PP the
+  grind/train loop picked Growl/Harden forever (run 20261113-222109: one `train_party()` call spun for
+  26 minutes). New `_no_attack_turn`: all PP gone → Struggle; a teammate that can still attack →
+  switch to it; wild → flee; trainer with nobody left → best move with PP.
+- fix(data): the move tables missed ~100 real moves (Thunder Shock was spelled "Thundershock", plus
+  Horn Attack, Take Down, Facade, …), which read as "no power". `knowledge/move_data.py` is generated
+  from the decomp (`tools/gen_move_data.py`) and merged under the curated tables.
+- feat: ONE grinding tool. `grind(level)` raises the lead; `grind()` with no level balances the team
+  (the old `train_party`, kept as an alias). Both heal themselves at a Pokémon Center (HP or attack PP
+  low, resuming after wild/trainer interruptions) and walk back to grass — up to 8 round-trips per call.
+- fix(heal): `heal()` no longer refuses "full HP" when attacks are at 0 PP (a Center restores PP).
+- fix(grind): an open field menu/party screen is closed with B instead of pressing A inside it.
+- feat(obs): status moves read `Status — deals NO damage` (Leech Seed used to show ×4 SUPER); a
+  `⚠ NO ATTACKING MOVE WITH PP` line names teammates that can attack; low attack PP warns to heal;
+  repeating a no-damage move twice in `use_move` adds a warning.
+
 ### Added — run logging + fixes from the first watched 500-call run (gemma4:31b-cloud)
 - feat(logging): every `python main.py` run writes `logs/runs/<timestamp>/run.jsonl` (+ `meta.json`):
   one line per decision tick (observation, state, reasoning, actions), per LLM call (tokens,

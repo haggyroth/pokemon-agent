@@ -783,7 +783,7 @@ class NavMixin:
         if lag and getattr(self, "_balance_warned", None) != cur:
             self._balance_warned = cur
             names = ", ".join(f"{p.species_name} L{p.level}" for _, p in lag)
-            return (f"Your team is lopsided (top L{top}; lagging: {names}). Call train_party() first so "
+            return (f"Your team is lopsided (top L{top}; lagging: {names}). Call grind() (no level) first so "
                     f"every Pokémon is within ~15% of L{top} — you'll need backups if the lead faints "
                     f"or a move gets Disabled. Or call challenge_leader() again to fight anyway.")
         self._walk_to(*approach)
