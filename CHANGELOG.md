@@ -5,6 +5,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — checkpoints + resume (#185 item 2)
+- feat: the run saves an emulator state every `CHECKPOINT_EVERY` decision ticks (default 20, ~19 KB each, newest
+  5 kept) and a permanent one per new badge, under `logs/runs/<ts>/checkpoints/` with a `latest.json`.
+  `RESUME=latest` (or `RESUME=<path.ss1>`) continues a cancelled/stuck run from its last checkpoint.
+
 ### Fixed — catch() after a ball breaks free
 - fix(catch): the post-catch Yes/No probe (nudges Down/Up) no longer runs while the battle action menu is up —
   it flicked the cursor Bag↔Run on screen — and a broke-free ball now returns after ~20 idle iterations at the

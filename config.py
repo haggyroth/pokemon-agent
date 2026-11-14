@@ -68,6 +68,11 @@ START_FROM_SAVE   = os.path.expanduser(os.getenv("START_FROM_SAVE", ""))
 #   no Continue, no quest-log recap. Takes precedence over START_FROM_SAVE.
 #   Handy for testing from a fixed spot (e.g. the Pallet Town exterior).
 START_FROM_STATE  = os.path.expanduser(os.getenv("START_FROM_STATE", ""))
+# RESUME: "latest" (newest checkpoint under logs/runs/*/checkpoints/) or a path to a checkpoint .ss1 —
+#   loads it as START_FROM_STATE, so a cancelled/stuck run continues from its last checkpoint.
+RESUME            = os.getenv("RESUME", "").strip()
+# CHECKPOINT_EVERY: save an emulator checkpoint every N decision ticks (and on every new badge); 0 = off.
+CHECKPOINT_EVERY  = _env_int("CHECKPOINT_EVERY", 20, minimum=0)
 MAX_STEPS         = _env_int("MAX_STEPS", 0, minimum=0)
 # USE_VISION: attach the live screenshot (and overhead area maps) to the model.
 # Set false for text-only models, or models whose vision is unstable/blows the
