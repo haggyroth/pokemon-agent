@@ -277,7 +277,49 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
         self.run_log.event("tool", name=name, args=args_json, secs=round(secs, 2),
                            result=str(result)[:800], **snap)
 
+    def _progress_signature(self):
+        """What 'making progress' means to the watchdog: location, party growth, money, and (in a
+        battle) the foe's species/HP. Deliberately NOT our own HP/PP or the menu state — a stalemate
+        like Growl-spam or a Bag<->Run bounce keeps changing those while nothing real advances."""
+        r = self.reader
+        sig = (r.read_current_map(), r.read_player_pos(),
+               tuple((p.species_id, p.level) for p in r.read_party()), r.read_money())
+        from game.state import GameContext
+        if r.detect_context() == GameContext.IN_BATTLE:
+            foe = r.read_enemy_lead()
+            if foe:
+                sig += (foe.species_id, foe.current_hp)
+        return sig
+
     def _execute(self, name: str, args_json: str) -> str:
+        """Run one tool under a frame budget: a skill that spins (or stops making progress) is cut off
+        with an explanation instead of running for half an hour with no model in the loop."""
+        from agent.budgets import budget_for
+        from game.watchdog import FrameWatchdog, SkillBudgetExceeded
+        budget = budget_for(name)
+        setter = getattr(self.mgba, "set_watchdog", None)
+        if budget is None or setter is None:
+            return self._execute_inner(name, args_json)
+        setter(FrameWatchdog(budget[0], budget[1], probe=self._progress_signature))
+        try:
+            return self._execute_inner(name, args_json)
+        except SkillBudgetExceeded as e:
+            self.run_log.event("watchdog", tool=name, reason=e.reason, frames=e.frames,
+                               stalled=e.stalled)
+            where = ""
+            try:
+                st = self.reader.read_state()
+                where = (f" Now: {st.context.name} on map {st.map_bank}/{st.map_id} at "
+                         f"({st.player_x},{st.player_y}).")
+            except Exception:
+                pass
+            return (f"{name} was stopped: {e.reason}.{where} Whatever it was doing isn't working — read "
+                    "the observation (close_menus / advance_dialog if a menu or text box is stuck) and "
+                    "try a different approach.")
+        finally:
+            setter(None)
+
+    def _execute_inner(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
         match name:
             case "press_button":
