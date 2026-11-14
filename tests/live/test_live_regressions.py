@@ -127,7 +127,7 @@ def test_get_cut_then_enter_the_vermilion_gym_and_open_the_locks(live):
     assert "Got HM01" in out or "already knows Cut" in out, out
     assert live.c._knows_cut()
     for _ in range(6):
-        live.c._execute("go_to", json.dumps({"destination": "Gym"}))
+        live.c._execute("go_to", json.dumps({"destination": "Gym", "force": True}))
         if live.r.read_current_map() == (9, 6):
             break
     assert live.r.read_current_map() == (9, 6)

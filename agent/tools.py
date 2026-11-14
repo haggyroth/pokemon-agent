@@ -57,19 +57,20 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "go_to",
-        "description": "Travel to a named map ('Pewter City', 'Route 1') OR a waypoint "
-                       "('Pokemon Center', 'Mart', 'Gym'), auto-routing across map "
-                       "connections and building/cave doors — it finds the route and "
-                       "walks/crosses each step for you. Waypoints go to the nearest one. "
-                       "It AUTO-FLEES wild battles along the way so travelling through a "
-                       "route/forest/cave is one call (the fast way through Viridian "
-                       "Forest). It stops — call again to resume — on a TRAINER battle "
-                       "(win it first), when your HP gets low (heal() first), or if the "
-                       "way is blocked. The main overworld travel tool.",
+        "description": "TRAVEL ONLY: go to a named map ('Pewter City', 'Route 1') or a waypoint "
+                       "('Pokemon Center', 'Mart', 'Gym'), routing across connections and doors for you. "
+                       "It does NOT heal, restock, catch or level anyone — those are your job and come "
+                       "first: it refuses to start a trip while your party is hurt or out of attack PP "
+                       "(heal() first; force=true overrides) and reminds you what else is overdue. It "
+                       "flees ordinary wild battles to keep moving (unless a catch or some XP is wanted) "
+                       "and fights trainers. It stops — call again to resume — on a TRAINER battle you "
+                       "lose, low HP, a new species worth catching, or a blocked way.",
         "parameters": {"type": "object", "properties": {
             "destination": {"type": "string",
                             "description": "Map name (e.g. 'Viridian City') or waypoint "
                                            "('Pokemon Center', 'Mart', 'Gym')."},
+            "force": {"type": "boolean",
+                      "description": "skip the pre-flight check (hurt / out of PP). Rarely right."},
         }, "required": ["destination"]},
     }},
     {"type": "function", "function": {

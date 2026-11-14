@@ -485,34 +485,21 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
         # Team-building nudge: a lone/pair Pokémon can't sustain a dungeon (its
         # HP + move PP drain with no way to spread the load) or the Elite Four.
         # go_to now stops on new wild species so the model can catch a roster.
-        if (not in_battle and state.context == GameContext.OVERWORLD
-                and len(state.party) < 3):
-            roster = ", ".join(f"{p.species_name} L{p.level}"
-                               for p in state.party if p.species_name)
-            obs_parts.append(
-                f"⚠ Team: only {len(state.party)} Pokémon ({roster}) — too few to "
-                "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
-                "tall grass, weaken a wild Pokémon with use_move, then catch(). "
-                "(Travel stops on NEW species so you can catch them.)")
-        # Team-balance nudge: every Pokémon within ~15% of the top level.
-        if (not in_battle and state.context == GameContext.OVERWORLD and len(state.party) >= 2):
-            from knowledge.party import lagging_mons
-            _lag = lagging_mons(state.party)
-            if _lag:
-                _top = max(p.level for p in state.party)
-                obs_parts.append(
-                    "⚠ Team imbalance: " + ", ".join(f"{p.species_name} L{p.level}" for _, p in _lag)
-                    + f" trail your top L{_top} by >15% — call grind() with no level (it heals itself) so "
-                    "the backups can actually fight.")
-        # Under-levelled-for-Brock nudge: no badges yet and lead below the
-        # ~L13 Vine Whip breakpoint → grind before challenging the gym.
-        if (not in_battle and ltm.data["badges_earned"] == 0
-                and lead.level and lead.level < 13
-                and state.context == GameContext.OVERWORLD):
-            obs_parts.append(
-                f"⚠ Lead is L{lead.level} — under-levelled for Brock (want ~L13 "
-                f"for Vine Whip). Stand in tall grass and call grind(13) to level "
-                f"up before the Pewter Gym")
+        # Readiness: the fundamentals a good player sorts out BEFORE walking on — heal (HP/PP), restock,
+        # catch a real team, level the whole party, level for the next gym. Replaces the separate
+        # "team too small / imbalance / under-levelled for Brock" nudges.
+        if not in_battle and state.context == GameContext.OVERWORLD and state.party:
+            from knowledge.readiness import assess as _assess, render as _render
+            try:
+                _bag = reader.read_bag()
+                _balls = sum(_bag.get(b, 0) for b in (1, 2, 3, 4))
+                _pots = sum(q for iid, q in reader.read_items_pocket() if iid in (13, 22, 21))
+                _money = reader.read_money()
+            except Exception:
+                _balls = _pots = _money = 0
+            _block = _render(_assess(state.party, _balls, _pots, _money, ltm.data.get("gyms_beaten", [])))
+            if _block:
+                obs_parts.append(_block)
         if in_battle:
             # Moves/PP of the ACTIVE battler (gBattleMons[0]) — party[0] is not necessarily the one
             # fighting after a switch — with a Disabled move's PP zeroed so it is never suggested.

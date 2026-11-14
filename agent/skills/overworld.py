@@ -85,6 +85,11 @@ class OverworldMixin:
             return False
         if any(m.current_hp != m.max_hp for m in party):
             return True
+        # Attacks nearly gone also counts (readiness' must-heal): a Center restores PP, and go_to's
+        # pre-flight refuses to travel in that state, so heal() must agree it is worth doing.
+        from knowledge.readiness import blocking
+        if blocking(self._readiness()):
+            return True
         return any(m.move_names and m.max_hp and any(m.move_names) and attack_pp(m) == 0
                    and self._has_attack(m) for m in party)
 

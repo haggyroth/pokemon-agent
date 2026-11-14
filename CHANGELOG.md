@@ -5,6 +5,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — play like a trainer, not a travel agent
+- feat: `knowledge/readiness.py` assesses the party's actual state — MUST heal (lead < 60% HP, anyone < 50%, a
+  faint, attack PP nearly/completely gone) and SHOULD restock / catch (team < 4) / train (lagging members) /
+  level (best below the next gym's ace − 1). The observation shows it as a "READINESS" block each overworld tick,
+  replacing the separate team-size / imbalance / Brock nudges.
+- feat: the model-facing `go_to` is travel only: it refuses to start a trip while a must-heal need exists (heal(),
+  or `force=true`), still goes to Centers/Marts when hurt, and appends the overdue should-do items to its result.
+  Internal callers (grind relocation, quests) are unaffected.
+- feat: while travelling, `go_to` fights up to 4 ordinary wild battles per call for XP (training the lowest lagging
+  member) when levelling is due, the lead is ≥ 60% and nothing must-heal — instead of fleeing every encounter.
+- feat: system prompt gains "Play like a Pokémon trainer, not a travel agent" (heal → restock → catch → level →
+  then travel; watch PP, rotate moves) and softens the flee-everything advice; `heal()` now also fires when attack
+  PP is nearly gone. The zero-token bot follows the same pre-flight.
+
 ### Fixed — Pokémart enter/exit loop in Cerulean (run 20261114-101556)
 - fix(nav): `_go_to_map` picked the nearest edge tile by distance even when it sat in another REGION of a split
   map (Cerulean's north edge at (28,0) is a pocket apart from the road at x=22..24), so the walk failed — and the
