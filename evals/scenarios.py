@@ -82,5 +82,27 @@ SCENARIOS: list[Scenario] = [
 ]
 
 
+SCENARIOS += [
+    Scenario(
+        name="catch_a_pokemon",
+        goal=goals.party_size_at_least(2),
+        max_steps=60,
+        start_save=DEFAULT_SAVE,
+        notes="Catch a first wild Pokémon (go_to a grass route, weaken it, catch with a nickname). "
+              "Exercises catch(), the nickname vetting/naming flow and the post-catch menus.",
+    ),
+    Scenario(
+        name="balance_party",
+        goal=goals.party_balanced(),
+        max_steps=80,
+        start_state=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "saves", "live", "threemon.ss1"),
+        notes="Viridian City, party Bulbasaur L8 / Pikachu L5 / Caterpie L5 (local fixture, see "
+              "tests/live/README.md). The agent should call grind() with no level so the laggards "
+              "are brought within ~15% — covers train/grind, PP management and self-healing.",
+    ),
+]
+
+
 def by_name(name: str) -> Optional[Scenario]:
     return next((s for s in SCENARIOS if s.name == name), None)
