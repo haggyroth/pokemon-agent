@@ -42,3 +42,10 @@ def test_no_walking_route_from_cerulean_back_west():
     c.reader = SimpleNamespace(read_current_map=lambda: (3, 3), read_player_pos=lambda: (24, 0))
     out = c._go_to("Pewter City")
     assert "no walking route" in out.lower() and "Fly" in out
+
+
+def test_cerulean_north_edge_tiles_split_into_separate_regions():
+    # (28,0) is a different pocket from the road at x=22..24: picking the nearest edge tile by distance
+    # (the old behaviour) sent the walk to an unreachable tile — see the Pokémart enter/exit loop.
+    assert mg.region_at((3, 3), 24, 0) == "0" and mg.region_at((3, 3), 28, 0) == "1"
+    assert mg.region_at((3, 3), 29, 29) == "0"

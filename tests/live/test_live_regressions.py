@@ -163,3 +163,13 @@ def test_grind_catches_a_worthwhile_wild_pokemon_and_names_it(live, monkeypatch)
     assert "caught" in out, out
     assert live.c._ball_count() < balls and len(live.r.read_party()) > 3
     assert live.r.detect_context() == GameContext.OVERWORLD
+
+
+def test_leaving_the_cerulean_mart_toward_the_north_does_not_loop_through_the_door(live):
+    """Run 20261114-101556: from inside the Mart, go_to a northern route walked out, picked an unreachable
+    north-edge tile in another region, then 'stepped off the edge' back through the Mart door — forever."""
+    live.load("post_misty")
+    live.c.ltm.data["gyms_beaten"] = ["Brock"]
+    assert live.c._execute("go_to", json.dumps({"destination": "Mart"})).startswith("Arrived")
+    out = live.c._execute("go_to", json.dumps({"destination": "Route 24"}))
+    assert out.startswith("Arrived") and live.r.read_current_map() == (3, 43), out
