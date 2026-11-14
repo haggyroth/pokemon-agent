@@ -2,7 +2,7 @@
 completing the Pokédex is secondary — a full party still catches brand-new species for it.)
 
 The agent used to catch everything new (an L2 Geodude, a Harden-only Kakuna) and then had to grind it
-up from far behind. The rules weigh what a catch COSTS (levels of grinding to get it within ~25% of the
+up from far behind. The rules weigh what a catch COSTS (levels of grinding to get it within 7 levels of the
 team's top level — see knowledge.party) against what it ADDS (a strong evolution line, a type the team
 lacks). The verdict is advice shown to the model and used to decide which wild battles go_to stops on;
 the model can still choose to catch anything.
@@ -13,9 +13,12 @@ from knowledge.party import min_level_for
 from knowledge.species_data import SPECIES_DATA
 
 PREMIUM_LINE = 450        # best evolution ≥ this BST → worth some grinding (Abra, Growlithe, Gastly…)
-FREE_DEBT = 3             # levels behind the balance floor we'll accept for any new species
-PREMIUM_DEBT = 6          # …and for a premium line
+FREE_DEBT = 8             # levels behind the balance floor we'll accept for a decent line (best form ≥ WEAK_LINE)
+TYPE_DEBT = 3             # …and for a weak line that only adds a new type
+PREMIUM_DEBT = 16         # …and for a premium line / a clear upgrade (tag-training with the ace levels a
+                          #    low catch quickly: it earns half of every kill)
 WEAK_LINE = 400           # best evolution below this is only worth it as a type-coverage pickup
+UPGRADE_MARGIN = 50       # a line this much stronger than the team's weakest line is an upgrade
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,13 @@ def _team_types(party) -> set:
     return out
 
 
+def weakest_line(party):
+    """(best-evolution BST, species_name) of the team's weakest member by evolution line, or None."""
+    rows = [(SPECIES_DATA[p.species_id][2], getattr(p, "species_name", "") or "?")
+            for p in party if p.species_id in SPECIES_DATA]
+    return min(rows) if rows else None
+
+
 def evaluate(party, species_id: int, level: int, max_team: int = 6, dex_owned: bool | None = None) -> Verdict:
     """Verdict for a wild `species_id` at `level` against the current `party`."""
     data = SPECIES_DATA.get(species_id)
@@ -41,20 +51,28 @@ def evaluate(party, species_id: int, level: int, max_team: int = 6, dex_owned: b
     bst, types, line_best = data
     if any(p.species_id == species_id for p in party):
         return Verdict(False, "you already have one")
+    top = max((p.level for p in party), default=0)
+    debt = max(0, min_level_for(top) - level) if top else 0
+    weak = weakest_line(party)
+    upgrade = bool(weak and line_best >= weak[0] + UPGRADE_MARGIN)
     if len(party) >= max_team:
+        if upgrade and debt <= PREMIUM_DEBT:
+            return Verdict(True, f"a stronger line than your {weak[1]} (best form BST {line_best} vs {weak[0]}) "
+                                 "— the party is full, so it goes to the PC box; pc_swap it in", debt)
         if dex_owned is False:
             # Secondary objective: complete the Pokédex. A full party sends the catch to the PC box, where it
             # costs no levelling — worth a ball for the new entry.
             return Verdict(True, "a NEW Pokédex entry (your party is full, so it goes to the PC box)")
         return Verdict(False, "your party is full — it would go to the PC box")
-    top = max((p.level for p in party), default=0)
-    debt = max(0, min_level_for(top) - level) if top else 0
     premium = line_best >= PREMIUM_LINE
     new_type = bool(set(types) - _team_types(party))
 
-    if debt <= FREE_DEBT and (line_best >= WEAK_LINE or new_type):
-        return Verdict(True, "close to your team's level" + (", adds a new type" if new_type else ""), debt)
-    if premium and debt <= PREMIUM_DEBT:
+    if debt <= FREE_DEBT and (line_best >= WEAK_LINE or upgrade):
+        extra = ", adds a new type" if new_type else (", a stronger line than your " + weak[1] if upgrade else "")
+        return Verdict(True, "close to your team's level" + extra, debt)
+    if debt <= TYPE_DEBT and new_type:
+        return Verdict(True, "close to your team's level, adds a new type", debt)
+    if (premium or upgrade) and debt <= PREMIUM_DEBT:
         return Verdict(True, f"strong evolution line (best form BST {line_best}); ~{debt} levels of "
                              "training needed", debt)
     if debt > FREE_DEBT:

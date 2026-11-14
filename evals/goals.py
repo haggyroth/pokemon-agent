@@ -45,10 +45,10 @@ def party_size_at_least(n: int) -> Goal:
 
 
 def party_balanced(min_size: int = 2) -> Goal:
-    """Every alive party member is within ~25% of the top level (knowledge.party.lagging_mons)."""
+    """Every party member is within 7 levels of the top level (knowledge.party.lagging_mons)."""
     from knowledge.party import lagging_mons
     return Goal(lambda s, _l: len(s.party) >= min_size and not lagging_mons(s.party),
-                f"party of ≥{min_size} balanced within ~25% of the top level")
+                f"party of ≥{min_size} balanced within 7 levels of the top level")
 
 
 def all_of(*goals: Goal) -> Goal:

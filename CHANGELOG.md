@@ -5,6 +5,26 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — training swap-back, false "balanced", party composition (watched-run follow-up)
+- fix(training): `_train_fight` swapped the trainee back in right after tagging it out for the ace (its `switched_in`
+  flag was only set when it had been brought in, not when it started the battle) — so the trainee took the foe's hits
+  for no XP. Rewritten as a proper tag-switch: trainee starts → (easy foe: fights alone) / (otherwise: switched out on
+  TURN ONE for a finisher) → never swapped back. The finisher is the lowest-level *capable* teammate
+  (`knowledge.party.pick_finisher`), so finishing XP rotates through the whole team instead of always feeding the ace.
+  A benched trainee (travel fights) is brought in only if the free hit is survivable. Verified live: a L3 trainee
+  gains XP, keeps its HP, one switch per battle.
+- fix(grind): a fainted trainee dropped out of `lagging_mons`, so "Party balanced" was reported beside L7/L6/L5 mons
+  and an L38 ace (they were just fainted). Fainted members now count as lagging.
+- change(balance): the rule is now "nobody more than 7 levels under the top" (was ratio 0.75 → 10 levels at L40).
+- change(grind): `grind(level=N)` raises the BEST Pokémon to N (not the lead) and still rotates lagging teammates in;
+  restock uses the whole-team check instead of the lead's HP/PP. Travel trainer battles also rotate a lagging mon in.
+- feat(catch): `go_to` no longer flees worthwhile wild Pokémon — it weakens and catches them (autopilot nickname) when the
+  catch policy says so, and reports "Caught on the way". The old "offer once, only when the team is under 4" path never
+  built a team past four. Policy: bigger debt allowances (8 / 16), a *stronger line than the team's weakest member* is an
+  upgrade (also with a full party — it goes to the box with a `pc_swap` hint), weak lines that only add a type stay strict.
+- feat(prompt/obs): battle observation gets an `XP SHARE` line (lead with the weak mon, switch on turn 1), and the
+  prompt gains party-composition and tag-switch guidance.
+
 ### Added — PC boxes (drive the storage system)
 - feat: `pc_boxes()` lists every stored Pokémon (read from `gPokemonStoragePtr` — 14 boxes × 30 × 80-byte BoxPokemon at
   +4; levels derived from experience via the new `knowledge/growth.py` + generated growth rates); `pc_deposit`,

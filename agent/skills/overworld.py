@@ -436,23 +436,37 @@ class OverworldMixin:
 
     # ── Party balancing ─────────────────────────────────────────────────────────
     def _lagging_mons(self, party=None) -> list:
-        """Alive party members more than ~25% below the top level (knowledge.party), lowest first."""
+        """Party members more than BALANCE_GAP (7) levels below the top level (knowledge.party), lowest first
+        — fainted ones included (they are lagging, just waiting for a heal)."""
         from knowledge.party import lagging_mons
         return lagging_mons(party if party is not None else self.reader.read_party())
 
     def _train_fight(self, trainee_sig: tuple) -> None:
         """Fight one WILD battle so the lagging Pokémon (trainee_sig = species_id, max_hp at battle
-        start) earns the experience: bring it in first, let it fight while it is safe, and hand the
-        kill to the strongest teammate when the foe is too tough or the trainee's HP drops (a mon
-        that has been sent out in the battle shares the XP, so even a swap-out still pays)."""
+        start) earns the experience. Gen III splits a kill's XP between every Pokémon that was on the field
+        while the foe was out, so the best play is the classic tag-switch:
+
+          1. the trainee STARTS the battle in front (grind() leads it before the grass step); if it is on the
+             bench (travel fights) it is brought in first, but only when that free foe hit is survivable;
+          2. an EASY foe (about the trainee's level, trainee healthy) is fought by the trainee alone — it
+             keeps all the XP;
+          3. otherwise it is tagged out on TURN ONE, before it can be hurt, for a teammate who finishes the
+             foe (the lowest-level capable one, so the finishing XP rotates through the team) — and it is
+             NEVER swapped back in: that was the bug that fed the trainee to the foe for no XP;
+          4. a trainee that gets hurt mid-fight is tagged out the same way."""
         from game.state import GameContext
+        from knowledge.party import pick_finisher
 
         def find(party, sig):
             return next((i for i, q in enumerate(party) if (q.species_id, q.max_hp) == sig), None)
 
         potions_used: list = []
-        switched_in = tagged_out = False
-        for _ in range(30):
+        plan = {"tagged": False, "tried_in": False}
+        try:
+            self._battle_settle(40)               # gBattleMons[0] is stale until the first action menu is up
+        except Exception:
+            pass
+        for _ in range(40):
             if self._send_next_mon():
                 continue
             if self.reader.detect_context() != GameContext.IN_BATTLE:
@@ -463,22 +477,25 @@ class OverworldMixin:
             t = find(party, trainee_sig)
             foe = self.reader.read_enemy_lead()
             active = self.reader.read_active_battle_species()
-            if t is not None and party[t].current_hp > 0:
-                tm = party[t]
-                if active != tm.species_id and not switched_in:
-                    switched_in = True
-                    self._switch_pokemon(str(t + 1))
-                    continue
-                too_tough = bool(foe and foe.level > tm.level + 4)
-                hurt = tm.max_hp and tm.current_hp / tm.max_hp < 0.45
-                if active == tm.species_id and (too_tough or hurt) and not tagged_out:
-                    tagged_out = True       # it has participated — now let a strong mon finish
-                    others = [(q.level, i) for i, q in enumerate(party)
-                              if i != t and q.current_hp > 0 and q.max_hp
-                              and q.current_hp / q.max_hp >= 0.4]
-                    if others:
-                        self._switch_pokemon(str(max(others)[1] + 1))
-                        continue
+            tm = party[t] if t is not None else None
+            if tm is not None and tm.current_hp > 0 and tm.max_hp and not plan["tagged"]:
+                foe_lv = foe.level if foe and foe.max_hp and foe.level else tm.level
+                frac = tm.current_hp / tm.max_hp
+                if active != tm.species_id:                       # the trainee is on the bench
+                    if not plan["tried_in"]:
+                        plan["tried_in"] = True
+                        if frac >= 0.7 and foe_lv <= tm.level + 10:
+                            self._switch_pokemon(str(t + 1))      # costs a foe hit: only when survivable
+                            continue
+                        plan["tagged"] = True                     # too risky — let the others take this one
+                else:                                             # the trainee is out: has it participated?
+                    plan["tried_in"] = True
+                    if foe_lv > tm.level + 2 or frac < 0.5:
+                        plan["tagged"] = True                     # tag out NOW, for good
+                        fin = pick_finisher(party, t, foe_lv)
+                        if fin is not None:
+                            self._switch_pokemon(str(fin + 1))
+                            continue
             if self._maybe_heal_mid_fight(potions_used):
                 continue
             _ids, names, pp, _d, _t = self._active_moves_view()
@@ -629,14 +646,17 @@ class OverworldMixin:
         none of them) with the best damaging move, and the loop heals itself at a Pokémon Center when
         HP or attack PP runs low, then walks back to grass.
 
-        target_level > 0  → raise the LEAD to that level (e.g. grind(13) before Brock).
-        target_level == 0 → BALANCE the team: every Pokémon within ~25% of the top level. Each wild
-                            fight is fought so the lowest lagging Pokémon earns the XP (it is sent in
-                            first; a strong teammate finishes tough fights; a mon that was in the
-                            battle shares the XP). Evolutions complete automatically."""
+        target_level > 0  → raise the BEST Pokémon to that level (e.g. grind(13) before Brock) — while any
+                            teammate trails by more than 7 levels they take turns leading each fight
+                            (tag-switch: the trainee starts, the ace finishes, both get XP), so the team
+                            doesn't fall further behind while the ace levels.
+        target_level == 0 → BALANCE the team: nobody more than 7 levels under the top. Each wild fight is
+                            fought so the lowest lagging Pokémon earns the XP (it is sent in first; a
+                            teammate finishes tough fights; a mon that was in the battle shares the XP).
+                            Evolutions complete automatically."""
         from game.constants import Addr
         from game.state import GameContext
-        from knowledge.party import attack_pp, can_attack, healthy_enough, party_needs_restock
+        from knowledge.party import healthy_enough, party_needs_restock
         party = self.reader.read_party()
         if not party:
             return "No Pokémon to grind with."
@@ -646,12 +666,13 @@ class OverworldMixin:
                 return "You only have one Pokémon — nothing to balance. Catch a team first, or grind(<level>)."
             if not self._lagging_mons(party):
                 lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
-                return f"Party is balanced (all within ~25% of L{max(p.level for p in party)}): {lv}."
+                return f"Party is balanced (nobody more than 7 levels under L{max(p.level for p in party)}): {lv}."
             again = "grind()"
         else:
             target_level = max(1, min(int(target_level), 100))
-            if party[0].level >= target_level:
-                return f"Lead is already L{party[0].level} (target L{target_level}) — no need to grind."
+            if max(p.level for p in party) >= target_level:
+                return (f"Your best Pokémon is already L{max(p.level for p in party)} (target L{target_level}) "
+                        "— no need to grind.")
             again = f"grind({target_level})"
 
         # No grass here ⇒ travel to the nearest grass route ourselves rather than bouncing a
@@ -661,7 +682,7 @@ class OverworldMixin:
                     f"(e.g. 'Route 1'/'Route 2' or Viridian Forest), then call {again} again.")
 
         start = {p.species_id: p.level for p in party}      # keyed by species: max HP changes on level-up
-        start_lead = party[0].level
+        start_lead = max(p.level for p in party)
         battles = heals = 0
         caught: list = []
         st = {"stuck": 0, "reloc": 0}
@@ -669,10 +690,10 @@ class OverworldMixin:
             party = self.reader.read_party()
             if not party:
                 break
-            lag = self._lagging_mons(party) if balance else []
+            lag = self._lagging_mons(party)
             if balance and not lag:
                 break
-            if not balance and party[0].level >= target_level:
+            if not balance and max(p.level for p in party) >= target_level:
                 break
             ctx = self.reader.detect_context()
             if ctx == GameContext.IN_BATTLE:
@@ -684,7 +705,7 @@ class OverworldMixin:
                         battles += 1
                         st["stuck"] = 0
                         continue
-                if balance and not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
+                if lag and not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
                     ok = [p for _, p in lag if healthy_enough(p, self._GRIND_HP_FLOOR)]
                     if ok:
                         self._train_fight((ok[0].species_id, ok[0].max_hp))
@@ -696,17 +717,9 @@ class OverworldMixin:
                 st["stuck"] = 0
             elif ctx == GameContext.OVERWORLD:
                 # Between fights: top up HP/PP before the next one rather than into a stalemate.
-                if balance:
-                    why = party_needs_restock(party, self._GRIND_HP_FLOOR)
-                    if not why and not any(healthy_enough(p, self._GRIND_HP_FLOOR) for _, p in lag):
-                        why = "the lagging Pokémon are hurt"
-                else:
-                    lead = party[0]
-                    why = ""
-                    if lead.max_hp and lead.hp_percent < self._GRIND_HP_FLOOR:
-                        why = f"{lead.species_name or 'the lead'} HP is low ({lead.hp_percent:.0%})"
-                    elif not can_attack(lead) or attack_pp(lead) <= 2:
-                        why = f"{lead.species_name or 'the lead'} is out of attack PP"
+                why = party_needs_restock(party, self._GRIND_HP_FLOOR)
+                if not why and lag and not any(healthy_enough(p, self._GRIND_HP_FLOOR) for _, p in lag):
+                    why = "the lagging Pokémon are hurt"
                 if why:
                     if heals >= self._AUTO_HEALS:
                         return (f"Grinding paused ({why}) after {heals} automatic heals. "
@@ -716,7 +729,7 @@ class OverworldMixin:
                     if abort:
                         return abort
                     continue
-                if balance and lag:
+                if lag:
                     ok_t = [p for _, p in lag if healthy_enough(p, self._GRIND_HP_FLOOR)]
                     if ok_t and (party[0].species_id, party[0].max_hp) != (ok_t[0].species_id, ok_t[0].max_hp):
                         self._lead_trainee(ok_t[0])      # trainee fights alone → all the XP
@@ -745,7 +758,7 @@ class OverworldMixin:
             head = "Party balanced" if done else "Training progress"
             return (f"{head} after {battles} battles{extra} ({'; '.join(gains) or 'no level-ups yet'}). "
                     f"Team: {lv}." + ("" if done else " Call grind() again to continue."))
-        lvl = party[0].level if party else start_lead
+        lvl = max((p.level for p in party), default=start_lead)
         if lvl >= target_level:
             return f"Grinded L{start_lead}→L{lvl} in {battles} battles{extra}. Team: {lv}."
         return f"Grinded L{start_lead}→L{lvl} in {battles} battles{extra}. Call {again} again to continue."

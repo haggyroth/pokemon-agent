@@ -233,3 +233,27 @@ def battle_idle_nudge(action_history: list[str], best_move: str | None, limit: i
     return (f"⚠ IDLE IN BATTLE: your last {limit} actions were buttons/waits, not a battle skill. "
             f"Battle text advances by itself — call {move} now (or catch / flee_battle / "
             f"switch_pokemon). Do not press A or wait_frames.")
+
+
+def xp_share_hint(party, active_species: int, foe_level: int = 0) -> str:
+    """One line for model-driven battles: how to get XP into a lagging teammate. Gen III splits a kill's XP
+    between every Pokémon that was on the field while the foe was out, so a weak mon that STARTS the fight and is
+    switched out on turn one still shares the XP — without taking a hit. '' when the team is balanced."""
+    from knowledge.party import lagging_mons, pick_finisher
+    lag = [(i, p) for i, p in lagging_mons(party) if p.current_hp > 0 and p.max_hp]
+    if not lag:
+        return ""
+    top = max(p.level for p in party)
+    idx = next((i for i, p in enumerate(party) if p.species_id == active_species), None)
+    if idx is not None and any(i == idx for i, _ in lag):
+        fin = pick_finisher(party, idx, foe_level)
+        if fin is None:
+            return ""
+        weak, strong = party[idx], party[fin]
+        return (f"XP SHARE: {weak.species_name} (L{weak.level}) trails the team (top L{top}) — "
+                f"switch_pokemon('{strong.species_name}') on THIS turn: {weak.species_name} still shares the XP "
+                f"and is not hit. Do NOT switch it back in.")
+    low = lag[0][1]
+    return (f"XP SHARE: {low.species_name} L{low.level} trails the team (top L{top}). Next fight lead with it "
+            f"(set_lead('{low.species_name}') before walking) and switch to a strong teammate on turn 1 — "
+            "both gain XP. Trainer battles pay 1.5×.")

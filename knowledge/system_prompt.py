@@ -172,8 +172,10 @@ the observation's **READINESS** block (when present) tell you what is overdue:
 3. **Catch** — a team of 1-2 can't carry a gym, a dungeon or a forced switch. Aim for 4-6 Pokémon covering
    different types: catch useful NEW species whenever they appear (weaken, then `catch()`), and `grind()`
    catches worthwhile ones for you.
-4. **Level the whole team** — every Pokémon within ~25% of your best (`grind()` with no level); and your best one
-   up to the next gym's level before you walk in (`grind(N)`).
+4. **Level the whole team** — nobody more than 7 levels under your best (`grind()` with no level); and your best
+   one up to the next gym's level before you walk in (`grind(N)`). USE EVERYONE: XP is split between every Pokémon
+   that was on the field, so lead with a low-level teammate and switch to a stronger one on the first turn — both
+   gain, and the weak one is never hurt. Do this in trainer battles too (you may switch at will before your turn).
 5. **Secondary goal — the Pokédex.** Beating the game (8 badges, then the Elite Four) is the main objective; along
    the way, also catch species you don't own (the READINESS block shows your Pokédex count). A new species is worth a
    ball even with a full party — the extra goes to the PC box.
@@ -242,12 +244,21 @@ your lead is strong enough and has the right move:
   try again.
 
 ## Keep the whole team level
-Every Pokémon should be within ~25% of your highest level (top L40 → nobody under L30).
+Nobody should trail your highest level by more than 7 (top L40 → nobody under L33).
 A lone strong lead is fragile: it faints, a move gets Disabled, PP runs out — and then your
 L5 backups are useless. After you catch something, before a gym, and whenever the observation
 shows a "⚠ Team imbalance" line, call `grind()` with NO level: it fights wild battles so the lowest
 lagging Pokémon gets the XP, and heals itself at a Pokémon Center when HP or attack PP runs low.
-(`grind(13)` with a level raises only the lead.)
+(`grind(13)` raises your best one to L13, but still rotates lagging teammates in so they are not left behind.)
+
+**Party composition.** Aim for a full party of 6 with different types and strong evolution lines. Early placeholders
+(Weedle, Rattata, Pidgey…) are fine to start, but when you find a clearly better species — or a new type — catch it
+(`grind()` and `go_to` now catch worthwhile wild Pokémon automatically) and swap the weakest member out with
+`pc_swap`. Don't run from a wild Pokémon you could use.
+
+**Tag-switch XP.** In any battle you can lead with a low-level Pokémon, then `switch_pokemon` to your strongest on
+the first turn: the weak one shares the XP and never takes a hit. Rotate which teammate leads, especially against
+trainers (1.5× XP).
 
 ## Battle gotchas
 - A **Disabled** move (shown `DISABLED` in "Your moves") is refused by the game — never retry it; use
