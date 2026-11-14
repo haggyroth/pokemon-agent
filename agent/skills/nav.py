@@ -482,8 +482,14 @@ class NavMixin:
             # Auto-fight the (usually weak) travel trainer with best-move logic. Hand
             # back to the model for anything that needs judgement — a loss, a fight that
             # didn't finish on autopilot (tough trainer / a forced switch after a faint),
-            # or a scraped-through win that left the lead low.
-            self._auto_fight()
+            # or a scraped-through win that left the lead low. Trainers pay 1.5× XP, so when a teammate is
+            # lagging it starts the fight and is tagged out for a finisher (see _train_fight).
+            lag = [(i, p) for i, p in self._lagging_mons() if p.current_hp > 0 and p.max_hp
+                   and p.current_hp / p.max_hp >= 0.7]
+            if lag and not self._has_must_need():
+                self._train_fight((lag[0][1].species_id, lag[0][1].max_hp))
+            else:
+                self._auto_fight()
             outcome = self.mgba.read8(Addr.BATTLE_OUTCOME)
             party = self.reader.read_party()
             if outcome in (Addr.B_OUTCOME_LOST, Addr.B_OUTCOME_DREW) or (
@@ -511,34 +517,23 @@ class NavMixin:
                         f"low ({party[0].hp_percent:.0%}) — call heal(), then "
                         f"go_to({target_name!r}) again.")
             return None   # won cleanly — keep travelling
-        # Team-building: with a small team and Poké Balls, don't auto-flee a NEW species
-        # (one not already on the team) — stop ONCE so the model can catch it and build a
-        # roster. A lone/pair Pokémon can't sustain dungeons or the Elite Four. The
-        # offer is once-per-battle (flag reset in the overworld), so re-issuing go_to
-        # skips it and flees instead of looping.
-        party = self.reader.read_party()
-        if not self._travel_catch_offered and len(party) < 4 and self._ball_count() > 0:
-            # The enemy struct reads garbage on the battle-load frame (#58), so settle
-            # until it's a real, named species before deciding — otherwise we'd offer on
-            # junk or flee the real mon before offering.
-            enemy = self.reader.read_enemy_lead()
-            for _ in range(5):
-                if enemy and enemy.species_name and not enemy.species_name.startswith("#"):
-                    break
-                self.mgba.tick(6)
-                enemy = self.reader.read_enemy_lead()
-            if self._is_new_team_species(party, enemy):
-                self._travel_catch_offered = True
-                return (f"A wild {enemy.species_name} appeared en route to {target_name} "
-                        f"— a NEW species for your {len(party)}-Pokémon team. To add it, "
-                        f"weaken it with use_move then catch(); or call "
-                        f"go_to({target_name!r}) again to skip it and keep travelling.")
+        # Team-building: a wild Pokémon the catch policy likes (a new species, a stronger line than the weakest
+        # member, a new type — knowledge.catch_policy) is weakened and caught right here with an autopilot
+        # nickname, instead of being fled from (the old "offer once, then flee" never built a team past four).
+        if self._ball_count() > 0:
+            from game.state import GameContext as _GC
+            got = self._grind_try_catch()
+            if got:
+                self.__dict__.setdefault("_travel_caught", []).append(got)
+            if self.reader.detect_context() != _GC.IN_BATTLE:
+                return None            # caught it (or the battle ended): keep travelling
         # XP on the way: when the team still has levelling to do (a lagging member, or the best Pokémon is
         # under the next gym's target) and it is healthy, fight a few of the ordinary wild battles instead of
         # running from every one — travelling shouldn't quietly replace levelling up.
         if self._travel_wants_xp():
             self._travel_fights = getattr(self, "_travel_fights", 0) + 1
-            lag = self._lagging_mons()
+            lag = [(i, p) for i, p in self._lagging_mons() if p.current_hp > 0 and p.max_hp
+                   and p.current_hp / p.max_hp >= 0.7]
             if lag:
                 self._train_fight((lag[0][1].species_id, lag[0][1].max_hp))
             else:
@@ -719,6 +714,9 @@ class NavMixin:
         except Exception:
             return False
 
+    def _has_must_need(self) -> bool:
+        return any(n.level == "must" for n in self._readiness())
+
     def _readiness(self):
         """knowledge.readiness needs for the current party/bag/money/gym progress ([] on any read hiccup)."""
         from knowledge.readiness import assess
@@ -745,7 +743,11 @@ class NavMixin:
                 and blocking(needs)):
             return ("Not travelling yet — sort this out first:\n" + "\n".join("⛔ " + n.text for n in blocking(needs))
                     + "\nThen go_to again (or pass force=true to go anyway).")
+        self.__dict__["_travel_caught"] = []
         out = self._go_to(destination)
+        caught = self.__dict__.get("_travel_caught") or []
+        if caught:
+            out += f"\n(Caught on the way: {'; '.join(caught)}.)"
         notes = [n.text for n in self._readiness() if n.level == "should"][:3]
         if notes:
             out += "\n(Before the next leg: " + "; ".join(notes) + ")"
@@ -974,7 +976,7 @@ class NavMixin:
             self._balance_warned = cur
             names = ", ".join(f"{p.species_name} L{p.level}" for _, p in lag)
             return (f"Your team is lopsided (top L{top}; lagging: {names}). Call grind() (no level) first so "
-                    f"every Pokémon is within ~25% of L{top} — you'll need backups if the lead faints "
+                    f"nobody is more than 7 levels under L{top} — you'll need backups if the lead faints "
                     f"or a move gets Disabled. Or call challenge_leader() again to fight anyway.")
         if cur == (9, 6):       # Vermilion: open the electric locks first (switches read from memory)
             res = self._solve_vermilion_switches()

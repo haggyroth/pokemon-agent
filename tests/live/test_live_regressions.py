@@ -23,6 +23,9 @@ def test_watchdog_cuts_off_the_old_status_spam_bug(live, monkeypatch):
     from agent.lm_studio_client import AgentClient
     live.load("threemon")
     live.patch_mon(0, [33, 45, 73, 22], [0, 40, 0, 0], level=19, exp=4575)
+    live.patch_mon(1, None, None, level=19, exp=6859)           # nobody lags → the Growl-only ace fights the grass itself
+    live.patch_mon(2, None, None, level=19, exp=6859)
+    live.heal_hp()
 
     def old_picker(names, pp, *a):
         return next((n for n, p in zip(names, pp) if n and p > 0), None)
@@ -218,3 +221,44 @@ def test_pc_withdraw_from_another_box_and_grid_slot(live):
     out = live.c._execute("pc_withdraw", json.dumps({"pokemon": "2:14"}))
     assert out.startswith("Withdrew") and live.r.read_current_box() == 1, out
     assert [p.species_name for p in live.r.read_party()][-1] == "Caterpie"
+
+
+def test_tagged_out_trainee_shares_the_xp_and_is_never_swapped_back(live, monkeypatch):
+    """Watched run: the trainee led, the ace was switched in, then the loop switched the trainee BACK in and
+    it was knocked out for no XP. Now: trainee leads, tags out on turn one, the ace finishes; the trainee
+    gains experience and keeps its HP."""
+    live.load("threemon")
+    live.patch_mon(0, [33, 45, 73, 22], [35, 40, 10, 25], level=40, exp=56660)       # Bulbasaur L40: the ace
+    live.patch_mon(1, None, None, level=3, exp=27)
+    live.patch_mon(2, None, None, level=3, exp=27)
+    live.heal_hp()
+    assert live.c._lead_trainee(live.r.read_party()[1])                                # a L3 leads
+    lead = live.r.read_party()[0]
+    sig = (lead.species_id, lead.max_hp)
+    exp0 = live.read_exp(0)
+    switches = []
+    orig = live.c._switch_pokemon
+    monkeypatch.setattr(live.c, "_switch_pokemon", lambda t, *a, **k: (switches.append(t), orig(t, *a, **k))[1])
+    monkeypatch.setattr(live.c, "_grind_try_catch", lambda: None)
+    # a foe above the trainee's level+2 is guaranteed to be "tough" for a L3 → expect a turn-one tag-out
+    assert live.wild_battle(), "no wild battle found"
+    hp0 = live.r.read_party()[0].current_hp
+    live.c._train_fight(sig)
+    assert len(switches) <= 1, switches                                                # one tag-out, no swap back
+    assert live.read_exp(0) > exp0 or live.r.read_party()[0].level > 3                # the trainee got XP
+    if switches:
+        assert live.r.read_party()[0].current_hp >= hp0 - 1                            # …without being hurt
+
+
+def test_travel_battle_catches_a_worthwhile_wild_pokemon_instead_of_fleeing(live, monkeypatch):
+    """The team stalled at four because go_to fled everything after a single 'offer' and never past 4 members."""
+    import knowledge.catch_policy as cp
+    monkeypatch.setattr(cp, "evaluate", lambda party, sid, lvl, max_team=6, dex_owned=None: cp.Verdict(True, "test", 0))
+    live.load("threemon")
+    n, balls = len(live.r.read_party()), live.c._ball_count()
+    assert live.wild_battle(), "no wild battle found"
+    stop = live.c._handle_travel_battle("somewhere")
+    assert stop is None
+    assert live.c.__dict__.get("_travel_caught"), "nothing was caught"
+    assert len(live.r.read_party()) == n + 1 and live.c._ball_count() < balls
+    assert live.r.detect_context() == GameContext.OVERWORLD

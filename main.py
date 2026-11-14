@@ -529,6 +529,13 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                                       backup_hint=_hint)
             obs_parts.append(bsummary)
             try:
+                from knowledge.battle import xp_share_hint as _xp_hint
+                _xp = _xp_hint(state.party, _act, enemy.level if enemy and enemy.max_hp else 0)
+                if _xp:
+                    obs_parts.append(_xp)
+            except Exception:
+                pass
+            try:
                 _vol = reader.read_battle_volatiles(0)
             except Exception:
                 _vol = {}

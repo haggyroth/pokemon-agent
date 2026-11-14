@@ -69,3 +69,16 @@ class Live:
 
     def set_foe_hp(self, hp: int) -> None:
         self.m.write16(B1 + 0x28, hp)
+
+    def read_exp(self, slot: int) -> int:
+        """Experience points of party member `slot` (decrypts the Growth substruct)."""
+        m = self.m
+        b = Addr.PARTY_DATA + 100 * slot
+        raw = bytearray(m.read8(b + i) for i in range(100))
+        pid = int.from_bytes(raw[0:4], "little")
+        key = pid ^ int.from_bytes(raw[4:8], "little")
+        enc = bytearray(raw[32:80])
+        for i in range(0, 48, 4):
+            enc[i:i + 4] = (int.from_bytes(enc[i:i + 4], "little") ^ key).to_bytes(4, "little")
+        gi = SUBSTRUCT_ORDER[pid % 24].index("G") * 12
+        return int.from_bytes(enc[gi + 4:gi + 8], "little")

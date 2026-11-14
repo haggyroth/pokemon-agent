@@ -95,6 +95,85 @@ def test_restore_ace_lead_puts_the_highest_level_back_in_front():
     assert calls == ["2"] and party[0].species_name == "Venusaur"
 
 
-def test_balance_ratio_is_looser():
+def test_balance_gap_is_seven_levels():
     from knowledge.party import min_level_for
-    assert min_level_for(40) == 30
+    assert min_level_for(40) == 33
+
+
+# ── training: tag-switch, never back to the trainee ───────────────────────────────────
+class _TrainBattle:
+    """Just enough of a battle for AgentClient._train_fight: scripted party/foe, a log of switches and moves."""
+
+    def __init__(self, party, foe_level, active, turns_to_win=3):
+        self.party, self.foe_level, self.active_idx, self.turns = party, foe_level, active, turns_to_win
+        self.log = []
+
+    def client(self):
+        c = AgentClient.__new__(AgentClient)
+        b = self
+        c.reader = SimpleNamespace(
+            detect_context=lambda: GameContext.IN_BATTLE if b.turns > 0 else GameContext.OVERWORLD,
+            read_party=lambda: b.party,
+            read_enemy_lead=lambda: SimpleNamespace(level=b.foe_level, max_hp=30, current_hp=30, species_name="Foe"),
+            read_active_battle_species=lambda: b.party[b.active_idx].species_id)
+        c._battle_settle = lambda *a, **k: ""
+        c._send_next_mon = lambda: None
+        c._maybe_drive_learn = lambda: None
+        c._maybe_heal_mid_fight = lambda used: False
+        c._active_moves_view = lambda: ([1], ["Tackle"], [20], None, 0)
+        c._battle_types = lambda: ((), ())
+        c._settle_evolution = lambda: None
+        c._no_attack_turn = lambda: None
+
+        def switch(t):
+            b.log.append(("switch", b.party[int(t) - 1].species_name))
+            b.active_idx = int(t) - 1
+            return "Switched in"
+
+        def use(mv):
+            b.log.append(("move", b.party[b.active_idx].species_name))
+            b.turns -= 1
+        c._switch_pokemon, c._use_move = switch, use
+        c._best_damaging_move = staticmethod(lambda *a: "Tackle")
+        return c
+
+
+def test_train_fight_tags_the_trainee_out_once_and_never_swaps_it_back():
+    # The live bug: trainee leads, tough foe → ace switched in, then the loop switched the TRAINEE back
+    # (fed to the foe for no XP). Expect exactly one switch: trainee → ace, then the ace finishes.
+    party = [mon(10, 6, name="Caterpie"), mon(1, 40, name="Bulbasaur"), mon(25, 5, name="Pikachu")]
+    b = _TrainBattle(party, foe_level=20, active=0)
+    c = b.client()
+    c._train_fight((party[0].species_id, party[0].max_hp))
+    assert b.log[0] == ("switch", "Bulbasaur")
+    assert [e for e in b.log if e[0] == "switch"] == [("switch", "Bulbasaur")]
+    assert all(e == ("move", "Bulbasaur") for e in b.log[1:])
+
+
+def test_train_fight_lets_the_trainee_fight_an_easy_foe_alone():
+    party = [mon(10, 6, name="Caterpie"), mon(1, 40, name="Bulbasaur")]
+    b = _TrainBattle(party, foe_level=6, active=0)
+    b.client()._train_fight((party[0].species_id, party[0].max_hp))
+    assert [e for e in b.log if e[0] == "switch"] == [] and {e[1] for e in b.log} == {"Caterpie"}
+
+
+def test_train_fight_brings_a_benched_trainee_in_then_tags_it_out():
+    party = [mon(1, 40, name="Bulbasaur"), mon(10, 8, name="Caterpie")]
+    b = _TrainBattle(party, foe_level=15, active=0)          # travel fight: the ace is out front
+    b.client()._train_fight((party[1].species_id, party[1].max_hp))
+    assert [e for e in b.log if e[0] == "switch"] == [("switch", "Caterpie"), ("switch", "Bulbasaur")]
+
+
+def test_train_fight_skips_a_risky_swap_in_for_a_hurt_trainee():
+    party = [mon(1, 40, name="Bulbasaur"), mon(10, 8, hp=15, name="Caterpie")]
+    b = _TrainBattle(party, foe_level=15, active=0)
+    b.client()._train_fight((party[1].species_id, party[1].max_hp))
+    assert [e for e in b.log if e[0] == "switch"] == []        # the ace just fights; no free hit on the trainee
+
+
+def test_xp_share_hint():
+    from knowledge.battle import xp_share_hint
+    party = [mon(10, 6, name="Caterpie"), mon(1, 40, name="Bulbasaur")]
+    assert "switch_pokemon('Bulbasaur')" in xp_share_hint(party, party[0].species_id, 20)
+    assert "set_lead('Caterpie')" in xp_share_hint(party, party[1].species_id, 20)
+    assert xp_share_hint([mon(1, 40, name="A"), mon(2, 36, name="B")], 1) == ""

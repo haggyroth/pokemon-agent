@@ -1,22 +1,38 @@
-"""Team-balance rules (pure): every Pokémon should be within ~25% of the top level."""
-import math
+"""Team-balance rules (pure): nobody trails the top level by more than BALANCE_GAP levels."""
 
-BALANCE_RATIO = 0.75     # a loose floor: the ace can't be held back, so the rest only need to be in the same league
+BALANCE_GAP = 7         # max levels between the highest and the lowest party member (a gym team of L40/L7s loses)
 
 
 def min_level_for(top: int) -> int:
-    """Lowest acceptable level when the top party level is `top` (ceil(0.75 * top))."""
-    return max(1, math.ceil(top * BALANCE_RATIO))
+    """Lowest acceptable level when the top party level is `top` (top - BALANCE_GAP)."""
+    return max(1, top - BALANCE_GAP)
 
 
 def lagging_mons(party) -> list:
-    """[(index, mon)] of ALIVE members below the balance floor, lowest level first. A party of
-    fewer than two has nothing to balance."""
+    """[(index, mon)] of members below the balance floor, lowest level first. FAINTED members count: a team
+    whose trainees are all knocked out is not balanced, it is just waiting for a heal (a fainted-excluded
+    check used to report "Party balanced" for L7/L6/L5 beside an L38 ace). A party of fewer than two has
+    nothing to balance."""
     if len(party) < 2:
         return []
     need = min_level_for(max(p.level for p in party))
-    lag = [(i, p) for i, p in enumerate(party) if p.level < need and p.current_hp > 0]
+    lag = [(i, p) for i, p in enumerate(party) if p.level < need]
     return sorted(lag, key=lambda ip: (ip[1].level, ip[0]))
+
+
+def pick_finisher(party, trainee_idx: int, foe_level: int = 0):
+    """Index of the teammate who finishes a training fight once the trainee has been tagged out: healthy
+    (>= 40% HP), not the trainee, and CAPABLE (level >= the foe's). Among the capable ones the LOWEST level is
+    chosen, so the finishing XP rotates through the whole team instead of always feeding the ace; with no
+    capable teammate it is simply the strongest healthy one. None when nobody is fit."""
+    fit = [(i, q) for i, q in enumerate(party)
+           if i != trainee_idx and q.max_hp and q.current_hp > 0 and q.current_hp / q.max_hp >= 0.4]
+    if not fit:
+        return None
+    capable = [(i, q) for i, q in fit if q.level >= foe_level]
+    if capable:
+        return min(capable, key=lambda iq: (iq[1].level, iq[0]))[0]
+    return max(fit, key=lambda iq: (iq[1].level, -iq[0]))[0]
 
 
 # ── PP awareness ────────────────────────────────────────────────────────────────

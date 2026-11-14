@@ -69,7 +69,7 @@ def assess(party, balls: int = 0, potions: int = 0, money: int = 0, gyms_beaten=
     if lag:
         top = max(p.level for p in party)
         names = ", ".join(f"{p.nickname or p.species_name} L{p.level}" for _, p in lag)
-        needs.append(Need("should", "train", f"{names} trail the top L{top} by >25% — grind() with no level trains them"))
+        needs.append(Need("should", "train", f"{names} trail the top L{top} by more than 7 levels — grind() with no level trains them"))
 
     tgt = next_gym_target(gyms_beaten)
     top_level = max((p.level for p in party), default=0)

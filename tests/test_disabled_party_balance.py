@@ -20,16 +20,32 @@ def mon(species, level, hp=20, max_hp=20):
 
 
 # ── team balance ────────────────────────────────────────────────────────────────
-def test_min_level_is_75_percent_rounded_up():
-    assert min_level_for(18) == 14
-    assert min_level_for(13) == 10
-    assert min_level_for(40) == 30
-    assert min_level_for(5) == 4
+def test_min_level_is_seven_under_the_top():
+    assert min_level_for(18) == 11
+    assert min_level_for(13) == 6
+    assert min_level_for(40) == 33
+    assert min_level_for(5) == 1
 
 
-def test_lagging_mons_lowest_first_and_ignores_fainted():
+def test_lagging_mons_lowest_first_and_counts_fainted():
+    # a fainted trainee is still lagging (it used to vanish → "Party balanced" beside an L38 ace)
     party = [mon(1, 18), mon(2, 5), mon(3, 4), mon(4, 5, hp=0), mon(5, 16)]
-    assert [(i, p.level) for i, p in lagging_mons(party)] == [(2, 4), (1, 5)]
+    assert [(i, p.level) for i, p in lagging_mons(party)] == [(2, 4), (1, 5), (3, 5)]
+
+
+def test_all_trainees_fainted_is_not_balanced():
+    party = [mon(1, 38), mon(2, 7, hp=0), mon(3, 6, hp=0), mon(4, 7, hp=0)]
+    assert len(lagging_mons(party)) == 3
+
+
+def test_pick_finisher_rotates_to_the_lowest_capable_teammate():
+    from knowledge.party import pick_finisher
+    party = [mon(1, 6), mon(2, 40), mon(3, 22), mon(4, 18)]
+    assert pick_finisher(party, 0, foe_level=20) == 2       # lowest level that can handle an L20 foe
+    assert pick_finisher(party, 0, foe_level=5) == 3        # an easy foe: the weakest capable one
+    assert pick_finisher(party, 0, foe_level=60) == 1       # nobody capable: the strongest
+    hurt = [mon(1, 6), mon(2, 40, hp=3), mon(3, 22, hp=0)]
+    assert pick_finisher(hurt, 0) is None                    # nobody fit
 
 
 def test_a_lone_pokemon_has_nothing_to_balance():

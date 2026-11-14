@@ -163,16 +163,17 @@ TOOLS = [
         "description": "Level up by fighting wild Pokémon in tall grass (auto-fights every battle, and "
                        "heals itself at a Pokémon Center when HP or attack PP runs low, then walks "
                        "back — one call does a lot of work). Two modes: grind(level=13) raises your "
-                       "LEAD to L13 (e.g. before Brock so Bulbasaur has Vine Whip); grind() with NO "
-                       "level BALANCES the team — every Pokémon should be within ~25% of your highest "
-                       "(top L18 → nobody under L16), because weak backups can't carry a gym, a "
-                       "dungeon or a forced switch. In balance mode the lowest lagging Pokémon is "
-                       "sent in first for the XP and a strong teammate finishes tough fights. "
+                       "BEST Pokémon to L13 (e.g. before Brock so Bulbasaur has Vine Whip); grind() with NO "
+                       "level BALANCES the team — nobody more than 7 levels under your highest "
+                       "(top L40 → nobody under L33), because weak backups can't carry a gym, a "
+                       "dungeon or a forced switch. In both modes a lagging Pokémon is "
+                       "sent in first for the XP (it starts the fight, then a teammate finishes it — "
+                       "both share the XP; it is never swapped back in to be hit). "
                        "Evolutions complete automatically. Use grind() after catching new Pokémon "
                        "and before gyms/dungeons.",
         "parameters": {"type": "object", "properties": {
             "level": {"type": "integer",
-                      "description": "target LEAD level, e.g. 13. Omit (or 0) to balance the whole team."},
+                      "description": "target level for your BEST Pokémon, e.g. 13. Omit (or 0) to balance the whole team."},
             "catch": {"type": "boolean",
                       "description": "auto-catch wild Pokémon worth having while grinding (default true; "
                                      "they get an autopilot nickname). Pass false to only fight."},

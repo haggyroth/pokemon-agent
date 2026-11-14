@@ -29,7 +29,7 @@ def test_attack_pp_nearly_gone_is_a_must_heal_status_moves_dont_count():
 
 
 def test_shop_catch_train_and_level_are_advice_not_blockers():
-    needs = assess([mon(10), mon(5)], balls=1, potions=0, money=2000, gyms_beaten=[])
+    needs = assess([mon(10), mon(2)], balls=1, potions=0, money=2000, gyms_beaten=[])
     assert set(codes(needs)) == {"shop", "catch", "train", "level"} and not blocking(needs)
 
 
