@@ -342,6 +342,8 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 return self._enter_name(str(args["name"]))
             case "grind":
                 return self._grind(int(args.get("level", 0)))
+            case "train_party":
+                return self._train_party()
             case "read_game_state":
                 s = self.reader.read_state()
                 party_summary = [

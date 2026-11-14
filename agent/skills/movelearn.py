@@ -9,7 +9,8 @@ class MoveLearnMixin:
     # re-engages on the stale value mid-battle (which starved use_move of a clean
     # move menu during Brock's Onix and forfeited the gym).
     _learn_armed = False
-    _lead_level_seen = None
+    _lead_level_seen = None   # legacy name, unused; see _levels_seen
+    _levels_seen = None       # {species_id: summed levels}: a level-up is a rise for the SAME species
     # The last move-offer id we already resolved (declined/accepted). gMoveToLearn
     # AND learnMoveState both LINGER after a decline, so _delete_box_live() keeps
     # reading a phantom box every turn — which made use_move re-decline the same
@@ -177,10 +178,17 @@ class MoveLearnMixin:
         it clears (a genuinely new move has a different gMoveToLearn id)."""
         from game.state import GameContext
         party = self.reader.read_party()
-        lvl = party[0].level if party else 0
-        if self._lead_level_seen is not None and lvl > self._lead_level_seen:
+        # Level-up edge, tracked per SPECIES rather than "party[0]": a switch (or the party
+        # screen's physical reorder) changes which mon is first, and Pikachu L5 -> Ivysaur L18
+        # read as a lead "level-up". That armed the driver on a stale gMoveToLearn and it spun
+        # on 'declined Sleep Powder' through a whole forced-switch sequence (live, 2026-11-13).
+        levels: dict[int, int] = {}
+        for q in party:
+            levels[q.species_id] = levels.get(q.species_id, 0) + q.level
+        if self._levels_seen is not None and any(
+                lv > self._levels_seen.get(sp, lv) for sp, lv in levels.items()):
             self._learn_armed = True     # a level-up just happened → a learn may be pending
-        self._lead_level_seen = lvl
+        self._levels_seen = levels
         # Entering a battle: gMoveToLearn AND learnMoveState linger from a PREVIOUS battle
         # (or from a loaded save state / a restarted process, where our in-Python
         # _offer_resolved memory is gone). That stale pair reads as a live delete box on

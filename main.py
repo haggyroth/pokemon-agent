@@ -494,6 +494,16 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
                 "tall grass, weaken a wild Pokémon with use_move, then catch(). "
                 "(Travel stops on NEW species so you can catch them.)")
+        # Team-balance nudge: every Pokémon within ~15% of the top level.
+        if (not in_battle and state.context == GameContext.OVERWORLD and len(state.party) >= 2):
+            from knowledge.party import lagging_mons
+            _lag = lagging_mons(state.party)
+            if _lag:
+                _top = max(p.level for p in state.party)
+                obs_parts.append(
+                    "⚠ Team imbalance: " + ", ".join(f"{p.species_name} L{p.level}" for _, p in _lag)
+                    + f" trail your top L{_top} by >15% — call train_party() (heal() first if hurt) so "
+                    "the backups can actually fight.")
         # Under-levelled-for-Brock nudge: no badges yet and lead below the
         # ~L13 Vine Whip breakpoint → grind before challenging the gym.
         if (not in_battle and ltm.data["badges_earned"] == 0
@@ -504,19 +514,26 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 f"for Vine Whip). Stand in tall grass and call grind(13) to level "
                 f"up before the Pewter Gym")
         if in_battle:
-            move_names = [m for m in lead.move_names if m]
+            # Moves/PP of the ACTIVE battler (gBattleMons[0]) — party[0] is not necessarily the one
+            # fighting after a switch — with a Disabled move's PP zeroed so it is never suggested.
+            _ids, a_names, a_pp, d_slot, d_turns = reader.read_active_battle_usable_pp()
+            if any(a_names):
+                move_names, pp_view = list(a_names), a_pp
+            else:
+                move_names, pp_view, d_slot, d_turns = list(lead.move_names), lead.pp, None, 0
             lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
             enemy = reader.read_enemy_lead()
             bsummary = battle_summary(move_names, run.current_enemy,
-                                      lead.hp_percent, lead.pp,
+                                      lead.hp_percent, pp_view,
                                       attacker_types=lead_types,
-                                      opponent_status=enemy.status if enemy else "")
+                                      opponent_status=enemy.status if enemy else "",
+                                      disabled_slot=d_slot, disabled_turns=d_turns)
             obs_parts.append(bsummary)
             from agent.lm_studio_client import AgentClient as _AC
             from knowledge.battle import battle_idle_nudge
             _nudge = battle_idle_nudge(
                 stm.action_history,
-                _AC._best_damaging_move(lead.move_names, lead.pp, lead_types,
+                _AC._best_damaging_move(move_names, pp_view, lead_types,
                                         POKEMON_TYPES.get((enemy.species_name or "").upper().strip(), ())
                                         if enemy else ()))
             if _nudge:

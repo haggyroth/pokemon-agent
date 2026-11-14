@@ -171,6 +171,18 @@ TOOLS = [
         }, "required": ["level"]},
     }},
     {"type": "function", "function": {
+        "name": "train_party",
+        "description": "Even out your team's levels. Every Pokémon should be within ~15% of your "
+                       "highest-level one (e.g. top L18 → nobody under L16): weak members can't carry "
+                       "a dungeon, a gym or a forced switch, and you will NEED them. Works the tall "
+                       "grass like grind(), but each wild fight is fought so the lowest lagging "
+                       "Pokémon earns the XP (it is sent in first; a strong teammate finishes tough "
+                       "fights, and a Pokémon that was in the battle shares the XP). Evolutions "
+                       "complete automatically. Pauses if the trainee is hurt (heal(), then call "
+                       "again). Use it after catching new Pokémon and before gyms/dungeons.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "teach_move",
         "description": "Teach a TM or HM move to a party Pokémon via the TM Case (Start → Bag → Key "
                        "Items → TM CASE → the TM → USE → Pokémon). `tm` is 'TM09', 'HM01', or the "

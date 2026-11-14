@@ -28,6 +28,11 @@ class Addr:
     # species (the party array order is unchanged by a switch, so read_party can't see
     # it). gBattleMons[0] base; species at struct offset 0.
     BATTLE_MON0_SPECIES = 0x02023BE4
+    # gDisableStructs[4] (0x1C each): +4 u16 disabledMove, +0xB low nibble disableTimer (turns left).
+    # Found live by forcing a foe to use Disable and diffing EWRAM (Tackle=33 appeared at +4, the
+    # timer counted 5→0 then the field cleared).
+    DISABLE_STRUCTS = 0x02023E0C
+    DISABLE_STRUCT_SIZE = 0x1C
     # Live cursor (slotId) in the in-battle party menu, 0-based over party slots.
     # Derived live: steps 0→1 on Down, back on Up. switch_pokemon navigates it to the
     # target slot before selecting.

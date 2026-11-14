@@ -57,7 +57,9 @@ def overworld_pp_summary(move_names: list[str], pp: list[int],
 def annotate_moves(move_names: list[str],
                    opponent_name: str = "",
                    pp_list: list[int] | None = None,
-                   opp_statused: bool = False) -> str:
+                   opp_statused: bool = False,
+                   disabled_slot: int | None = None,
+                   disabled_turns: int = 0) -> str:
     """Return a compact summary of each move with slot number, type, damage
     category, PP remaining, and effectiveness vs the opponent.
 
@@ -79,6 +81,8 @@ def annotate_moves(move_names: list[str],
         pp_tag = ""
         if pp_cur is not None:
             pp_tag = f" PP:{pp_cur}" + (" NO PP" if pp_cur == 0 else "")
+        if disabled_slot is not None and idx == disabled_slot:
+            pp_tag = f" DISABLED ({disabled_turns} turns) — unusable, pick another"
         if opp_statused and name in STATUS_INFLICTING_MOVES:
             pp_tag += " WON'T STICK (already statused)"
 
@@ -120,7 +124,9 @@ def battle_summary(move_names: list[str],
                    player_hp_pct: float,
                    pp_list: list[int] | None = None,
                    attacker_types: tuple[str, ...] = (),
-                   opponent_status: str = "") -> str:
+                   opponent_status: str = "",
+                   disabled_slot: int | None = None,
+                   disabled_turns: int = 0) -> str:
     """Full battle analysis block injected into the obs string during IN_BATTLE.
 
     `attacker_types` (the acting Pokémon's types) enables a STAB bonus when
@@ -140,7 +146,11 @@ def battle_summary(move_names: list[str],
     else:
         lines.append(f"Opponent: {opponent_name} [type unknown — read screenshot]{status_tag}")
 
-    lines.append(f"Your moves: {annotate_moves(move_names, opponent_name, pp_list, opp_statused)}")
+    lines.append(f"Your moves: {annotate_moves(move_names, opponent_name, pp_list, opp_statused, disabled_slot, disabled_turns)}")
+    if pp_list is not None and move_names and not any(
+            n and idx < len(pp_list) and pp_list[idx] > 0 for idx, n in enumerate(move_names)):
+        lines.append("No usable move left (all out of PP or Disabled): call use_move('Struggle') — it is "
+                     "automatic — or switch_pokemon to a Pokémon that still has moves.")
 
     if opp_types:
         # Suggest the best *damaging* move, ranked by an approximate expected

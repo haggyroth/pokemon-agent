@@ -18,6 +18,13 @@ class MenuMixin:
         return self._menus.answer_prompt(answer)
 
     def _advance_dialog(self) -> str:
+        from game.menu import forced_party_screen
+        from game.state import GameContext
+        # In a battle the "dialogue" is battle text: drive it to the next decision point
+        # instead of refusing (the old reply — "a battle started" — pressed nothing).
+        if (self.reader.detect_context() == GameContext.IN_BATTLE
+                or forced_party_screen(self.mgba, self.reader)):
+            return self._battle_settle()
         return self._menus.advance_dialog()
 
     def _close_menus(self) -> str:

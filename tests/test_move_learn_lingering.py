@@ -14,7 +14,7 @@ from agent.lm_studio_client import AgentClient   # noqa: E402
 
 
 class _Lead:
-    def __init__(self, level): self.level = level
+    def __init__(self, level): self.level = level; self.species_id = 1
 
 
 class _Reader:
@@ -29,6 +29,7 @@ def _client(level=15):
     c = AgentClient.__new__(AgentClient)
     c._learn_armed = False
     c._lead_level_seen = None
+    c._levels_seen = None
     c._offer_resolved = 0
     c._learn_in_battle = True      # baseline already taken for this battle
     c.reader = _Reader(level)
