@@ -6,6 +6,9 @@ BUDGETS = {
     "go_to": (240_000, 15_000),     # cross-map trips with fights en route
     "get_cut": (300_000, 15_000),         # board the S.S. Anne, trainers on the way, the Captain
     "get_ss_ticket": (300_000, 15_000),   # Nugget Bridge trainers + Route 25 + the cottage cutscene
+    "pc_deposit": (60_000, 12_000),
+    "pc_withdraw": (60_000, 12_000),
+    "pc_swap": (90_000, 12_000),
     "heal": (60_000, 12_000),
     "shop": (60_000, 12_000),
     "use_move": (30_000, 9_000),

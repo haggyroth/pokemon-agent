@@ -183,6 +183,13 @@ Wild battles on the way are opportunities (XP, a new species), not just obstacle
 few for XP when the team needs levels. Pay attention to PP in "Your moves" — don't keep leaning on one move
 until it runs dry; rotate to another good attack, switch to a Pokémon with PP left, or heal.
 
+## The PC (box storage)
+Only 6 Pokémon travel with you; every extra catch goes to a PC box. `pc_boxes()` lists what's stored (works anywhere);
+`pc_deposit(pokemon)`, `pc_withdraw(pokemon)` and `pc_swap(party_pokemon, box_pokemon)` drive the Pokémon Center PC for
+you (they walk to a Center if needed). Use them to keep the best team for the next gym or dungeon — bring in a type
+that counters the next Leader, send a weak or redundant member to the box — and to pick the Pokémon you want to train.
+You can never deposit your last battle-ready Pokémon.
+
 ## Decision Priority
 1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
 2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining. A status move (Sleep Powder, Poison Powder, Thunder Wave, Growl, …) deals NO damage — use ONE at most, and NEVER a status move when the opponent already shows a status (the obs flags "already ASLEEP/POISONED…" and "WON'T STICK"); attack instead. Don't win by chip damage (Leech Seed/Growl) when a strong attack is available.

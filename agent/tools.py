@@ -189,6 +189,36 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "pc_boxes",
+        "description": "List every Pokémon stored in the PC boxes (box, slot, nickname, species, level). Reads memory — "
+                       "no menu needed, works anywhere. Use it to decide who to withdraw.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "pc_deposit",
+        "description": "Store a party Pokémon in the PC (drives Pokémon Center PC → SOMEONE'S PC → DEPOSIT for you; "
+                       "travels to a Center if needed). `pokemon` is a 1-based slot or species/nickname. Can't deposit "
+                       "your last battle-ready Pokémon.",
+        "parameters": {"type": "object", "properties": {
+            "pokemon": {"type": "string", "description": "party slot number or name"}}, "required": ["pokemon"]},
+    }},
+    {"type": "function", "function": {
+        "name": "pc_withdraw",
+        "description": "Take a Pokémon out of the PC into your party (needs a free slot; drives the PC menus, switches "
+                       "boxes). `pokemon` is a species/nickname, or 'box:slot' like '1:0' (see pc_boxes).",
+        "parameters": {"type": "object", "properties": {
+            "pokemon": {"type": "string", "description": "species, nickname or 'box:slot'"}}, "required": ["pokemon"]},
+    }},
+    {"type": "function", "function": {
+        "name": "pc_swap",
+        "description": "Swap a party member for a boxed Pokémon in one go: deposit `party_pokemon`, then withdraw "
+                       "`box_pokemon`. Use it to rebuild the team (e.g. bring in a Fire type, send a weak one to the PC).",
+        "parameters": {"type": "object", "properties": {
+            "party_pokemon": {"type": "string", "description": "party slot number or name to send to the PC"},
+            "box_pokemon": {"type": "string", "description": "boxed species, nickname or 'box:slot' to bring out"}},
+            "required": ["party_pokemon", "box_pokemon"]},
+    }},
+    {"type": "function", "function": {
         "name": "reorder_party",
         "description": "Swap two party members out of battle, driving Start → POKéMON → SWITCH for you. "
                        "`first`/`second` are a 1-based slot or a species/nickname. Use it to choose who "
