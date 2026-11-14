@@ -70,7 +70,16 @@ class NativeMGBAClient:
 
     # ── Frame stepping ───────────────────────────────────────────────────────
 
+    # A FrameWatchdog (game/watchdog.py) armed around one tool call; None outside skills.
+    watchdog = None
+
+    def set_watchdog(self, wd) -> None:
+        self.watchdog = wd
+
     def run_frames(self, n: int) -> None:
+        wd = self.watchdog
+        if wd is not None:
+            wd.advance(n)
         v = self._viewer
         if v is None:
             for _ in range(n):
@@ -97,7 +106,10 @@ class NativeMGBAClient:
         last = None
         streak = 0
         v = self._viewer
-        for _ in range(max_frames):
+        wd = self.watchdog
+        for i in range(max_frames):
+            if wd is not None and i % 30 == 0:
+                wd.advance(30)
             lib.pycore_run_frame(self._h)
             buf = ffi.buffer(self._video, self._video_bytes)
             if v is not None:
