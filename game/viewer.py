@@ -22,13 +22,17 @@ from config import VIEWER_SCALE, VIEWER_FPS
 
 class PygameViewer:
     def __init__(self, width: int, height: int,
-                 scale: int = VIEWER_SCALE, fps: int = VIEWER_FPS):
+                 scale: int = VIEWER_SCALE, fps: int = VIEWER_FPS, present_hz: int = 60):
         import pygame  # imported lazily so headless runs never need pygame
         self._pg = pygame
         self.w, self.h = width, height
         self.scale = scale
         self.min_frame_dt = (1.0 / fps) if fps > 0 else 0.0
-        self._last = 0.0
+        self.present_dt = 1.0 / max(1, present_hz)
+        self._deadline = None         # pacing schedule (see render)
+        self._last_present = 0.0
+        self._pending = False         # frames emulated since the last present
+        self._skipped = 0
         self._closed = False
 
         pygame.init()
@@ -36,22 +40,45 @@ class PygameViewer:
         self.screen = pygame.display.set_mode((width * scale, height * scale))
 
     def render(self, buf) -> None:
-        """buf: a bytes-like RGBX framebuffer (w*h*4). Blit, scale, present.
-        No-op once the window has been closed (the run continues headless).
+        """buf: a bytes-like RGBX framebuffer (w*h*4). No-op once the window has been closed (the run continues
+        headless).
 
-        `VIEWER_FPS` PACES playback: if less than 1/fps has passed since the last
-        frame, we sleep the remainder before drawing so emulated motion plays at a
-        watchable ~VIEWER_FPS (default 120 ≈ 2× GBA speed) instead of the raw burst.
-        Cadence tracks actual draw times (no catch-up bursts). This sleep only runs
-        while a window is open; headless runs never build a viewer, so they stay
-        full speed. fps=0 disables pacing (draw every frame as fast as they come)."""
+        Emulation speed and what you SEE are decoupled:
+          * `VIEWER_FPS` paces emulated frames against a running deadline (60 ≈ real time, 120 ≈ 2×,
+            0 = uncapped). Pacing sleeps only; it never depends on the display.
+          * the window is only PRESENTED at most `present_hz` times a second (default 60). The old code
+            presented every emulated frame, and on macOS `display.flip()` blocks on the display refresh while
+            the window is visible — capping the emulator at ~1× — but returns instantly when the window is
+            occluded or in Mission Control — letting it run at ~50×. That was the 1×/turbo stutter.
+        """
         if self._closed:
             return
+        now = time.perf_counter()
         if self.min_frame_dt > 0:
-            wait = self._last + self.min_frame_dt - time.perf_counter()
+            if self._deadline is None or now - self._deadline > 0.25:
+                self._deadline = now                  # (re)sync after a pause, e.g. the LLM thinking
+            self._deadline += self.min_frame_dt
+            wait = self._deadline - now
             if wait > 0:
-                time.sleep(wait)   # pace the emulator so motion is watchable
-            self._last = time.perf_counter()
+                time.sleep(wait)                      # pace the emulator so motion is watchable
+                now = time.perf_counter()
+        if now - self._last_present < self.present_dt:
+            self._pending = True                      # emulated, not drawn: flush() shows it when idle
+            self._skipped += 1
+            if self._skipped % 64 == 0:
+                self._pump()                          # keep the window responsive between presents
+            return
+        self._draw(buf, now)
+
+    def flush(self, buf) -> None:
+        """Present the newest frame if frames were skipped since the last present — called when emulation is
+        about to stop advancing (e.g. before waiting on the LLM) so the window never shows a stale frame."""
+        if self._closed or not self._pending:
+            return
+        self._draw(buf, time.perf_counter())
+
+    def _draw(self, buf, now) -> None:
+        self._pending = False
         pg = self._pg
         # Interpret the raw RGBX bytes as a surface. .convert() remaps it to the
         # display's native pixel format — without it, scaling straight into the
@@ -60,6 +87,9 @@ class PygameViewer:
         scaled = pg.transform.scale(frame, self.screen.get_size())
         self.screen.blit(scaled, (0, 0))
         pg.display.flip()
+        # Stamp AFTER flip(): on macOS it blocks for the display refresh while the window is visible. Stamping
+        # before it made the next frame due the instant flip() returned, i.e. one flip per emulated frame (~1×).
+        self._last_present = time.perf_counter()
         self._pump()
 
     def _pump(self) -> None:
