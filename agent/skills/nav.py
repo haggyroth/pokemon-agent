@@ -718,6 +718,11 @@ class NavMixin:
                 # truly pinned (same map AND didn't move at all this hop).
                 if self.reader.read_player_pos() != before_pos:
                     continue
+                # A warp tile we're standing next to but that didn't fire: staircases can be DIRECTIONAL
+                # (the Underground Path entrance only takes you when you step onto it from one side).
+                # Try each approach direction once before declaring the edge dead.
+                if kind_step == "warp" and self._probe_warp(self._warp_exit_tile(arg)):
+                    continue
                 # Learn the dead edge: after two failures of the SAME hop (a puzzle door, an
                 # HM obstacle, a switch we haven't hit) route_to avoids it and picks another
                 # ladder/exit — so one new puzzle doesn't need a hand-made routing fix.
@@ -735,6 +740,32 @@ class NavMixin:
             return guidance
         here = MAP_NAMES.get(end_map, "?")
         return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
+
+    def _probe_warp(self, warp: tuple[int, int]) -> bool:
+        """Step onto `warp` from each side (Up/Left/Right/Down into it) until the map changes. True if
+        it did. Verified live: the Underground Path (Route 5) stairs at (7,4) only fire from one side."""
+        before = self.reader.read_current_map()
+        wx, wy = warp
+        # Already standing ON an exit mat (arrive-on-the-mat, e.g. after a gym fight): arrow warps fire
+        # when you press the arrow's direction while standing on them, so try that first.
+        if self.reader.read_player_pos() == (wx, wy):
+            for btn in ("Down", "Left", "Right", "Up"):
+                self.mgba.hold(btn, 20)
+                self.mgba.tick(72)
+                if self.reader.read_current_map() != before:
+                    return True
+                if self.reader.read_player_pos() != (wx, wy):
+                    break                               # walked off the mat; fall through to approaches
+        for dx, dy, btn in ((0, 1, "Up"), (1, 0, "Left"), (-1, 0, "Right"), (0, -1, "Down")):
+            stand = (wx + dx, wy + dy)
+            self._walk_to(*stand)
+            if self.reader.read_player_pos() != stand:
+                continue
+            self.mgba.hold(btn, 20)
+            self.mgba.tick(72)                       # let the warp fade finish
+            if self.reader.read_current_map() != before:
+                return True
+        return False
 
     def _warp_exit_tile(self, warp: tuple[int, int]) -> tuple[int, int]:
         """Snap a routed warp tile to the DOOR CENTER of its doormat. A door spans

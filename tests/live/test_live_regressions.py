@@ -100,3 +100,19 @@ def test_catching_with_a_full_party_reports_the_box(live):
             break
     assert "PC box" in out, out
     assert len(live.r.read_party()) == 6 and live.r.detect_context() == GameContext.OVERWORLD
+
+
+def test_get_ss_ticket_then_cross_cerulean_to_vermilion(live):
+    """Bill's quest end to end (post-Misty fixture), then the Underground Path to Vermilion — covers the
+    Saffron-shell routing fix and the directional stairs probe."""
+    live.load("post_misty")
+    out = live.c._execute("get_ss_ticket", "{}")
+    assert "Got the SS Ticket" in out or "already have" in out, out
+    assert live.c._has_ss_ticket()
+    for _ in range(6):
+        out = live.c._execute("go_to", json.dumps({"destination": "Vermilion City"}))
+        if live.r.read_current_map() == (3, 5):
+            break
+        if "heal" in out or "Lost" in out:
+            live.heal_hp()                      # a Route 5/6 trainer beat us: top up and retry
+    assert live.r.read_current_map() == (3, 5), out

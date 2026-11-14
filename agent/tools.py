@@ -175,6 +175,16 @@ TOOLS = [
         }, "required": []},
     }},
     {"type": "function", "function": {
+        "name": "get_ss_ticket",
+        "description": "Do Bill's quest for the SS Anne ticket: travels to Bill's Sea Cottage (Route 25, "
+                       "past Nugget Bridge — trainers on the way are fought for you), helps Bill out of "
+                       "the teleporter accident and takes the ticket. REQUIRED after beating Misty: until "
+                       "you have the SS Ticket, Cerulean's south and east exits are blocked (a Slowbro "
+                       "and Lass / a policeman) and Vermilion City is unreachable. Resumable: if it stops "
+                       "(heal, interrupted), call it again.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "teach_move",
         "description": "Teach a TM or HM move to a party Pokémon via the TM Case (Start → Bag → Key "
                        "Items → TM CASE → the TM → USE → Pokémon). `tm` is 'TM09', 'HM01', or the "

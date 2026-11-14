@@ -16,6 +16,7 @@ from config import (LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKE
                     ENABLE_THINKING, SCREENSHOT_PATH, LLM_TIMEOUT)
 from rich.console import Console
 from agent.skills.nav import NavMixin
+from agent.skills.quests import QuestMixin
 from agent.skills.overworld import OverworldMixin
 from agent.skills.battle import BattleMixin
 from agent.skills.movelearn import MoveLearnMixin
@@ -28,7 +29,7 @@ from agent.skills.tmhm import TMHMMixin
 console = Console()
 
 
-class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
+class AgentClient(QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -347,6 +348,8 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 return self._go_to_map(args["direction"])
             case "go_to":
                 return self._go_to(args["destination"])
+            case "get_ss_ticket":
+                return self._get_ss_ticket()
             case "teach_move":
                 return self._teach_move(str(args["tm"]), str(args.get("pokemon", "") or ""),
                                         str(args.get("forget", "") or ""))
