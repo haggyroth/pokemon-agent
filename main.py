@@ -558,15 +558,22 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 balls = sum(reader.read_bag().get(b, 0) for b in (1, 2, 3, 4))
                 party_species = {p.species_id for p in state.party}
                 if (balls > 0 and enemy and enemy.species_id
-                        and enemy.species_id not in party_species
-                        and len(state.party) < 6):
-                    obs_parts.append(
-                        f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — "
-                        "consider catch() to add it to your team. Weaken it first "
-                        "with use_move (low HP raises the catch rate). When you catch it, pass a "
-                        "funny, inventive nickname you make up (not the species name)"
-                        + ((f"; already taken: {', '.join(n for n in (p.nickname for p in state.party) if n)}")
-                           if any(p.nickname for p in state.party) else "") + ".")
+                        and enemy.species_id not in party_species):
+                    from knowledge.catch_policy import evaluate as _catch_eval
+                    _v = _catch_eval(state.party, enemy.species_id, enemy.level or 0)
+                    if _v.catch:
+                        obs_parts.append(
+                            f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — worth catching: "
+                            f"{_v.reason}. Weaken it first with use_move (low HP raises the catch rate). "
+                            "When you catch it, pass a funny, inventive nickname you make up (not the "
+                            "species name)"
+                            + ((f"; already taken: "
+                                f"{', '.join(n for n in (p.nickname for p in state.party) if n)}")
+                               if any(p.nickname for p in state.party) else "") + ".")
+                    else:
+                        obs_parts.append(
+                            f"New species, but NOT worth a ball right now: {_v.reason}. "
+                            "Skip it (flee_battle) unless you have a reason to want it.")
                 elif balls == 0 and len(state.party) < 6:
                     obs_parts.append(
                         "You have no Poké Balls — buy some with shop() to catch "

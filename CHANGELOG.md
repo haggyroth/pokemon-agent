@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — catch policy (#185 item 4)
+- feat: `knowledge/catch_policy.py` weighs a catch's grinding debt (levels under the ~15% balance floor)
+  against what it adds (strong evolution line, a new type). go_to only stops for worthwhile species, and
+  the battle observation says "worth catching: <why>" or "NOT worth a ball: <why>" (e.g. the L5 Kakuna /
+  L9 Zubat / L10 Geodude behind an L19 lead from run #2). The model can still catch anything.
+- data: `knowledge/species_data.py` (base stat totals, types, best evolution BST for every species) is
+  generated from the decomp by `tools/gen_species_data.py`.
+- fix: catching with a full party reports that it went to the PC box (it said "on your team").
+
 ### Added — live regression tests + eval scenarios (#185 item 3)
 - test: `tests/live/` replays watched-run bugs on the real ROM (zero-PP grind, watchdog vs the old status
   spam, catch nickname vetting/naming, broke-free ball, Disabled move). Skipped automatically without the

@@ -453,7 +453,8 @@ class NavMixin:
     def _is_new_team_species(party, enemy) -> bool:
         """Whether a travel wild-battle is worth stopping on to catch: the team is
         still small (<4), the wild mon is a REAL named species (not a battle-load
-        garbage read, #58), and it's a species not already on the team. Ball-count and
+        garbage read, #58), it's a species not already on the team, and the catch policy
+        (knowledge.catch_policy) says it's worth the training. Ball-count and
         the once-per-battle flag are checked by the caller."""
         if enemy is None or not getattr(enemy, "species_id", 0):
             return False
@@ -462,7 +463,13 @@ class NavMixin:
             return False
         if len(party) >= 4:
             return False
-        return enemy.species_id not in {p.species_id for p in party}
+        if enemy.species_id in {p.species_id for p in party}:
+            return False
+        lvl = getattr(enemy, "level", 0)
+        if lvl:    # catch policy: don't stop for a catch that would only add grinding debt
+            from knowledge.catch_policy import evaluate
+            return evaluate(party, enemy.species_id, lvl).catch
+        return True
 
     def _handle_travel_battle(self, target_name: str):
         """A battle interrupted travel. Trainer → auto-fight it (can't flee) so a

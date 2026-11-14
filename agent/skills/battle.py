@@ -441,6 +441,7 @@ class BattleMixin:
         balls0 = self._ball_count()
         if balls0 <= 0:
             return "No Poké Balls — buy some at a Mart with shop(), then catch."
+        party_before = len(self.reader.read_party())
         # Vet the nickname BEFORE spending a ball: the naming keyboard only types letters, digits,
         # space and . , ! ? — and the model's first idea is often just the species name ("Zubat",
         # "Kakuna1"). Refuse ONCE per species with the reason (no ball thrown) so it invents something
@@ -535,6 +536,9 @@ class BattleMixin:
         self._exit_battle_menus()            # clear any prompt; never strand in a menu
         if caught or self.mgba.read8(OUTCOME) == Addr.B_OUTCOME_CAUGHT or named.startswith("Named"):
             extra = f" {named}" if named else ""
+            if party_before >= 6:
+                return ("Gotcha! Caught the wild Pokémon — your party was full, so it was sent to the PC "
+                        f"box (there is no PC tool yet; it is safe there).{extra}")
             return f"Gotcha! Caught the wild Pokémon — it's on your team now.{extra}"
         return ("It broke free! Weaken it more with use_move (bring its HP low, or "
                 "inflict a status like sleep), then catch() again.")
