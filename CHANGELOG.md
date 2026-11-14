@@ -10,6 +10,14 @@ All notable changes to this project are documented here. Format loosely follows
   5 kept) and a permanent one per new badge, under `logs/runs/<ts>/checkpoints/` with a `latest.json`.
   `RESUME=latest` (or `RESUME=<path.ss1>`) continues a cancelled/stuck run from its last checkpoint.
 
+### Added — skill watchdog (#185 item 1)
+- feat: every tool call runs under a frame budget (`agent/budgets.py`, `game/watchdog.py`): a hard cap
+  (default ≈25 game-minutes) and a no-progress detector (map/position/party growth/money/foe HP unchanged
+  for ≈4 game-minutes). A tripped skill returns an explanation to the model instead of spinning with no
+  LLM in the loop (run #2: one `train_party()` call ran 26 minutes). Frames, not wall time, so it behaves
+  the same under the paced viewer. `SkillBudgetExceeded` is a BaseException so skills' broad
+  `except Exception` fallbacks can't swallow it; trips are logged as `watchdog` events in run.jsonl.
+
 ### Fixed — catch() after a ball breaks free
 - fix(catch): the post-catch Yes/No probe (nudges Down/Up) no longer runs while the battle action menu is up —
   it flicked the cursor Bag↔Run on screen — and a broke-free ball now returns after ~20 idle iterations at the
