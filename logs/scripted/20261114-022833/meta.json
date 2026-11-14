@@ -1,0 +1,32 @@
+{
+  "kind": "scripted",
+  "goal": "badges:4",
+  "max_steps": 150,
+  "state": "saves/live/post_surge.ss1",
+  "result": {
+    "reason": "max_steps",
+    "passed": false,
+    "steps": 150,
+    "reward": 0.0,
+    "llm_calls": 300,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "final_map": [
+      9,
+      1
+    ],
+    "final_pos": [
+      7,
+      4
+    ],
+    "badges": 3,
+    "milestones": [
+      "beat_brock",
+      "beat_misty",
+      "beat_surge"
+    ],
+    "stuck_ratio": 0.993,
+    "goal_desc": "badges:4",
+    "total_tokens": 0
+  }
+}

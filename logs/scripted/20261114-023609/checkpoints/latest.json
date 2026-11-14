@@ -1,0 +1,15 @@
+{
+  "path": "/Users/kylec/Projects/pokemon-agent/tools/../logs/scripted/20261114-023609/checkpoints/ckpt_00181_TRANSITIONING.ss1",
+  "step": 181,
+  "tag": "ckpt_00181_TRANSITIONING",
+  "time": "2026-11-14 02:37:38",
+  "meta": {
+    "map": [
+      0,
+      0
+    ],
+    "badges": 0,
+    "party": [],
+    "llm_calls": 362
+  }
+}

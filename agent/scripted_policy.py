@@ -19,6 +19,7 @@ GYM_PLAN = [
     {"leader": "Brock", "city": "Pewter City", "lead_level": 14},
     {"leader": "Misty", "city": "Cerulean City", "lead_level": 21},
     {"leader": "Lt. Surge", "city": "Vermilion City", "lead_level": 26},
+    {"leader": "Erika", "city": "Celadon City", "lead_level": 40},
 ]
 
 
@@ -69,7 +70,9 @@ class ScriptedPolicy:
         if ctx == GameContext.DIALOG_OPEN:
             return "advance_dialog", {}
         if ctx != GameContext.OVERWORLD:
-            return "wait_frames", {"frames": 30}
+            # TRANSITIONING / UNKNOWN: a blackout's text, a fade, a warp — A carries it forward; waiting
+            # alone sat in the post-blackout "(0,0)" screen forever.
+            return "advance_dialog", {}
         party = self.r.read_party()
         if not party:
             return "wait_frames", {"frames": 30}
