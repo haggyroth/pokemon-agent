@@ -441,6 +441,24 @@ class BattleMixin:
         balls0 = self._ball_count()
         if balls0 <= 0:
             return "No Poké Balls — buy some at a Mart with shop(), then catch."
+        # Vet the nickname BEFORE spending a ball: the naming keyboard only types letters, digits,
+        # space and . , ! ? — and the model's first idea is often just the species name ("Zubat",
+        # "Kakuna1"). Refuse ONCE per species with the reason (no ball thrown) so it invents something
+        # better; a second try is accepted as sanitized, so this can never loop.
+        if nickname:
+            from knowledge.nicknames import critique, sanitize
+            foe = self.reader.read_enemy_lead()
+            species = (foe.species_name or "") if foe else ""
+            taken = [p.nickname for p in self.reader.read_party()]
+            why = critique(nickname, species, taken)
+            asked = getattr(self, "_nick_refused", None)
+            if why and asked != species:
+                self._nick_refused = species
+                return (f"No ball thrown — {why}. Pick a more inventive nickname for this {species or 'Pokémon'} "
+                        "(a pun, a pop-culture nod, a funny title — your call; max 10 chars, letters/digits/"
+                        "space/. , ! ? only) and call catch(nickname=...) again.")
+            self._nick_refused = None
+            nickname = sanitize(nickname)
         idle = getattr(self.mgba, "wait_until_idle", None)
         if not self._open_battle_bag():
             return "Couldn't open the Bag in battle — try catch again."

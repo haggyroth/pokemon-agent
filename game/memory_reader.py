@@ -2,7 +2,7 @@ import logging
 
 from game.mgba_client import MGBAClient
 from game.state import GameState, PokemonStatus, StateDiff, GameContext
-from game.constants import Addr, SPECIES_NAMES, MOVE_NAMES
+from game.constants import Addr, SPECIES_NAMES, MOVE_NAMES, GEN3_CHARSET
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +152,16 @@ class LeafGreenReader:
                 # decryption failed — Tier 1 data still valid
                 logger.warning("party mon decrypt failed for slot %d", slot, exc_info=True)
 
+        nick = []
+        for b in raw[8:18]:                      # nickname: 10 Gen III chars, 0xFF-terminated (unencrypted)
+            if b == 0xFF:
+                break
+            nick.append(GEN3_CHARSET.get(b) or "")
         return PokemonStatus(
             slot=slot, level=level, current_hp=current_hp, max_hp=max_hp,
             status=decode_status(status_word), species_id=species_id,
             species_name=species_name, move_ids=move_ids, move_names=move_names, pp=pp,
+            nickname="".join(nick).strip(),
         )
 
     # Gen III internal species indices run 1..411 (Bulbasaur..Chimecho-era slots);

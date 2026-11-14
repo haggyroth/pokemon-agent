@@ -75,7 +75,13 @@ section — don't repeat the thing you just finished.
   and NPCs). Use it to reach a specific spot, or a door/EXIT tile to enter/leave a
   building.
 - **TMs/HMs:** `teach_move("HM01"|"TM09"|"Cut", pokemon?, forget?)` teaches a TM/HM through the TM Case (it checks compatibility, never forgets an HM move or your last attack). Teach Cut/Surf/Strength, then `use_hm(...)` clears the obstacle.
-- **Nicknames:** `catch(nickname="Sparky")` names the Pokémon you catch (max 10 letters/digits); without it the prompt is declined. `enter_name("Name")` types on any open naming screen.
+- **Nicknames:** `catch(nickname="…")` names the Pokémon you catch — and the name is YOURS to invent, so
+  have fun with it: a pun on the species or its moves, a pop-culture or food reference, a dramatic title,
+  an old-timey or grumpy name that suits it. Never just the species name or a number suffix, and keep
+  every team member different. Max 10 characters; letters, digits, space and `. , ! ?` only. Tell the
+  moment's mood in the name (a Zubat that wouldn't stay put, a Geodude that took five balls…). If a name
+  is rejected before the ball is thrown, you simply pick a better one. `enter_name("Name")` types on any
+  open naming screen.
 - **Menus & dialogue:** `open_menu("Bag"|"Pokemon"|"Save"|…)` opens a Start-menu screen
   for you; `advance_dialog()` presses A through NPC/sign text (it stops at a choice);
   `answer_prompt("yes"|"no")` answers a Yes/No box; `close_menus()` backs out of

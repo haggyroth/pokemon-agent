@@ -264,11 +264,16 @@ TOOLS = [
                        "greatly raises the catch rate); it may break free, so you can "
                        "catch() again. Use it on wild Pokémon that would help your team "
                        "(a new species, a good type). You can't catch a trainer's "
-                       "Pokémon. Needs Poké Balls (buy them with shop()). Optional "
-                       "`nickname` (max 10 letters/digits) gives the caught Pokémon a name "
-                       "via the naming screen; omit it to decline the nickname prompt.",
+                       "Pokémon. Needs Poké Balls (buy them with shop()). ALWAYS pass a "
+                       "`nickname` — you invent it, so make it memorable and a bit funny (a pun on "
+                       "the species or its moves, a pop-culture or food reference, a dramatic or "
+                       "grumpy title); never just the species name or a number, and no two team "
+                       "members alike. Max 10 characters; letters, digits, space . , ! ? only "
+                       "(typed on the naming screen for you).",
         "parameters": {"type": "object", "properties": {
-            "nickname": {"type": "string", "description": "optional name for the catch"},
+            "nickname": {"type": "string",
+                         "description": "name YOU invent for this catch — inventive/funny, max 10 chars, "
+                                        "not the species name. Omit only to skip naming."},
         }},
     }},
     {"type": "function", "function": {

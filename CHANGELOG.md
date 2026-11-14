@@ -18,6 +18,11 @@ All notable changes to this project are documented here. Format loosely follows
   low, resuming after wild/trainer interruptions) and walk back to grass — up to 8 round-trips per call.
 - fix(heal): `heal()` no longer refuses "full HP" when attacks are at 0 PP (a Center restores PP).
 - fix(grind): an open field menu/party screen is closed with B instead of pressing A inside it.
+- feat(nicknames): the model invents names with personality — tool/system prompt/new-species obs push for
+  puns, pop-culture, dramatic titles (never the species name or a number, none alike). `catch()` vets the
+  name BEFORE throwing a ball (`knowledge/nicknames.py`): untypeable chars are sanitized, a bland /
+  too-long / duplicate name is refused once with the reason, then accepted. Party nicknames are now read
+  from the struct so the obs lists names already taken. Verified live (typed `Mr. Zap!`).
 - feat(obs): status moves read `Status — deals NO damage` (Leech Seed used to show ×4 SUPER); a
   `⚠ NO ATTACKING MOVE WITH PP` line names teammates that can attack; low attack PP warns to heal;
   repeating a no-damage move twice in `use_move` adds a warning.

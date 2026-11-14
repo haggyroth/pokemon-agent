@@ -563,7 +563,10 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                     obs_parts.append(
                         f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — "
                         "consider catch() to add it to your team. Weaken it first "
-                        "with use_move (low HP raises the catch rate).")
+                        "with use_move (low HP raises the catch rate). When you catch it, pass a "
+                        "funny, inventive nickname you make up (not the species name)"
+                        + ((f"; already taken: {', '.join(n for n in (p.nickname for p in state.party) if n)}")
+                           if any(p.nickname for p in state.party) else "") + ".")
                 elif balls == 0 and len(state.party) < 6:
                     obs_parts.append(
                         "You have no Poké Balls — buy some with shop() to catch "
