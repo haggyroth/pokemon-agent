@@ -187,6 +187,17 @@ TOOLS = [
         }, "required": ["tm"]},
     }},
     {"type": "function", "function": {
+        "name": "fly_to",
+        "description": "Fly to a town you have already visited (needs a Pokémon that knows Fly + the "
+                       "Thunder Badge, and you must be outdoors). Opens the party menu, picks Fly and "
+                       "steers the map cursor to the town. Towns: Pallet, Viridian, Pewter, Cerulean, "
+                       "Lavender, Vermilion, Celadon, Fuchsia, Cinnabar, Saffron, Indigo Plateau. A "
+                       "fast way back to a Pokémon Center / gym instead of walking.",
+        "parameters": {"type": "object", "properties": {
+            "town": {"type": "string"},
+        }, "required": ["town"]},
+    }},
+    {"type": "function", "function": {
         "name": "use_hm",
         "description": "Use a field HM: Surf (starts surfing at the nearest shore — then walk_to / "
                        "go_to_map cross water), Cut (nearest cut tree), Rock Smash (rock), "
@@ -194,7 +205,7 @@ TOOLS = [
                        "know the move and you need its badge. walk_to also starts Surf by itself "
                        "when only water blocks the route.",
         "parameters": {"type": "object", "properties": {
-            "move": {"type": "string", "enum": ["Surf", "Cut", "Rock Smash", "Strength"]},
+            "move": {"type": "string", "enum": ["Surf", "Cut", "Rock Smash", "Strength", "Flash"]},
         }, "required": ["move"]},
     }},
     {"type": "function", "function": {

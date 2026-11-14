@@ -279,6 +279,8 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
             case "teach_move":
                 return self._teach_move(str(args["tm"]), str(args.get("pokemon", "") or ""),
                                         str(args.get("forget", "") or ""))
+            case "fly_to":
+                return self._fly_to(str(args["town"]))
             case "use_hm":
                 return self._use_hm(str(args["move"]))
             case "open_menu":

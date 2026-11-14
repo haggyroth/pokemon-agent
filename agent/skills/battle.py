@@ -512,14 +512,14 @@ class BattleMixin:
         # rejects it as "already in battle" (why a 2nd switch used to silently fail, #120).
         disp_slot = self._battle_display_slot(slot)
         for _ in range(12):                       # move the cursor to the target's display slot
-            cur = self.mgba.read8(Addr.PARTY_MENU_SLOT)
+            cur = self.mgba.read8(Addr.PARTY_FIELD_SLOT)
             if cur == disp_slot:
                 break
             self.mgba.tap("Down" if cur < disp_slot else "Up")
             if idle:
                 idle()
             self.mgba.tick(8)
-        if self.mgba.read8(Addr.PARTY_MENU_SLOT) != disp_slot:
+        if self.mgba.read8(Addr.PARTY_FIELD_SLOT) != disp_slot:
             self._exit_battle_menus()
             return f"Couldn't select {mon.species_name} in the party menu — try again."
         # Select the slot → SHIFT (default) → confirm. Self-verifying: press A until the
