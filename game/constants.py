@@ -259,6 +259,7 @@ class Addr:
     FLYMAP_CURSOR_X    = 0x0202063E     # low 9 bits (attr1)
     FLYMAP_CURSOR_Y    = 0x0202063C     # low 8 bits (attr0)
     VARS_OFFSET        = 0x1000         # + [SAVEBLOCK1_PTR]; var n (≥0x4000) = u16 at index n-0x4000
+    POKEMON_STORAGE_PTR = 0x03005010    # gPokemonStoragePtr -> PokemonStorage (currentBox u8; boxes[14][30] x 80 bytes)
     SAVEBLOCK2_PTR     = 0x0300500C     # gSaveBlock2Ptr (pokedex lives at +0x18)
     DEX_OWNED_OFFSET   = 0x28           # SaveBlock2 + 0x18 + 0x10 : u8 owned[52]
     DEX_SEEN_OFFSET    = 0x5C           # SaveBlock2 + 0x18 + 0x44 : u8 seen[52]

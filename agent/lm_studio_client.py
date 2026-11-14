@@ -18,6 +18,7 @@ from rich.console import Console
 from agent.skills.nav import NavMixin
 from agent.skills.quests import QuestMixin
 from agent.skills.party import PartyMixin
+from agent.skills.pc import PCMixin
 from agent.skills.overworld import OverworldMixin
 from agent.skills.battle import BattleMixin
 from agent.skills.movelearn import MoveLearnMixin
@@ -30,7 +31,7 @@ from agent.skills.tmhm import TMHMMixin
 console = Console()
 
 
-class AgentClient(PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
+class AgentClient(PCMixin, PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -354,6 +355,14 @@ class AgentClient(PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin,
                 return self._go_to_tool(args["destination"], bool(args.get("force", False)))
             case "get_ss_ticket":
                 return self._get_ss_ticket()
+            case "pc_boxes":
+                return self._pc_boxes()
+            case "pc_deposit":
+                return self._pc_deposit(str(args["pokemon"]))
+            case "pc_withdraw":
+                return self._pc_withdraw(str(args["pokemon"]))
+            case "pc_swap":
+                return self._pc_swap(str(args["party_pokemon"]), str(args["box_pokemon"]))
             case "reorder_party":
                 return self._reorder_party(str(args["first"]), str(args["second"]))
             case "set_lead":

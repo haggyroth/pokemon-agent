@@ -560,7 +560,7 @@ class BattleMixin:
             extra = f" {named}" if named else ""
             if party_before >= 6:
                 return ("Gotcha! Caught the wild Pokémon — your party was full, so it was sent to the PC "
-                        f"box (there is no PC tool yet; it is safe there).{extra}")
+                        f"box — see pc_boxes, and pc_swap / pc_withdraw to bring it into the team.{extra}")
             return f"Gotcha! Caught the wild Pokémon — it's on your team now.{extra}"
         return ("It broke free! Weaken it more with use_move (bring its HP low, or "
                 "inflict a status like sleep), then catch() again.")

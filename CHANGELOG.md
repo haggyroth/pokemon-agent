@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — PC boxes (drive the storage system)
+- feat: `pc_boxes()` lists every stored Pokémon (read from `gPokemonStoragePtr` — 14 boxes × 30 × 80-byte BoxPokemon at
+  +4; levels derived from experience via the new `knowledge/growth.py` + generated growth rates); `pc_deposit`,
+  `pc_withdraw` (by species/nickname or `box:slot`, switching boxes) and `pc_swap` drive the real Pokémon Center PC menus:
+  PC tile found by metatile behavior 0x83 → "Which PC?" → the storage-system menu (WITHDRAW/DEPOSIT) → the storage screen
+  (cursor area 0x02039820 / position 0x02039821, found by RAM diff) → STORE/WITHDRAW → "which box?". Every change is verified
+  against memory; it can't deposit the last battle-ready Pokémon; `pc_swap` validates the boxed mon first. Live: deposit,
+  list, withdraw, and a withdraw from box 2 slot 14 each take ~1-4 s.
+
 ### Changed — training, level-up moves, trapped awareness, Pokédex (watched-run observations)
 - feat(training): balance-mode `grind()` puts the TRAINEE in slot 1 (via `reorder_party`) so it fights alone and keeps
   all the XP — swapping a trainee in after a strong lead was sent out gave the lead half of every fight, which is why

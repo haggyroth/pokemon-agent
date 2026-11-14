@@ -426,6 +426,55 @@ class LeafGreenReader:
             return 0
         return self.client.read16(sb1 + Addr.VARS_OFFSET + (n - 0x4000) * 2)
 
+    BOX_COUNT, BOX_SLOTS, BOXMON_SIZE = 14, 30, 80
+
+    def _storage_ptr(self) -> int:
+        ptr = self.client.read32(Addr.POKEMON_STORAGE_PTR)
+        return ptr if 0x02000000 <= ptr < 0x02040000 else 0
+
+    def read_current_box(self) -> int | None:
+        base = self._storage_ptr()
+        return self.client.read8(base) if base else None
+
+    def read_box_mon(self, box: int, slot: int) -> dict | None:
+        """One boxed Pokémon as {species_id, species_name, nickname, level, move_names} (None when the slot is
+        empty / unreadable). Box Pokémon keep only experience, so the level is derived from it."""
+        base = self._storage_ptr()
+        if not base or not (0 <= box < self.BOX_COUNT and 0 <= slot < self.BOX_SLOTS):
+            return None
+        addr = base + 4 + (box * self.BOX_SLOTS + slot) * self.BOXMON_SIZE      # u8 currentBox, 3 pad bytes (u32 alignment)
+        raw = bytes(self.client.read_range(addr, self.BOXMON_SIZE)) + bytes(20)
+        if not any(raw[:80]):
+            return None
+        try:
+            sub = decrypt_substructs(raw)
+            sid = parse_species(sub)
+            if not (1 <= sid <= self._MAX_SPECIES):
+                return None
+            ids, _pp = parse_moves(sub)
+            exp = int.from_bytes(sub["G"][4:8], "little")
+        except Exception:
+            return None
+        from knowledge.growth import level_from_exp
+        nick = []
+        for b in raw[8:18]:
+            if b == 0xFF:
+                break
+            nick.append(GEN3_CHARSET.get(b) or "")
+        return {"box": box, "slot": slot, "species_id": sid, "species_name": SPECIES_NAMES.get(sid, f"#{sid}"),
+                "nickname": "".join(nick).strip(), "level": level_from_exp(sid, exp),
+                "move_names": [MOVE_NAMES.get(m, "") for m in ids if m]}
+
+    def read_boxes(self) -> list[dict]:
+        """Every occupied PC slot, box by box."""
+        out = []
+        for b in range(self.BOX_COUNT):
+            for sl in range(self.BOX_SLOTS):
+                mon = self.read_box_mon(b, sl)
+                if mon:
+                    out.append(mon)
+        return out
+
     KANTO_DEX = 151
 
     def read_pokedex(self) -> tuple[int, int]:

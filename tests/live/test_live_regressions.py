@@ -194,3 +194,27 @@ def test_balance_training_keeps_the_ace_from_stealing_xp(live, monkeypatch):
     party = live.r.read_party()
     assert party[0].species_name == "Bulbasaur" and party[0].level == 19, (out, [(p.species_name, p.level, p.current_hp) for p in party])
     assert max(p.level for p in party[1:]) > 5                                  # the trainees actually levelled
+
+
+def test_pc_deposit_list_and_withdraw_through_the_real_menus(live):
+    live.load("threemon")
+    out = live.c._execute("pc_deposit", json.dumps({"pokemon": "Pikachu"}))
+    assert out.startswith("Deposited") and len(live.r.read_party()) == 2, out
+    assert live.r.detect_context() == GameContext.OVERWORLD
+    assert "Pikachu" in live.c._execute("pc_boxes", "{}")
+    out = live.c._execute("pc_withdraw", json.dumps({"pokemon": "pikachu"}))
+    assert out.startswith("Withdrew") and len(live.r.read_party()) == 3, out
+    assert live.r.read_boxes() == []
+
+
+def test_pc_withdraw_from_another_box_and_grid_slot(live):
+    live.load("threemon")
+    assert live.c._execute("pc_deposit", json.dumps({"pokemon": "Caterpie"})).startswith("Deposited")
+    base = live.r._storage_ptr()
+    src, dst = base + 4, base + 4 + (1 * 30 + 14) * 80          # box 1 slot 0 → box 2 slot 14 (col 2, row 2)
+    for i in range(80):
+        live.m.write8(dst + i, live.m.read8(src + i))
+        live.m.write8(src + i, 0)
+    out = live.c._execute("pc_withdraw", json.dumps({"pokemon": "2:14"}))
+    assert out.startswith("Withdrew") and live.r.read_current_box() == 1, out
+    assert [p.species_name for p in live.r.read_party()][-1] == "Caterpie"
