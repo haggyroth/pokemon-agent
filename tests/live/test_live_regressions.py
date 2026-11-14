@@ -134,3 +134,32 @@ def test_get_cut_then_enter_the_vermilion_gym_and_open_the_locks(live):
     res = live.c._solve_vermilion_switches()
     assert res.startswith("Both"), res
     assert live.r.read_flag(0x264)
+
+
+def test_reorder_party_and_set_lead_drive_the_party_menu(live):
+    live.load("threemon")
+    out = live.c._execute("reorder_party", json.dumps({"first": "1", "second": "3"}))
+    assert out.startswith("Swapped"), out
+    assert [p.species_name for p in live.r.read_party()][0] == "Caterpie"
+    out = live.c._execute("set_lead", json.dumps({"pokemon": "Pikachu"}))
+    assert out.startswith("Swapped") and live.r.read_party()[0].species_name == "Pikachu", out
+    assert live.r.detect_context() == GameContext.OVERWORLD
+
+
+def test_first_arrival_in_a_town_heals_at_its_center_once(live):
+    live.load("post_misty")
+    live.c.ltm.data["pc_visited"] = []
+    out = live.c._execute("go_to", json.dumps({"destination": "Cerulean City"}))
+    assert out.startswith("Arrived"), out
+    assert live.c.ltm.data["pc_visited"] == ["3,3"]
+
+
+def test_grind_catches_a_worthwhile_wild_pokemon_and_names_it(live, monkeypatch):
+    import knowledge.catch_policy as cp
+    monkeypatch.setattr(cp, "evaluate", lambda party, sid, lvl, max_team=6: cp.Verdict(True, "test", 0))
+    live.load("threemon")
+    balls = live.c._ball_count()
+    out = live.c._execute("grind", json.dumps({"level": 9}))
+    assert "caught" in out, out
+    assert live.c._ball_count() < balls and len(live.r.read_party()) > 3
+    assert live.r.detect_context() == GameContext.OVERWORLD

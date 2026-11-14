@@ -488,6 +488,17 @@ class NavMixin:
             party = self.reader.read_party()
             if outcome in (Addr.B_OUTCOME_LOST, Addr.B_OUTCOME_DREW) or (
                     party and all(p.current_hp == 0 for p in party)):
+                # Remember WHERE we lost: a mandatory trainer on the way (the rival at Cerulean's north exit,
+                # Route 22) beats an under-levelled team every time, and a retry loop of
+                # lose → Pokémon Center → walk back → lose again helps nobody.
+                here = getattr(self.reader, "read_current_map", lambda: (0, 0))()
+                losses = self.__dict__.setdefault("_trainer_losses", {})
+                losses[here] = losses.get(here, 0) + 1
+                if losses[here] >= 2:
+                    return (f"Lost to a trainer near {MAP_NAMES.get(here, here)} {losses[here]} times — you're "
+                            f"not strong enough for the way to {target_name} yet. Do NOT retry: heal(), then "
+                            "grind() to level up on a different route (or switch in a stronger Pokémon), and "
+                            "come back.")
                 return (f"Lost a trainer battle en route to {target_name} — heal (and "
                         f"revive any fainted mon), then go_to({target_name!r}) again.")
             if self.reader.detect_context() == GameContext.IN_BATTLE:
@@ -645,6 +656,39 @@ class NavMixin:
             route = alt
         return route, first_hint
 
+    # Towns with their own Pokémon Center (Pallet has none). Healing at a town's Center the first time we
+    # arrive also makes it the blackout respawn point, so a loss never sends us back across the map.
+    _PC_TOWNS = frozenset({(3, 1), (3, 2), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8), (3, 10)})
+
+    def _maybe_visit_new_town(self, town, destination: str) -> None:
+        """First arrival in a town with a Center: walk in and talk to Nurse Joy (heals HP+PP and sets the
+        respawn point), then carry on. Skipped while already heading to a Center (no recursion)."""
+        from game.state import GameContext
+        town = tuple(town[:2])
+        if town not in self._PC_TOWNS or "pokemon center" in str(destination).lower() \
+                or getattr(self, "_in_town_visit", False):
+            return
+        seen = self.ltm.data.setdefault("pc_visited", [])
+        key = f"{town[0]},{town[1]}"
+        if key in seen:
+            return
+        if self.reader.detect_context() != GameContext.OVERWORLD:
+            return
+        self._in_town_visit = True
+        try:
+            res = self._heal(force=True)
+            if res.startswith(("Healed", "Party is already")):
+                seen.append(key)             # only count it once we actually reached the nurse
+                try:
+                    self.ltm.save()
+                except Exception:
+                    pass
+        finally:
+            self._in_town_visit = False
+
+    # Maps you can't walk to from Cerulean (see the guard in _go_to): the whole west side of Kanto start.
+    _WEST_OF_ROUTE4 = frozenset({(3, 0), (3, 1), (3, 2), (3, 19), (3, 20), (3, 21), (1, 0), (1, 1), (1, 2), (1, 3)})
+
     @staticmethod
     def _gym_city(gym_map):
         """(bank, id) of the outdoor city a gym interior belongs to, or None."""
@@ -671,6 +715,16 @@ class NavMixin:
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
+
+        # Cerulean → the west (Pewter / Viridian / Pallet / Routes 1-3 / Mt. Moon) has NO walking route:
+        # Route 4's east end is a pocket of one-way ledges, so you can come OUT of Mt. Moon into it but
+        # never climb back (live-verified: no walkable path from Route 4's Cerulean side to Mt. Moon). The
+        # planner's region-blind fallback used to invent a "South edge" link here and loop on
+        # "Reached the South edge but could not cross".
+        if self.reader.read_current_map() in ((3, 3), (3, 22)) and tuple(target_map[:2]) in self._WEST_OF_ROUTE4:
+            return (f"There is no walking route from Cerulean back to {target_name}: Route 4's ledges only "
+                    "go one way (out of Mt. Moon). Fly there (needs HM Fly) or load an earlier save — and "
+                    "plan trips so you don't need to go back west on foot.")
 
         # A gym interior is often sealed from the planner's static view (Cut-tree doors: Vermilion,
         # Celadon, ...), which made it fall back to a region-blind route that marched into walls. Get to
@@ -736,6 +790,7 @@ class NavMixin:
             after = self.reader.read_current_map()
             if after != before:
                 fails.pop((cur_node, kind_step, arg), None)   # this edge works (again)
+                self._maybe_visit_new_town(after, destination)
             if after == before:
                 # Map didn't change — but in a big maze/dungeon one walk_to hop only
                 # gets PART of the way to the exit warp. If the player still moved,

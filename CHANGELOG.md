@@ -5,6 +5,22 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — party control, town healing, auto-catch, rival-loop guard
+- feat: `reorder_party(first, second)` and `set_lead(pokemon)` drive Start → POKéMON → SWITCH out of battle
+  (verified live; the cursor address doesn't track in "Move to where?", so it counts presses and verifies the
+  resulting order, retrying). In battle, `switch_pokemon` already does the same.
+- feat: the first arrival in any town with a Pokémon Center heals there (nurse conversation, which also sets the
+  blackout respawn) — `ltm.pc_visited`, once per town. `_heal(force=True)` talks to Nurse Joy even at full HP.
+- feat: `grind()`/balance mode auto-catch worthwhile wild Pokémon (catch policy), weakening gently (never the
+  killing blow) and naming them from `knowledge.nicknames.auto_name` (species puns + a varied pool). Opt out with
+  `grind(catch=false)`; the result lists what was caught.
+- fix: no more rival retry loops — a trainer loss is remembered per map; the second loss on the same way in
+  returns "Do NOT retry — grind elsewhere", and grass relocation heals once and picks a different route instead of
+  walking back into the rival.
+- fix(nav): Cerulean → the west has NO walking route (Route 4's east end is a pocket of one-way ledges; live-checked
+  there's no walkable path from it to Mt. Moon). `go_to` now says so (Fly / long way) instead of looping on a phantom
+  "South edge could not cross".
+
 ### Fixed — the road to Celadon (#185 item 5, Erika)
 - fix(nav): when a route enters a gated map (Saffron's Tea guards, the Route 12/16 Snorlaxes) the re-plan now
   bans the WHOLE gated map (`route_to(avoid_maps=...)`) and gets 6 tries instead of blocking one edge at a time

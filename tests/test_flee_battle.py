@@ -72,6 +72,16 @@ def test_travel_trainer_loss_bails():
     assert msg is not None and "lost" in msg.lower() and "heal" in msg.lower()
 
 
+def test_second_loss_near_the_same_map_says_stop_retrying():
+    c = _trainer_client(outcome=Addr.B_OUTCOME_LOST, ctx_after=GameContext.TRANSITIONING,
+                        party=[_mon(0), _mon(0)])
+    c.reader.read_current_map = lambda: (3, 3)
+    first = c._handle_travel_battle("Pewter City")
+    second = c._handle_travel_battle("Pewter City")
+    assert "Do NOT retry" not in first and "heal" in first.lower()
+    assert "Do NOT retry" in second and "grind" in second.lower()
+
+
 def test_travel_trainer_all_fainted_bails_even_without_outcome():
     # Blackout race: outcome not yet set but the whole party is down → still a loss.
     c = _trainer_client(outcome=0, ctx_after=GameContext.TRANSITIONING,

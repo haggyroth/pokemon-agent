@@ -172,6 +172,9 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "level": {"type": "integer",
                       "description": "target LEAD level, e.g. 13. Omit (or 0) to balance the whole team."},
+            "catch": {"type": "boolean",
+                      "description": "auto-catch wild Pokémon worth having while grinding (default true; "
+                                     "they get an autopilot nickname). Pass false to only fight."},
         }, "required": []},
     }},
     {"type": "function", "function": {
@@ -183,6 +186,24 @@ TOOLS = [
                        "and Lass / a policeman) and Vermilion City is unreachable. Resumable: if it stops "
                        "(heal, interrupted), call it again.",
         "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "reorder_party",
+        "description": "Swap two party members out of battle, driving Start → POKéMON → SWITCH for you. "
+                       "`first`/`second` are a 1-based slot or a species/nickname. Use it to choose who "
+                       "leads or to line up a switch order. In a battle use switch_pokemon instead.",
+        "parameters": {"type": "object", "properties": {
+            "first": {"type": "string", "description": "slot number or name"},
+            "second": {"type": "string", "description": "slot number or name"},
+        }, "required": ["first", "second"]},
+    }},
+    {"type": "function", "function": {
+        "name": "set_lead",
+        "description": "Make a party member your lead (slot 1 — the one that fights first) out of battle. "
+                       "`pokemon` is a 1-based slot or a species/nickname. A fainted Pokémon can't lead.",
+        "parameters": {"type": "object", "properties": {
+            "pokemon": {"type": "string", "description": "slot number or name"},
+        }, "required": ["pokemon"]},
     }},
     {"type": "function", "function": {
         "name": "get_cut",

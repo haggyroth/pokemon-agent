@@ -17,6 +17,7 @@ from config import (LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKE
 from rich.console import Console
 from agent.skills.nav import NavMixin
 from agent.skills.quests import QuestMixin
+from agent.skills.party import PartyMixin
 from agent.skills.overworld import OverworldMixin
 from agent.skills.battle import BattleMixin
 from agent.skills.movelearn import MoveLearnMixin
@@ -29,7 +30,7 @@ from agent.skills.tmhm import TMHMMixin
 console = Console()
 
 
-class AgentClient(QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
+class AgentClient(PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, EvolutionMixin, MenuMixin, FieldItemMixin, HMMixin, TMHMMixin):
 
     def __init__(self, mgba: MGBAClient, reader: LeafGreenReader, ltm: LongTermMemory):
         self.llm    = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
@@ -350,6 +351,10 @@ class AgentClient(QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMi
                 return self._go_to(args["destination"])
             case "get_ss_ticket":
                 return self._get_ss_ticket()
+            case "reorder_party":
+                return self._reorder_party(str(args["first"]), str(args["second"]))
+            case "set_lead":
+                return self._set_lead(str(args["pokemon"]))
             case "get_cut":
                 return self._get_cut()
             case "teach_move":
@@ -391,7 +396,7 @@ class AgentClient(QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMi
             case "enter_name":
                 return self._enter_name(str(args["name"]))
             case "grind":
-                return self._grind(int(args.get("level", 0)))
+                return self._grind(int(args.get("level", 0) or 0), bool(args.get("catch", True)))
             case "train_party":
                 return self._train_party()
             case "read_game_state":

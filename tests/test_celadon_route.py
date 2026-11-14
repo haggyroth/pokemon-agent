@@ -32,3 +32,13 @@ def test_gym_interiors_resolve_to_their_city():
     assert AgentClient._gym_city((10, 16)) == (3, 6)        # Celadon
     assert AgentClient._gym_city((9, 6)) == (3, 5)          # Vermilion
     assert AgentClient._gym_city((3, 3)) is None            # not a gym
+
+
+def test_no_walking_route_from_cerulean_back_west():
+    pytest.importorskip("openai")
+    from types import SimpleNamespace
+    from agent.lm_studio_client import AgentClient
+    c = AgentClient.__new__(AgentClient)
+    c.reader = SimpleNamespace(read_current_map=lambda: (3, 3), read_player_pos=lambda: (24, 0))
+    out = c._go_to("Pewter City")
+    assert "no walking route" in out.lower() and "Fly" in out
