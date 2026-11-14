@@ -85,9 +85,14 @@ def test_restore_ace_lead_puts_the_highest_level_back_in_front():
     c = AgentClient.__new__(AgentClient)
     c.reader = NS(read_party=lambda: party, detect_context=lambda: GameContext.OVERWORLD)
     calls = []
-    c._set_lead = lambda who: calls.append(who)
+
+    def set_lead(who):
+        i = int(who) - 1
+        calls.append(who)
+        party[0], party[i] = party[i], party[0]            # the swap happens, so the retry loop stops
+    c._set_lead = set_lead
     c._restore_ace_lead()
-    assert calls == ["2"]
+    assert calls == ["2"] and party[0].species_name == "Venusaur"
 
 
 def test_balance_ratio_is_looser():
