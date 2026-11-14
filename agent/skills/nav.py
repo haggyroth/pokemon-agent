@@ -966,6 +966,15 @@ class NavMixin:
             narrowed = [c for c in edge if any(lo <= along(c) <= hi for lo, hi in spans)]
             edge = narrowed or edge
         px, py = self.reader.read_player_pos()
+        # On a SPLIT map (Cerulean, Route 2/4, …) only edge tiles in the player's own region can be walked
+        # to. The nearest-by-distance tile used to be in another region (Cerulean's north edge at (28,0) is a
+        # separate pocket from the real road at x=22..24), so the walk failed and the "step off the edge" taps
+        # below walked the player straight back through the door they had just left — the Pokémart loop.
+        from knowledge.map_graph import region_at
+        mine = region_at(tuple(here[:2]), px, py)
+        if mine is not None:
+            same = [c for c in edge if region_at(tuple(here[:2]), c[0], c[1]) == mine]
+            edge = same or edge
         edge.sort(key=lambda c: abs(c[0] - px) + abs(c[1] - py))
         from game.state import GameContext
         start_map = self.reader.read_current_map()
@@ -986,6 +995,8 @@ class NavMixin:
             # don't mash the step direction into a battle/dialog menu.
             if self.reader.detect_context() != GameContext.OVERWORLD:
                 return f"Interrupted while walking to the {direction} edge (context {self.reader.detect_context().name})."
+            if self.reader.read_player_pos() != (ex, ey):
+                continue         # never reached this edge tile: don't mash the step key from wherever we are
             for _ in range(5):   # step off the edge into the connected map
                 self.mgba.tap(step)
                 if self.reader.read_current_map() != start_map:

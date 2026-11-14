@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — Pokémart enter/exit loop in Cerulean (run 20261114-101556)
+- fix(nav): `_go_to_map` picked the nearest edge tile by distance even when it sat in another REGION of a split
+  map (Cerulean's north edge at (28,0) is a pocket apart from the road at x=22..24), so the walk failed — and the
+  "step off the edge" taps then walked the player straight back through the Mart door they had just left. Edge
+  candidates are now limited to the player's own region, and the step taps only happen once the edge tile was
+  actually reached.
+
 ### Added — party control, town healing, auto-catch, rival-loop guard
 - feat: `reorder_party(first, second)` and `set_lead(pokemon)` drive Start → POKéMON → SWITCH out of battle
   (verified live; the cursor address doesn't track in "Move to where?", so it counts presses and verifies the
