@@ -504,6 +504,7 @@ class BattleMixin:
         OUTCOME = Addr.BATTLE_OUTCOME
         caught = False
         named = ""
+        menu_seen = 0
         for _ in range(60 if not nickname else 120):
             if idle:
                 idle()
@@ -514,7 +515,20 @@ class BattleMixin:
                     break            # (with a nickname the Yes/No prompt is still ahead)
             if self.reader.detect_context() == GameContext.OVERWORLD:
                 break
-            if nickname and not named and self._battle_yesno_live():
+            # Probe for the post-catch Yes/No only while it can be on screen. The probe nudges Down/Up,
+            # which at the battle ACTION menu moves its cursor (BAG <-> RUN): after a broken-free ball
+            # that bounced the cursor between Bag and Run for ~120 iterations. So skip it whenever the
+            # action/move menu is actually up (a broken-free ball returns there).
+            at_menu = self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (
+                Addr.CTRL_CHOOSE_ACTION, Addr.CTRL_CHOOSE_ACTION_ALT, Addr.CTRL_CHOOSE_MOVE)
+            # A ball that broke free drops back to the action menu and stays there; a successful catch
+            # only FLICKERS through that menu value (≤ ~6 iterations, live-traced) before the Yes/No.
+            # So a long unbroken stretch at the menu with no catch means it broke free — stop waiting
+            # (this used to sit through all 60/120 iterations pressing B at the menu).
+            menu_seen = menu_seen + 1 if (at_menu and not caught) else 0
+            if menu_seen >= 20:
+                break
+            if nickname and not at_menu and not named and self._battle_yesno_live():
                 named = self._give_nickname(nickname)    # YES -> naming screen -> OK
                 continue
             self.mgba.tap("B")

@@ -5,6 +5,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — catch() after a ball breaks free
+- fix(catch): the post-catch Yes/No probe (nudges Down/Up) no longer runs while the battle action menu is up —
+  it flicked the cursor Bag↔Run on screen — and a broke-free ball now returns after ~20 idle iterations at the
+  menu instead of pressing B through all 60/120 (over a minute when watched). A successful catch only
+  flickers through the menu value (≤6 iterations, live-traced), so naming is unaffected.
+
 ### Changed — zero-PP loop + grind/train_party merge (second watched run)
 - fix(battle): `_best_damaging_move` no longer falls back to a status move. With attacks out of PP the
   grind/train loop picked Growl/Harden forever (run 20261113-222109: one `train_party()` call spun for
