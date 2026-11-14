@@ -1,11 +1,11 @@
-"""Team-balance rules (pure): every Pokémon should be within ~15% of the top level."""
+"""Team-balance rules (pure): every Pokémon should be within ~25% of the top level."""
 import math
 
-BALANCE_RATIO = 0.85
+BALANCE_RATIO = 0.75     # a loose floor: the ace can't be held back, so the rest only need to be in the same league
 
 
 def min_level_for(top: int) -> int:
-    """Lowest acceptable level when the top party level is `top` (ceil(0.85 * top))."""
+    """Lowest acceptable level when the top party level is `top` (ceil(0.75 * top))."""
     return max(1, math.ceil(top * BALANCE_RATIO))
 
 

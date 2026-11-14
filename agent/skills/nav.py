@@ -974,7 +974,7 @@ class NavMixin:
             self._balance_warned = cur
             names = ", ".join(f"{p.species_name} L{p.level}" for _, p in lag)
             return (f"Your team is lopsided (top L{top}; lagging: {names}). Call grind() (no level) first so "
-                    f"every Pokémon is within ~15% of L{top} — you'll need backups if the lead faints "
+                    f"every Pokémon is within ~25% of L{top} — you'll need backups if the lead faints "
                     f"or a move gets Disabled. Or call challenge_leader() again to fight anyway.")
         if cur == (9, 6):       # Vermilion: open the electric locks first (switches read from memory)
             res = self._solve_vermilion_switches()

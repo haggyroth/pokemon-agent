@@ -1,7 +1,8 @@
-"""Catch policy (pure): is this wild Pokémon worth a Poké Ball?
+"""Catch policy (pure): is this wild Pokémon worth a Poké Ball? (Beating the game is the primary objective;
+completing the Pokédex is secondary — a full party still catches brand-new species for it.)
 
 The agent used to catch everything new (an L2 Geodude, a Harden-only Kakuna) and then had to grind it
-up from far behind. The rules weigh what a catch COSTS (levels of grinding to get it within ~15% of the
+up from far behind. The rules weigh what a catch COSTS (levels of grinding to get it within ~25% of the
 team's top level — see knowledge.party) against what it ADDS (a strong evolution line, a type the team
 lacks). The verdict is advice shown to the model and used to decide which wild battles go_to stops on;
 the model can still choose to catch anything.
@@ -32,7 +33,7 @@ def _team_types(party) -> set:
     return out
 
 
-def evaluate(party, species_id: int, level: int, max_team: int = 6) -> Verdict:
+def evaluate(party, species_id: int, level: int, max_team: int = 6, dex_owned: bool | None = None) -> Verdict:
     """Verdict for a wild `species_id` at `level` against the current `party`."""
     data = SPECIES_DATA.get(species_id)
     if data is None:
@@ -41,6 +42,10 @@ def evaluate(party, species_id: int, level: int, max_team: int = 6) -> Verdict:
     if any(p.species_id == species_id for p in party):
         return Verdict(False, "you already have one")
     if len(party) >= max_team:
+        if dex_owned is False:
+            # Secondary objective: complete the Pokédex. A full party sends the catch to the PC box, where it
+            # costs no levelling — worth a ball for the new entry.
+            return Verdict(True, "a NEW Pokédex entry (your party is full, so it goes to the PC box)")
         return Verdict(False, "your party is full — it would go to the PC box")
     top = max((p.level for p in party), default=0)
     debt = max(0, min_level_for(top) - level) if top else 0

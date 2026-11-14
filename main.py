@@ -497,7 +497,12 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 _money = reader.read_money()
             except Exception:
                 _balls = _pots = _money = 0
-            _block = _render(_assess(state.party, _balls, _pots, _money, ltm.data.get("gyms_beaten", [])))
+            try:
+                _dex = reader.read_pokedex()
+            except Exception:
+                _dex = None
+            _block = _render(_assess(state.party, _balls, _pots, _money, ltm.data.get("gyms_beaten", []),
+                                     dex=_dex))
             if _block:
                 obs_parts.append(_block)
         if in_battle:
@@ -523,6 +528,22 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                                       disabled_slot=d_slot, disabled_turns=d_turns,
                                       backup_hint=_hint)
             obs_parts.append(bsummary)
+            try:
+                _vol = reader.read_battle_volatiles(0)
+            except Exception:
+                _vol = {}
+            if _vol.get("wrapped") or _vol.get("escape_prevention"):
+                obs_parts.append(
+                    "⛓ TRAPPED — a trapping move (Wrap/Bind/Fire Spin/Clamp/Whirlpool: 2-5 turns) or Mean Look/Spider "
+                    "Web/Block holds you: you CANNOT run or switch voluntarily. Attack (or use an item) until it ends.")
+            if _vol.get("tormented"):
+                obs_parts.append("TORMENTED — you can't use the same move twice in a row: alternate attacks.")
+            if _vol.get("confused"):
+                obs_parts.append("CONFUSED — you may hurt yourself; it wears off in a few turns (switching cures it).")
+            if _vol.get("infatuated"):
+                obs_parts.append("INFATUATED (Attract) — you may be unable to move; switching out cures it.")
+            if _vol.get("recharge"):
+                obs_parts.append("Recharging after Hyper Beam — this turn is lost.")
             from agent.lm_studio_client import AgentClient as _AC
             from knowledge.battle import battle_idle_nudge
             _nudge = battle_idle_nudge(
@@ -547,7 +568,8 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 if (balls > 0 and enemy and enemy.species_id
                         and enemy.species_id not in party_species):
                     from knowledge.catch_policy import evaluate as _catch_eval
-                    _v = _catch_eval(state.party, enemy.species_id, enemy.level or 0)
+                    _v = _catch_eval(state.party, enemy.species_id, enemy.level or 0,
+                                     dex_owned=reader.read_dex_owned(enemy.species_id))
                     if _v.catch:
                         obs_parts.append(
                             f"NEW SPECIES you don't own ({balls} Poké Balls in bag) — worth catching: "

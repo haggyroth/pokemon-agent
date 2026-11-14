@@ -436,7 +436,7 @@ class OverworldMixin:
 
     # ── Party balancing ─────────────────────────────────────────────────────────
     def _lagging_mons(self, party=None) -> list:
-        """Alive party members more than ~15% below the top level (knowledge.party), lowest first."""
+        """Alive party members more than ~25% below the top level (knowledge.party), lowest first."""
         from knowledge.party import lagging_mons
         return lagging_mons(party if party is not None else self.reader.read_party())
 
@@ -535,9 +535,10 @@ class OverworldMixin:
         party = self.reader.read_party()
         foe = self.reader.read_enemy_lead()
         if (not foe or not foe.species_id or not foe.max_hp or (foe.species_name or "").startswith("#")
-                or len(party) >= 6 or self._ball_count() <= 0):
+                or self._ball_count() <= 0):
             return None
-        if not evaluate(party, foe.species_id, foe.level).catch:
+        dex = getattr(self.reader, "read_dex_owned", lambda _s: None)(foe.species_id)
+        if not evaluate(party, foe.species_id, foe.level, dex_owned=dex).catch:
             return None
         species = foe.species_name
         for _ in range(12):
@@ -565,12 +566,71 @@ class OverworldMixin:
         return None
 
     def _grind(self, target_level: int = 0, catch: bool = True) -> str:
+        """See _grind_inner. Wrapper: in balance mode the trainee is moved to slot 1 so it fights ALONE and
+        keeps all the XP; whatever happens, the strongest Pokémon is put back in front afterwards."""
+        self._training_swapped = False
+        try:
+            return self._grind_inner(target_level, catch)
+        finally:
+            if self._training_swapped:
+                try:
+                    from game.state import GameContext
+                    if self.reader.detect_context() == GameContext.IN_BATTLE:
+                        self._auto_fight()          # cut off mid-battle (time limit): finish it first
+                    self._restore_ace_lead()
+                except Exception:
+                    pass
+
+    def _lead_trainee(self, trainee) -> bool:
+        """Put `trainee` (a PokemonStatus from read_party) in slot 1. Experience is split between every Pokémon
+        that took part in a battle, so a strong lead that is merely switched out of a fight still takes half of
+        it (and a lead that just stays in takes ALL of it) — the trainee has to START the battle in front.
+        Returns True if the order is right afterwards."""
+        party = self.reader.read_party()
+        idx = next((i for i, p in enumerate(party)
+                    if (p.species_id, p.max_hp) == (trainee.species_id, trainee.max_hp)), None)
+        if idx is None:
+            return False
+        if idx == 0:
+            return True
+        out = self._set_lead(str(idx + 1))
+        if out.startswith("Swapped"):
+            self._training_swapped = True
+            return True
+        return False
+
+    def _restore_ace_lead(self) -> None:
+        """After training: the highest-level living Pokémon goes back to slot 1 (retried — menus after an abort
+        can be mid-fade, and a dropped input must not leave a Level-7 trainee leading the party)."""
+        from game.state import GameContext
+        for _ in range(4):
+            if self.reader.detect_context() == GameContext.IN_BATTLE:
+                self._auto_fight()
+            if self.reader.detect_context() != GameContext.OVERWORLD:
+                self._advance_to_control(tries=24)           # post-battle text / fades after an abort
+            for _ in range(3):
+                if self.reader.detect_context() == GameContext.OVERWORLD:
+                    break
+                self._close_menus()
+                self.mgba.tick(30)
+            if self.reader.detect_context() != GameContext.OVERWORLD:
+                continue
+            party = self.reader.read_party()
+            alive = [(p.level, -i) for i, p in enumerate(party) if p.current_hp > 0]
+            if not alive:
+                return
+            best = -max(alive)[1]
+            if best == 0:
+                return
+            self._set_lead(str(best + 1))
+
+    def _grind_inner(self, target_level: int = 0, catch: bool = True) -> str:
         """Level up by fighting wild Pokémon in tall grass; every fight is auto-fought (the LLM drives
         none of them) with the best damaging move, and the loop heals itself at a Pokémon Center when
         HP or attack PP runs low, then walks back to grass.
 
         target_level > 0  → raise the LEAD to that level (e.g. grind(13) before Brock).
-        target_level == 0 → BALANCE the team: every Pokémon within ~15% of the top level. Each wild
+        target_level == 0 → BALANCE the team: every Pokémon within ~25% of the top level. Each wild
                             fight is fought so the lowest lagging Pokémon earns the XP (it is sent in
                             first; a strong teammate finishes tough fights; a mon that was in the
                             battle shares the XP). Evolutions complete automatically."""
@@ -586,7 +646,7 @@ class OverworldMixin:
                 return "You only have one Pokémon — nothing to balance. Catch a team first, or grind(<level>)."
             if not self._lagging_mons(party):
                 lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
-                return f"Party is balanced (all within ~15% of L{max(p.level for p in party)}): {lv}."
+                return f"Party is balanced (all within ~25% of L{max(p.level for p in party)}): {lv}."
             again = "grind()"
         else:
             target_level = max(1, min(int(target_level), 100))
@@ -656,6 +716,10 @@ class OverworldMixin:
                     if abort:
                         return abort
                     continue
+                if balance and lag:
+                    ok_t = [p for _, p in lag if healthy_enough(p, self._GRIND_HP_FLOOR)]
+                    if ok_t and (party[0].species_id, party[0].max_hp) != (ok_t[0].species_id, ok_t[0].max_hp):
+                        self._lead_trainee(ok_t[0])      # trainee fights alone → all the XP
                 abort = self._grass_step(st, again)
                 if abort:
                     return abort

@@ -156,7 +156,7 @@ def test_first_arrival_in_a_town_heals_at_its_center_once(live):
 
 def test_grind_catches_a_worthwhile_wild_pokemon_and_names_it(live, monkeypatch):
     import knowledge.catch_policy as cp
-    monkeypatch.setattr(cp, "evaluate", lambda party, sid, lvl, max_team=6: cp.Verdict(True, "test", 0))
+    monkeypatch.setattr(cp, "evaluate", lambda party, sid, lvl, max_team=6, dex_owned=None: cp.Verdict(True, "test", 0))
     live.load("threemon")
     balls = live.c._ball_count()
     out = live.c._execute("grind", json.dumps({"level": 9}))
@@ -173,3 +173,24 @@ def test_leaving_the_cerulean_mart_toward_the_north_does_not_loop_through_the_do
     assert live.c._execute("go_to", json.dumps({"destination": "Mart"})).startswith("Arrived")
     out = live.c._execute("go_to", json.dumps({"destination": "Route 24"}))
     assert out.startswith("Arrived") and live.r.read_current_map() == (3, 43), out
+
+
+def test_level_up_prompt_can_forget_any_slot(live):
+    """The old driver could only forget slot 0 and declined everything else (SolarBeam / Razor Leaf refused)."""
+    live.load("delete_box")
+    for slot, expect in ((2, ["Tackle", "Growl", "Vine Whip", "Scratch"]), (3, ["Tackle", "Growl", "Leech Seed", "Vine Whip"])):
+        live.m.load_state_file(str(live.dir / "delete_box.ss1"))
+        live.m.tick(10)
+        assert live.c._accept_forget_slot(slot)
+        assert live.r.read_party()[0].move_names == expect
+
+
+def test_balance_training_keeps_the_ace_from_stealing_xp(live, monkeypatch):
+    from agent import budgets
+    monkeypatch.setitem(budgets.BUDGETS, "grind", (90_000, 15_000))
+    live.load("threemon")
+    live.patch_mon(0, [33, 45, 73, 22], [35, 40, 10, 25], level=19, exp=4575)
+    out = live.c._execute("grind", json.dumps({"catch": False}))
+    party = live.r.read_party()
+    assert party[0].species_name == "Bulbasaur" and party[0].level == 19, (out, [(p.species_name, p.level, p.current_hp) for p in party])
+    assert max(p.level for p in party[1:]) > 5                                  # the trainees actually levelled

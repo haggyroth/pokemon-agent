@@ -47,24 +47,25 @@ class MoveLearnMixin:
                 and self._offered_move() != 0)
 
     def _resolve_move_learn(self) -> str | None:
-        """At a LIVE delete box, apply the forget policy: accept only when the chosen
-        slot is 0 (reliable — the summary cursor defaults there); otherwise decline
-        (policy says keep, or wants a slot 1-3 we can't reach deterministically). Never
-        forgets the wrong move / never cripples. Returns a short note."""
+        """At a LIVE delete box, apply the value-based forget policy (knowledge.movelearn): learn the new move
+        when it clearly beats the cheapest move we may forget, navigating the KNOWN MOVES summary to ANY slot
+        (it used to accept only slot 0 and decline everything else — why SolarBeam / Razor Leaf kept being
+        refused). Otherwise decline. Returns a short note."""
         from knowledge.movelearn import choose_move_to_forget
+        from knowledge.leafgreen_data import POKEMON_TYPES
         from game.constants import MOVE_NAMES
         party = self.reader.read_party()
         cur = party[0].move_names if party else []
         ml = self._offered_move()
         new_name = MOVE_NAMES.get(ml, f"move {ml}")
-        slot = choose_move_to_forget(cur, new_name) if len(cur) == 4 else None
-        if slot == 0:
-            self._accept_forget_slot0()
-            return f"learned {new_name} (forgot {cur[0]})"
+        own = POKEMON_TYPES.get((party[0].species_name or "").upper().strip(), ()) if party else ()
+        slot = choose_move_to_forget(cur, new_name, own) if len(cur) == 4 else None
+        if slot is not None:
+            if self._accept_forget_slot(slot):
+                return f"learned {new_name} (forgot {cur[slot]})"
+            return f"couldn't steer the move list to {cur[slot]} — kept current moves instead of learning {new_name}"
         self._decline_at_box()
-        if slot is None:
-            return f"declined {new_name} (kept current moves — avoids losing a damaging move / stacking status)"
-        return f"kept current moves rather than forget {cur[slot]} for {new_name}"
+        return f"declined {new_name} (not better than what {cur[0] if cur else 'it'} already knows)"
 
     def _wait_idle(self) -> None:
         fn = getattr(self.mgba, "wait_until_idle", None)
@@ -135,6 +136,43 @@ class MoveLearnMixin:
                 self.mgba.tick(1)
                 if self._offered_move() != off0 or self.reader.detect_context() == GameContext.OVERWORLD:
                     return
+
+    def _accept_forget_slot(self, slot: int) -> bool:
+        """Accept the learn and forget move `slot` (0-3): A at the delete box → the KNOWN MOVES summary opens with
+        the cursor on move 1 → steer the cursor to `slot` (read back from SUMMARY_MOVE_CURSOR: the first press
+        after the fade-in is often swallowed, so it is verified, never counted) → A. Returns False (after
+        backing out with B + 'stop learning?' YES) if the cursor can't be placed."""
+        from game.constants import Addr
+        offered = self._offered_move()
+        self._press_until_lms_leaves("A", 1)          # accept the delete box → lms 2
+        for _ in range(15):                           # wait for the summary (callback2 leaves the battle main)
+            if self.mgba.read32(Addr.GMAIN_CALLBACK2) != Addr.CB2_BATTLE:
+                break
+            self._wait_idle()
+            self.mgba.tick(4)
+        self.mgba.tick(40)                            # settle the fade-in (input ignored mid-fade)
+        for _ in range(14):
+            cur = self.mgba.read8(Addr.SUMMARY_MOVE_CURSOR)
+            if cur == slot:
+                break
+            self.mgba.hold("Down" if cur < slot else "Up", 6)
+            self.mgba.tick(30)
+        if self.mgba.read8(Addr.SUMMARY_MOVE_CURSOR) != slot:
+            self.mgba.tap("B")                        # back out: "Stop learning?" → YES keeps the old moves
+            self.mgba.tick(30)
+            self.mgba.tap("A")
+            self.mgba.tick(30)
+            return False
+        # A selects the move; then advance the "1, 2 and… Poof! forgot X / learned Y" text until the new move is
+        # actually in the moveset (the party struct updates only when that text finishes).
+        for _ in range(30):
+            party = self.reader.read_party()
+            if offered and party and offered in party[0].move_ids:
+                break
+            self._wait_idle()
+            self.mgba.tap("A")
+            self.mgba.tick(8)
+        return True
 
     def _accept_forget_slot0(self) -> None:
         """Accept the learn and forget slot 0 (the summary cursor's default position),

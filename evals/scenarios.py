@@ -99,7 +99,7 @@ SCENARIOS += [
                                  "saves", "live", "threemon.ss1"),
         notes="Viridian City, party Bulbasaur L8 / Pikachu L5 / Caterpie L5 (local fixture, see "
               "tests/live/README.md). The agent should call grind() with no level so the laggards "
-              "are brought within ~15% — covers train/grind, PP management and self-healing.",
+              "are brought within ~25% — covers train/grind, PP management and self-healing.",
     ),
 ]
 

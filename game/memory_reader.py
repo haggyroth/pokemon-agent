@@ -208,6 +208,36 @@ class LeafGreenReader:
         names = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in ids]
         return ids, names, pp
 
+    def read_battle_volatiles(self, battler: int = 0) -> dict:
+        """Volatile conditions of a battler from gBattleMons[n].status2 (pokefirered STATUS2_*): wrapped (2-5
+        turns: Wrap/Bind/Fire Spin/Clamp/Whirlpool), escape_prevention (Mean Look / Spider Web / Block),
+        confused, infatuated, tormented, recharge, nightmare, cursed. Empty when no battle data."""
+        st = self.client.read32(Addr.BATTLE_MON0_SPECIES + 0x58 * battler + Addr.BATTLE_MON_STATUS2)
+        if st in (0, 0xFFFFFFFF):
+            return {}
+        out = {}
+        if st & (0x7 << 13):
+            out["wrapped"] = (st >> 13) & 0x7
+        if st & (1 << 26):
+            out["escape_prevention"] = True
+        if st & 0x7:
+            out["confused"] = True
+        if st & (0xF << 16):
+            out["infatuated"] = True
+        if st & (1 << 31):
+            out["tormented"] = True
+        if st & (1 << 22):
+            out["recharge"] = True
+        if st & (1 << 27):
+            out["nightmare"] = True
+        if st & (1 << 28):
+            out["cursed"] = True
+        return out
+
+    def is_trapped(self, battler: int = 0) -> bool:
+        v = self.read_battle_volatiles(battler)
+        return bool(v.get("wrapped") or v.get("escape_prevention"))
+
     def read_disabled_move(self, battler: int = 0) -> tuple[int, int]:
         """(move_id, turns_left) of the move Disable has locked for a battler, or (0, 0). The game
         refuses a disabled move at the FIGHT menu ("The move is disabled!") and leaves the menu
@@ -395,6 +425,31 @@ class LeafGreenReader:
         if not self._valid_ewram_ptr(sb1):
             return 0
         return self.client.read16(sb1 + Addr.VARS_OFFSET + (n - 0x4000) * 2)
+
+    KANTO_DEX = 151
+
+    def read_pokedex(self) -> tuple[int, int]:
+        """(owned, seen) counts for the 151 Kanto species (national dex numbers 1-151 = bits 0-150), or (0, 0)."""
+        sb2 = self.client.read32(Addr.SAVEBLOCK2_PTR)
+        if not self._valid_ewram_ptr(sb2):
+            return 0, 0
+
+        def count(off):
+            raw = self.client.read_range(sb2 + off, 19)         # 152 bits cover Kanto
+            bits = sum(bin(b).count("1") for b in raw[:18]) + bin(raw[18] & 0x7F).count("1")
+            return min(bits, self.KANTO_DEX)
+        return count(Addr.DEX_OWNED_OFFSET), count(Addr.DEX_SEEN_OFFSET)
+
+    def read_dex_owned(self, species_id: int) -> bool | None:
+        """Is this species already registered as CAUGHT in the Pokédex? (Kanto species: internal id == national
+        number for 1-151.) None when unreadable or outside Kanto."""
+        if not (1 <= species_id <= self.KANTO_DEX):
+            return None
+        sb2 = self.client.read32(Addr.SAVEBLOCK2_PTR)
+        if not self._valid_ewram_ptr(sb2):
+            return None
+        n = species_id - 1
+        return bool(self.client.read8(sb2 + Addr.DEX_OWNED_OFFSET + (n >> 3)) >> (n & 7) & 1)
 
     def read_flag(self, n: int) -> bool:
         """A gSaveBlock1 event/system flag (relocation-safe)."""

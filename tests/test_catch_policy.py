@@ -25,15 +25,15 @@ def test_near_level_species_with_a_new_type_is_worth_it():
 def test_big_level_gap_is_refused_even_for_a_decent_species():
     # the run-#2 mistakes: L5 Kakuna / L9 Zubat / L10 Geodude behind an L19 lead
     team = party((IVYSAUR, "Ivysaur", 19))
-    for sid, lvl in ((KAKUNA, 5), (ZUBAT, 9), (GEODUDE, 10), (MAGIKARP, 5)):
+    for sid, lvl in ((KAKUNA, 5), (ZUBAT, 7), (GEODUDE, 6), (MAGIKARP, 5)):
         v = evaluate(team, sid, lvl)
         assert not v.catch and "levels under your balance floor" in v.reason, (sid, v)
 
 
 def test_premium_line_is_accepted_when_the_gap_is_small():
     team = party((IVYSAUR, "Ivysaur", 19))
-    assert evaluate(team, GEODUDE, 14).catch          # debt 3 → fine
-    assert evaluate(team, ABRA, 12).catch             # premium line, debt 5
+    assert evaluate(team, GEODUDE, 12).catch          # debt 3 → fine
+    assert evaluate(team, ABRA, 10).catch             # premium line, debt 5
 
 
 def test_already_owned_and_full_party_are_refused():
