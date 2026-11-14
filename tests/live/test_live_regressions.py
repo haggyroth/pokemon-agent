@@ -82,3 +82,21 @@ def test_disabled_move_is_refused_without_pressing_anything(live):
         pytest.skip("fixture is not mid-battle")
     out = live.c._use_move("Tackle")
     assert "DISABLED" in out or "refused" in out, out
+
+
+def test_catching_with_a_full_party_reports_the_box(live):
+    from game.constants import Addr
+    live.load("threemon")
+    for slot in (3, 4, 5):                                   # clone the last mon up to a full party
+        for i in range(100):
+            live.m.write8(Addr.PARTY_DATA + 100 * slot + i, live.m.read8(Addr.PARTY_DATA + 200 + i))
+    live.m.write8(0x02024284 - 4, 6)
+    live.heal_hp()
+    assert live.wild_battle()
+    for _ in range(10):
+        live.set_foe_hp(1)
+        out = live.c._catch("Box Buddy")
+        if "Gotcha" in out:
+            break
+    assert "PC box" in out, out
+    assert len(live.r.read_party()) == 6 and live.r.detect_context() == GameContext.OVERWORLD
