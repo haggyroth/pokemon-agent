@@ -15,7 +15,8 @@ def policy(ctx, party, gyms_beaten=(), cur_map=(3, 1), needs_heal=False, ticket=
     reader = SimpleNamespace(detect_context=lambda: ctx, read_party=lambda: party,
                              read_current_map=lambda: cur_map)
     client = SimpleNamespace(_party_needs_heal=lambda: needs_heal, _has_ss_ticket=lambda: ticket,
-                             _knows_cut=lambda: knows_cut)
+                             _knows_cut=lambda: knows_cut,
+                             _readiness=lambda: [])
     rt = SimpleNamespace(client=client, reader=reader, mgba=SimpleNamespace(),
                          ltm=SimpleNamespace(data={"gyms_beaten": list(gyms_beaten)}))
     return ScriptedPolicy(rt)

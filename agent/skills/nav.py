@@ -533,6 +533,17 @@ class NavMixin:
                         f"— a NEW species for your {len(party)}-Pokémon team. To add it, "
                         f"weaken it with use_move then catch(); or call "
                         f"go_to({target_name!r}) again to skip it and keep travelling.")
+        # XP on the way: when the team still has levelling to do (a lagging member, or the best Pokémon is
+        # under the next gym's target) and it is healthy, fight a few of the ordinary wild battles instead of
+        # running from every one — travelling shouldn't quietly replace levelling up.
+        if self._travel_wants_xp():
+            self._travel_fights = getattr(self, "_travel_fights", 0) + 1
+            lag = self._lagging_mons()
+            if lag:
+                self._train_fight((lag[0][1].species_id, lag[0][1].max_hp))
+            else:
+                self._auto_fight()
+            return None
         flee = self._flee_battle()
         if "Got away" not in flee:
             return (f"A wild battle started en route to {target_name} and the escape "
@@ -689,6 +700,57 @@ class NavMixin:
     # Maps you can't walk to from Cerulean (see the guard in _go_to): the whole west side of Kanto start.
     _WEST_OF_ROUTE4 = frozenset({(3, 0), (3, 1), (3, 2), (3, 19), (3, 20), (3, 21), (1, 0), (1, 1), (1, 2), (1, 3)})
 
+    _TRAVEL_FIGHTS_MAX = 4        # wild fights per go_to call taken for XP; the rest are fled
+
+    def _travel_wants_xp(self) -> bool:
+        if getattr(self, "_travel_fights", 0) >= self._TRAVEL_FIGHTS_MAX:
+            return False
+        try:
+            party = self.reader.read_party()
+            if not party or party[0].max_hp == 0 or party[0].current_hp / party[0].max_hp < 0.6:
+                return False
+            if any(n.level == "must" for n in self._readiness()):
+                return False                      # hurt / out of PP: get away and heal instead
+            foe = self.reader.read_enemy_lead()
+            top = max(p.level for p in party)
+            if foe and foe.level and foe.level > top + 3:
+                return False                      # too dangerous for the XP
+            return any(n.code in ("train", "level") for n in self._readiness())
+        except Exception:
+            return False
+
+    def _readiness(self):
+        """knowledge.readiness needs for the current party/bag/money/gym progress ([] on any read hiccup)."""
+        from knowledge.readiness import assess
+        try:
+            bag = self.reader.read_bag()
+            balls = sum(bag.get(b, 0) for b in (1, 2, 3, 4))
+            pots = sum(q for iid, q in self.reader.read_items_pocket() if iid in (13, 22, 21))
+            return assess(self.reader.read_party(), balls, pots, self.reader.read_money(),
+                          self.ltm.data.get("gyms_beaten", []))
+        except Exception:
+            return []
+
+    def _go_to_tool(self, destination: str, force: bool = False) -> str:
+        """The model-facing go_to: travel only. It will NOT start a trip while the party is hurt or out of
+        attack PP (heal first — a blackout or a wasted wild-battle spiral costs far more than the detour),
+        and it reminds the model of the other fundamentals (restock, catch, train, level for the gym) so the
+        convenient travel tool doesn't quietly replace them. `force` overrides the pre-flight check."""
+        from game.state import GameContext
+        from knowledge.readiness import blocking
+        dest = str(destination).lower()
+        exempt = any(k in dest for k in ("pokemon center", "poke center", "pokecenter", "mart"))
+        needs = self._readiness()
+        if (not force and not exempt and self.reader.detect_context() == GameContext.OVERWORLD
+                and blocking(needs)):
+            return ("Not travelling yet — sort this out first:\n" + "\n".join("⛔ " + n.text for n in blocking(needs))
+                    + "\nThen go_to again (or pass force=true to go anyway).")
+        out = self._go_to(destination)
+        notes = [n.text for n in self._readiness() if n.level == "should"][:3]
+        if notes:
+            out += "\n(Before the next leg: " + "; ".join(notes) + ")"
+        return out
+
     @staticmethod
     def _gym_city(gym_map):
         """(bank, id) of the outdoor city a gym interior belongs to, or None."""
@@ -715,6 +777,7 @@ class NavMixin:
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
+        self._travel_fights = 0
 
         # Cerulean → the west (Pewter / Viridian / Pallet / Routes 1-3 / Mt. Moon) has NO walking route:
         # Route 4's east end is a pocket of one-way ledges, so you can come OUT of Mt. Moon into it but

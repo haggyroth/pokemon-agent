@@ -76,6 +76,11 @@ class ScriptedPolicy:
         party = self.r.read_party()
         if not party:
             return "wait_frames", {"frames": 30}
+        # The model-facing go_to refuses to start while the readiness check says must-heal, so the bot heals
+        # on the same rule (any member below half, a faint, attacks out of PP) before it travels.
+        from knowledge.readiness import blocking
+        if blocking(self.c._readiness()):
+            return "heal", {}
         # Recover first: hurt, or attacks out of PP.
         if self.c._party_needs_heal() and any(p.current_hp < 0.6 * p.max_hp or not _has_pp(p) for p in party):
             return "heal", {}

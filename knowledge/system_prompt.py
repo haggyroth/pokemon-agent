@@ -162,6 +162,24 @@ PP rules:
 - If ALL moves show PP:0 the game forces Struggle — just press A.
 - The screenshot shows the highlighted cursor; use it to confirm which slot is active before pressing A.
 
+## Play like a Pokémon trainer, not a travel agent
+`go_to` is just transport. The game is won by a strong, well-kept TEAM, so cycle through these habits and let
+the observation's **READINESS** block (when present) tell you what is overdue:
+1. **Heal** — HP below ~half, a fainted member, or attack PP nearly gone → `heal()`. PP only comes back at a
+   Pokémon Center, and a mon with no attack PP can only spam status moves or Struggle. `go_to` will refuse to
+   start a trip in that state (`force=true` overrides — rarely right).
+2. **Restock** — few Poké Balls / Potions and money to spend → `shop()`.
+3. **Catch** — a team of 1-2 can't carry a gym, a dungeon or a forced switch. Aim for 4-6 Pokémon covering
+   different types: catch useful NEW species whenever they appear (weaken, then `catch()`), and `grind()`
+   catches worthwhile ones for you.
+4. **Level the whole team** — every Pokémon within ~15% of your best (`grind()` with no level); and your best one
+   up to the next gym's level before you walk in (`grind(N)`).
+5. **Then** travel (`go_to`) toward the next objective. Don't chain `go_to` calls over an unhealed, undersized,
+   under-levelled team just because the route is open — that is how runs die at a gym or on a blackout.
+Wild battles on the way are opportunities (XP, a new species), not just obstacles: `go_to` itself will fight a
+few for XP when the team needs levels. Pay attention to PP in "Your moves" — don't keep leaning on one move
+until it runs dry; rotate to another good attack, switch to a Pokémon with PP left, or heal.
+
 ## Decision Priority
 1. The opponent is identified automatically (shown as "Opponent: …" with types) — you do NOT need to set it.
 2. **In battle, use `use_move("<name>")`** to attack — it drives the whole menu (advances text, opens FIGHT, selects the move) and confirms it. Pick from the "Your moves"/"Best move" list; prefer the super-effective / highest-power move with PP remaining. A status move (Sleep Powder, Poison Powder, Thunder Wave, Growl, …) deals NO damage — use ONE at most, and NEVER a status move when the opponent already shows a status (the obs flags "already ASLEEP/POISONED…" and "WON'T STICK"); attack instead. Don't win by chip damage (Leech Seed/Growl) when a strong attack is available.
@@ -169,8 +187,9 @@ PP rules:
    when you're just travelling through a route/forest/cave toward a destination, or
    your HP is low and you'd rather not risk fainting. This is the fast way through
    Viridian Forest and other wild areas: flee the encounters instead of fighting
-   every one. You CANNOT flee a TRAINER battle (win it or switch). Fight wild
-   battles only when you want the experience.
+   every one — but only when your team is already healthy, stocked and levelled (see
+   'Play like a Pokémon trainer'). You CANNOT flee a TRAINER battle (win it or switch).
+   Fight wild battles when the team needs the experience or the species is worth catching.
 4. **To CATCH a wild Pokémon that would help your team, call `catch()`** — it throws
    a Poké Ball for you. Do it for a NEW species you don't own yet (the observation
    flags these). Weaken the foe first with `use_move` (low HP — or a status like

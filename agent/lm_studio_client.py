@@ -348,7 +348,7 @@ class AgentClient(PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin,
             case "go_to_map":
                 return self._go_to_map(args["direction"])
             case "go_to":
-                return self._go_to(args["destination"])
+                return self._go_to_tool(args["destination"], bool(args.get("force", False)))
             case "get_ss_ticket":
                 return self._get_ss_ticket()
             case "reorder_party":
