@@ -389,6 +389,13 @@ class LeafGreenReader:
                 out.append((iid, qty))
         return out
 
+    def read_var(self, n: int) -> int:
+        """Script variable `n` (0x4000+: VAR_TEMP_0 = 0x4000, ...). 0 when SaveBlock1 isn't readable."""
+        sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)
+        if not self._valid_ewram_ptr(sb1):
+            return 0
+        return self.client.read16(sb1 + Addr.VARS_OFFSET + (n - 0x4000) * 2)
+
     def read_flag(self, n: int) -> bool:
         """A gSaveBlock1 event/system flag (relocation-safe)."""
         sb1 = self.client.read32(Addr.SAVEBLOCK1_PTR)

@@ -718,6 +718,9 @@ class NavMixin:
                 # truly pinned (same map AND didn't move at all this hop).
                 if self.reader.read_player_pos() != before_pos:
                     continue
+                # A Cut tree in the way (Vermilion Gym's door): if we can Cut, do it and carry on.
+                if self._can_use_cut() and self._use_hm("cut").startswith("Used Cut"):
+                    continue
                 # A warp tile we're standing next to but that didn't fire: staircases can be DIRECTIONAL
                 # (the Underground Path entrance only takes you when you step onto it from one side).
                 # Try each approach direction once before declaring the edge dead.
@@ -740,6 +743,12 @@ class NavMixin:
             return guidance
         here = MAP_NAMES.get(end_map, "?")
         return f"Stopped at {here} en route to {target_name} (still travelling — call go_to again)."
+
+    def _can_use_cut(self) -> bool:
+        try:
+            return self._knows_cut() and bool(self.reader.read_badges()[1] >> 1 & 1)
+        except Exception:
+            return False
 
     def _probe_warp(self, warp: tuple[int, int]) -> bool:
         """Step onto `warp` from each side (Up/Left/Right/Down into it) until the map changes. True if
@@ -824,6 +833,10 @@ class NavMixin:
             return (f"Your team is lopsided (top L{top}; lagging: {names}). Call grind() (no level) first so "
                     f"every Pokémon is within ~15% of L{top} — you'll need backups if the lead faints "
                     f"or a move gets Disabled. Or call challenge_leader() again to fight anyway.")
+        if cur == (9, 6):       # Vermilion: open the electric locks first (switches read from memory)
+            res = self._solve_vermilion_switches()
+            if not res.startswith(("Both", "The electric")):
+                return res
         self._walk_to(*approach)
         # Face the Leader (they stand just NORTH of the approach tile) and talk.
         for _ in range(5):

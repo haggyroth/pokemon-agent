@@ -27,7 +27,7 @@ _SS_HINT = ("Cerulean's exits stay blocked (a Slowbro + Lass south, a policeman 
 MAP_GATES: dict[tuple[int, int], list[Req]] = {
     (9, 6): [Req("hm", "Cut", "Vermilion Gym's door is blocked by a Cut tree: get HM01 Cut from the captain "
                  "of the S.S. Anne (board at Vermilion's harbor with the SS Ticket), teach it "
-                 "(teach_move) to a Pokémon, then use_hm('Cut') on the tree.")],
+                 "(teach_move) to a Pokémon, then use_hm('Cut') on the tree. get_cut() does the first two steps.")],
     (3, 23): [Req("key_item", SS_TICKET, _SS_HINT)],     # Route 5 (Cerulean's south exit)
     (3, 27): [Req("key_item", SS_TICKET, _SS_HINT)],     # Route 9 (Cerulean's east exit)
     (1, 94): [Req("key_item", SILPH_SCOPE,

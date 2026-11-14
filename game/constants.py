@@ -256,6 +256,7 @@ class Addr:
     REGIONMAP_CB2      = 0x080C0889
     FLYMAP_CURSOR_X    = 0x0202063E     # low 9 bits (attr1)
     FLYMAP_CURSOR_Y    = 0x0202063C     # low 8 bits (attr0)
+    VARS_OFFSET        = 0x1000         # + [SAVEBLOCK1_PTR]; var n (≥0x4000) = u16 at index n-0x4000
     FLAGS_OFFSET       = 0xEE0          # + [SAVEBLOCK1_PTR]; flag n = byte n>>3, bit n&7
     FLAG_SYS_USE_STRENGTH = 0x805
     FLAG_SYS_FLASH_ACTIVE = 0x806

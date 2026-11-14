@@ -116,3 +116,21 @@ def test_get_ss_ticket_then_cross_cerulean_to_vermilion(live):
         if "heal" in out or "Lost" in out:
             live.heal_hp()                      # a Route 5/6 trainer beat us: top up and retry
     assert live.r.read_current_map() == (3, 5), out
+
+
+def test_get_cut_then_enter_the_vermilion_gym_and_open_the_locks(live):
+    """S.S. Anne → Captain → HM01 → teach Cut → go_to Gym cuts the door tree → trash-can switches read from
+    memory open the electric locks."""
+    live.load("vermilion")
+    live.c.ltm.data["gyms_beaten"] = ["Brock", "Misty"]
+    out = live.c._execute("get_cut", "{}")
+    assert "Got HM01" in out or "already knows Cut" in out, out
+    assert live.c._knows_cut()
+    for _ in range(6):
+        live.c._execute("go_to", json.dumps({"destination": "Gym"}))
+        if live.r.read_current_map() == (9, 6):
+            break
+    assert live.r.read_current_map() == (9, 6)
+    res = live.c._solve_vermilion_switches()
+    assert res.startswith("Both"), res
+    assert live.r.read_flag(0x264)

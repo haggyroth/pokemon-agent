@@ -11,10 +11,11 @@ def mon(level, hp=30, max_hp=30, moves=("Tackle",), pp=(30,)):
                          species_id=1, species_name="Bulbasaur", move_names=list(moves), pp=list(pp))
 
 
-def policy(ctx, party, gyms_beaten=(), cur_map=(3, 1), needs_heal=False, ticket=True):
+def policy(ctx, party, gyms_beaten=(), cur_map=(3, 1), needs_heal=False, ticket=True, knows_cut=True):
     reader = SimpleNamespace(detect_context=lambda: ctx, read_party=lambda: party,
                              read_current_map=lambda: cur_map)
-    client = SimpleNamespace(_party_needs_heal=lambda: needs_heal, _has_ss_ticket=lambda: ticket)
+    client = SimpleNamespace(_party_needs_heal=lambda: needs_heal, _has_ss_ticket=lambda: ticket,
+                             _knows_cut=lambda: knows_cut)
     rt = SimpleNamespace(client=client, reader=reader, mgba=SimpleNamespace(),
                          ltm=SimpleNamespace(data={"gyms_beaten": list(gyms_beaten)}))
     return ScriptedPolicy(rt)
@@ -69,3 +70,8 @@ def test_after_misty_it_fetches_the_ss_ticket_first():
     assert hurt.decide() == ("heal", {})            # the rival fight is on the way: go in healthy
     p = policy(GameContext.OVERWORLD, [mon(30)], gyms_beaten=["Brock", "Misty"], ticket=True)
     assert p.decide() == ("go_to", {"destination": "Gym"})
+
+
+def test_with_the_ticket_but_no_cut_it_gets_cut_before_the_gym():
+    p = policy(GameContext.OVERWORLD, [mon(30)], gyms_beaten=["Brock", "Misty"], ticket=True, knows_cut=False)
+    assert p.decide() == ("get_cut", {})
