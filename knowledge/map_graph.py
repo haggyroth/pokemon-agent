@@ -644,7 +644,7 @@ def _matches(node, goal) -> bool:
 UNWALKABLE_MAPS = frozenset({(3, 11)})
 
 
-def _search(start, conn, warp, accept, warps=True, avoid_edges=()):
+def _search(start, conn, warp, accept, warps=True, avoid_edges=(), avoid_maps=()):
     """BFS. accept(node) -> truthy ends the search; returns (node, steps) or None.
     avoid_edges: set of (from_node, kind, arg) the runtime has learned are blocked."""
     q = deque([(start, [])])
@@ -658,7 +658,7 @@ def _search(start, conn, warp, accept, warps=True, avoid_edges=()):
             if (cur, step[0], step[1]) in avoid_edges:
                 continue
             nb = step[2]
-            if nb in seen or tuple(nb[:2]) in UNWALKABLE_MAPS:
+            if nb in seen or tuple(nb[:2]) in UNWALKABLE_MAPS or tuple(nb[:2]) in avoid_maps:
                 continue
             seen.add(nb)
             if accept(nb, step):
@@ -680,7 +680,7 @@ def bfs_route(start, goal):
     return [(d, m) for kind, d, m in steps]
 
 
-def route_to(start, goal, warps=True, avoid_edges=()):
+def route_to(start, goal, warps=True, avoid_edges=(), avoid_maps=()):
     """Shortest route from start to goal over connections (and warps if warps=True).
     Returns a list of steps, [] if already there, or None if unreachable:
       ("connection", direction, next_node)  — cross a seamless edge
@@ -693,7 +693,8 @@ def route_to(start, goal, warps=True, avoid_edges=()):
     """
     if _matches(start, goal):
         return []
-    hit = _search(start, _R_CONN, _R_WARP, lambda n, s: _matches(n, goal), warps, avoid_edges)
+    avoid_maps = {tuple(m[:2]) for m in avoid_maps}
+    hit = _search(start, _R_CONN, _R_WARP, lambda n, s: _matches(n, goal), warps, avoid_edges, avoid_maps)
     if hit is None and warps:
         # coarse fallback: plain maps; a learned-blocked edge is keyed by region node, so
         # also match it by its plain map to keep the avoidance effective.
@@ -701,7 +702,7 @@ def route_to(start, goal, warps=True, avoid_edges=()):
         c_goal = goal[:2]
         hit = _search(_coarse(start), _C_CONN, {m: [(x, y, n) for (x, y, n) in w]
                                                for m, w in _C_WARP.items()},
-                      lambda n, s: n == c_goal, warps, coarse_avoid)
+                      lambda n, s: n == c_goal, warps, coarse_avoid, avoid_maps)
     return hit[1] if hit else None
 
 

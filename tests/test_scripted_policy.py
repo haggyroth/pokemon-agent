@@ -37,6 +37,10 @@ def test_after_a_tool_result_it_hands_control_back_with_plain_text():
     assert msg.tool_calls is None
 
 
+def test_transitions_are_advanced_not_waited_on():
+    assert policy(GameContext.TRANSITIONING, [mon(8)]).decide()[0] == "advance_dialog"
+
+
 def test_menus_and_dialogs_are_cleared_first():
     assert policy(GameContext.IN_MENU, [mon(8)]).decide()[0] == "close_menus"
     assert policy(GameContext.DIALOG_OPEN, [mon(8)]).decide()[0] == "advance_dialog"

@@ -626,8 +626,9 @@ class NavMixin:
         from knowledge.gates import unmet_gates
         from knowledge.map_graph import route_to
         blocked = set(avoid)
+        banned_maps: set = set()
         first_hint = None
-        for _ in range(4):
+        for _ in range(6):
             unmet = unmet_gates(route, self._gate_ok)
             if not unmet:
                 return route, None
@@ -635,11 +636,24 @@ class NavMixin:
             first_hint = first_hint or req.hint          # explain the SHORTEST route's gate, not a detour's
             prev = cur_node if idx == 0 else route[idx - 1][2]
             blocked.add((prev, route[idx][0], route[idx][1]))
-            alt = route_to(cur_node, target_map, avoid_edges=blocked)
+            # Ban the WHOLE gated map: a gated city has several doors (Saffron's four gatehouses, each
+            # with two mat tiles) and blocking one edge at a time ran out of retries on the same gate.
+            banned_maps.add(tuple(route[idx][2][:2]))
+            alt = route_to(cur_node, target_map, avoid_edges=blocked, avoid_maps=banned_maps)
             if not alt:
                 return route, first_hint
             route = alt
         return route, first_hint
+
+    @staticmethod
+    def _gym_city(gym_map):
+        """(bank, id) of the outdoor city a gym interior belongs to, or None."""
+        from knowledge.leafgreen_data import GYMS, GYM_MAP_LEADER
+        leader = GYM_MAP_LEADER.get(tuple(gym_map[:2]))
+        if not leader:
+            return None
+        city_name = next((g["city"] for g in GYMS if g["leader"] == leader), None)
+        return next((k for k, v in MAP_NAMES.items() if v == city_name and k[0] == 3), None)
 
     def _go_to(self, destination: str) -> str:
         """Travel to a named map ("Pewter City", "Route 1") or waypoint ("Pokemon
@@ -657,6 +671,17 @@ class NavMixin:
         target_map, target_name = self._resolve_destination(destination)
         if target_map is None:
             return target_name   # error message
+
+        # A gym interior is often sealed from the planner's static view (Cut-tree doors: Vermilion,
+        # Celadon, ...), which made it fall back to a region-blind route that marched into walls. Get to
+        # the gym's CITY first (plain routing), then take the last hop from inside the city, where a
+        # blocking tree is handled by the auto-Cut in the stall branch below.
+        gym_city = self._gym_city(target_map)
+        here = self.reader.read_current_map()
+        if gym_city and here not in (gym_city, target_map):
+            out = self._go_to(MAP_NAMES[gym_city])
+            if not out.startswith("Arrived"):
+                return out
 
         for _hop in range(40):   # higher budget: auto-fled battles each cost a hop
             # A trainer spotting us, post-battle text, or a stray menu leaves the

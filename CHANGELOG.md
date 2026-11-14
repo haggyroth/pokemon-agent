@@ -5,6 +5,19 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — the road to Celadon (#185 item 5, Erika)
+- fix(nav): when a route enters a gated map (Saffron's Tea guards, the Route 12/16 Snorlaxes) the re-plan now
+  bans the WHOLE gated map (`route_to(avoid_maps=...)`) and gets 6 tries instead of blocking one edge at a time
+  — Saffron alone has eight mat tiles, so Vermilion→Celadon ran out of retries and reported "needs Tea"
+  instead of taking Cerulean → Route 9 → Rock Tunnel → Lavender → Route 8 → Underground Path → Route 7.
+- fix(nav): `go_to('Gym')` first travels to the gym's CITY and takes the last hop from inside it. A gym door
+  behind a Cut tree (Vermilion, Celadon) made the planner fall back to a region-blind route that marched into
+  walls; from inside the city the stall branch auto-Cuts the tree.
+- Zero-token bot: from the post-Surge state it now reaches **4 badges (Erika)** in 42 steps / ~215 s — Route 9's
+  Cut tree, the dark Rock Tunnel, the Underground Path and Celadon's gym tree all handled by existing skills.
+  The bot now advances (A) through blackout/transition screens instead of waiting, and levels the lone
+  Venusaur to L40 for Erika (Grass vs Grass: only Normal Cut hits for neutral).
+
 ### Added — S.S. Anne → Cut → Vermilion Gym / Lt. Surge (#185 item 5c)
 - feat: `get_cut()`: with the SS Ticket, boards the S.S. Anne (trainers auto-fought, resumable), cures the seasick
   Captain for HM01 (flag 0x237) and teaches Cut. Verified live (~67 s). go_to now uses Cut itself when a tree
