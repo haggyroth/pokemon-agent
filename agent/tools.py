@@ -185,6 +185,15 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "get_cut",
+        "description": "Get HM01 Cut from the S.S. Anne's Captain and teach it. Needs the SS Ticket "
+                       "(get_ss_ticket first). Travels aboard at Vermilion's harbor (trainers fought for "
+                       "you), cures the seasick Captain for HM01, then teaches Cut to a Pokémon that can "
+                       "learn it. REQUIRED before Vermilion Gym: its door is blocked by a Cut tree. "
+                       "Resumable: if it stops (heal, interrupted), call it again.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "teach_move",
         "description": "Teach a TM or HM move to a party Pokémon via the TM Case (Start → Bag → Key "
                        "Items → TM CASE → the TM → USE → Pokémon). `tm` is 'TM09', 'HM01', or the "

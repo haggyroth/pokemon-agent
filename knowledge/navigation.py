@@ -44,6 +44,9 @@ MAP_NAMES: dict[tuple[int, int], str] = {
     (3, 42): "Route 23",
     (3, 43): "Route 24",
     (3, 44): "Route 25",
+    (1, 5): "S.S. Anne 1F", (1, 6): "S.S. Anne 2F",
+    (1, 7): "S.S. Anne 3F", (1, 8): "S.S. Anne B1F", (1, 9): "S.S. Anne Deck",
+    (1, 11): "S.S. Anne Captain's Office",
     (30, 0): "Bill's Sea Cottage",   # Route 25 — the SS Anne ticket quest
     # Group 1 — Dungeons
     (1, 0):  "Viridian Forest",

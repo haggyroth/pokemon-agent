@@ -350,6 +350,8 @@ class AgentClient(QuestMixin, NavMixin, OverworldMixin, BattleMixin, MoveLearnMi
                 return self._go_to(args["destination"])
             case "get_ss_ticket":
                 return self._get_ss_ticket()
+            case "get_cut":
+                return self._get_cut()
             case "teach_move":
                 return self._teach_move(str(args["tm"]), str(args.get("pokemon", "") or ""),
                                         str(args.get("forget", "") or ""))

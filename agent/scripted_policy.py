@@ -88,6 +88,11 @@ class ScriptedPolicy:
             if any(p.current_hp < 0.9 * p.max_hp for p in party):
                 return "heal", {}
             return "get_ss_ticket", {}
+        # Vermilion Gym's door is behind a Cut tree: HM01 from the S.S. Anne's Captain first.
+        if gym["leader"] == "Lt. Surge" and not self.c._knows_cut():
+            if any(p.current_hp < 0.9 * p.max_hp for p in party):
+                return "heal", {}
+            return "get_cut", {}
         cur = self.r.read_current_map()
         from knowledge.leafgreen_data import GYM_MAP_LEADER
         if GYM_MAP_LEADER.get(cur) == gym["leader"]:

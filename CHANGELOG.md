@@ -5,6 +5,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — S.S. Anne → Cut → Vermilion Gym / Lt. Surge (#185 item 5c)
+- feat: `get_cut()`: with the SS Ticket, boards the S.S. Anne (trainers auto-fought, resumable), cures the seasick
+  Captain for HM01 (flag 0x237) and teaches Cut. Verified live (~67 s). go_to now uses Cut itself when a tree
+  pins it (the Vermilion Gym door).
+- feat: Vermilion Gym's two trash-can switches are READ from memory (VAR_TEMP_0/1 = can ids; script vars live
+  at SaveBlock1+0x1000, new `reader.read_var`) and pressed directly — no searching, so a wrong second can can't
+  reset the locks. `challenge_leader()` does this first in Vermilion.
+- Zero-token bot (`tools/scripted_run.py --goal badges:3`) now beats Brock, Misty AND Lt. Surge: 57 steps,
+  ~4 min wall, no model calls. Names added for the S.S. Anne maps.
+
 ### Added — Bill's SS-ticket quest + routing fixes (#185 item 5b)
 - feat: `get_ss_ticket()` (agent/skills/quests.py): travels to Bill's Sea Cottage (Route 25, past Nugget
   Bridge — trainers auto-fought, resumable), talks to Bill-as-Clefairy (YES), runs his teleporter computer, and

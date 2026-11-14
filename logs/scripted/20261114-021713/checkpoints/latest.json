@@ -1,0 +1,22 @@
+{
+  "path": "/Users/kylec/Projects/pokemon-agent/tools/../logs/scripted/20261114-021713/checkpoints/badge3_00057.ss1",
+  "step": 57,
+  "tag": "badge3_00057",
+  "time": "2026-11-14 02:21:18",
+  "meta": {
+    "map": [
+      9,
+      6
+    ],
+    "badges": 3,
+    "party": [
+      [
+        "Venusaur",
+        32,
+        47,
+        106
+      ]
+    ],
+    "llm_calls": 114
+  }
+}

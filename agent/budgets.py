@@ -4,6 +4,7 @@ DEFAULT = (90_000, 15_000)          # (hard cap ≈ 25 min of game time, no-prog
 BUDGETS = {
     "grind": (360_000, 15_000),     # built to run long (hundreds of battles), but still bounded
     "go_to": (240_000, 15_000),     # cross-map trips with fights en route
+    "get_cut": (300_000, 15_000),         # board the S.S. Anne, trainers on the way, the Captain
     "get_ss_ticket": (300_000, 15_000),   # Nugget Bridge trainers + Route 25 + the cottage cutscene
     "heal": (60_000, 12_000),
     "shop": (60_000, 12_000),
