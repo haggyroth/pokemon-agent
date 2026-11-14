@@ -7,7 +7,7 @@ pytest.importorskip("openai")
 
 from agent.lm_studio_client import AgentClient   # noqa: E402
 from game.constants import Addr                    # noqa: E402
-from game.state import GameContext, PokemonStatus  # noqa: E402
+from game.state import PokemonStatus  # noqa: E402
 from knowledge.battle import annotate_moves, battle_summary   # noqa: E402
 from knowledge.party import attack_pp, can_attack, party_needs_restock   # noqa: E402
 

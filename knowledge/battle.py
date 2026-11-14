@@ -159,7 +159,6 @@ def battle_summary(move_names: list[str],
                      "automatic — or switch_pokemon to a Pokémon that still has moves.")
 
     if pp_list is not None and move_names:
-        from knowledge.leafgreen_data import MOVE_POWER
         usable_attack = any(
             n and n not in STATUS_MOVES and MOVE_POWER.get(n, 1) > 0 and idx < len(pp_list)
             and pp_list[idx] > 0 and idx != disabled_slot
