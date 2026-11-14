@@ -31,6 +31,7 @@ class Addr:
     # gDisableStructs[4] (0x1C each): +4 u16 disabledMove, +0xB low nibble disableTimer (turns left).
     # Found live by forcing a foe to use Disable and diffing EWRAM (Tackle=33 appeared at +4, the
     # timer counted 5→0 then the field cleared).
+    BATTLE_MON_STATUS2 = 0x50          # u32 within a BattlePokemon (gBattleMons[n] at BATTLE_MON0_SPECIES + 0x58*n)
     DISABLE_STRUCTS = 0x02023E0C
     DISABLE_STRUCT_SIZE = 0x1C
     # Live cursor (slotId) in the in-battle party menu, 0-based over party slots.
@@ -244,6 +245,7 @@ class Addr:
     # gPartyMenu.slotId on the FIELD party screen (item-use / switch / HM-use target pick),
     # 0-based over party slots (live-verified by RAM diff). Cancel sits after the last mon.
     PARTY_FIELD_SLOT   = 0x0203B0A9
+    SUMMARY_MOVE_CURSOR = 0x0203B16D   # 'KNOWN MOVES' summary during a level-up delete: 0-3 = moves, 4 = the new move
     # TM Case (key item 364 -> OPEN). Live-verified by RAM diffing / screenshots:
     #   TMCASE_CB2     gMain.callback2 while the case UI is up; TMCASE_ROW / TMCASE_SCROLL the
     #                  highlighted row and the scroll offset (absolute list index = scroll + row)
@@ -257,6 +259,9 @@ class Addr:
     FLYMAP_CURSOR_X    = 0x0202063E     # low 9 bits (attr1)
     FLYMAP_CURSOR_Y    = 0x0202063C     # low 8 bits (attr0)
     VARS_OFFSET        = 0x1000         # + [SAVEBLOCK1_PTR]; var n (≥0x4000) = u16 at index n-0x4000
+    SAVEBLOCK2_PTR     = 0x0300500C     # gSaveBlock2Ptr (pokedex lives at +0x18)
+    DEX_OWNED_OFFSET   = 0x28           # SaveBlock2 + 0x18 + 0x10 : u8 owned[52]
+    DEX_SEEN_OFFSET    = 0x5C           # SaveBlock2 + 0x18 + 0x44 : u8 seen[52]
     FLAGS_OFFSET       = 0xEE0          # + [SAVEBLOCK1_PTR]; flag n = byte n>>3, bit n&7
     FLAG_SYS_USE_STRENGTH = 0x805
     FLAG_SYS_FLASH_ACTIVE = 0x806

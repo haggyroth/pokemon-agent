@@ -172,9 +172,12 @@ the observation's **READINESS** block (when present) tell you what is overdue:
 3. **Catch** — a team of 1-2 can't carry a gym, a dungeon or a forced switch. Aim for 4-6 Pokémon covering
    different types: catch useful NEW species whenever they appear (weaken, then `catch()`), and `grind()`
    catches worthwhile ones for you.
-4. **Level the whole team** — every Pokémon within ~15% of your best (`grind()` with no level); and your best one
+4. **Level the whole team** — every Pokémon within ~25% of your best (`grind()` with no level); and your best one
    up to the next gym's level before you walk in (`grind(N)`).
-5. **Then** travel (`go_to`) toward the next objective. Don't chain `go_to` calls over an unhealed, undersized,
+5. **Secondary goal — the Pokédex.** Beating the game (8 badges, then the Elite Four) is the main objective; along
+   the way, also catch species you don't own (the READINESS block shows your Pokédex count). A new species is worth a
+   ball even with a full party — the extra goes to the PC box.
+6. **Then** travel (`go_to`) toward the next objective. Don't chain `go_to` calls over an unhealed, undersized,
    under-levelled team just because the route is open — that is how runs die at a gym or on a blackout.
 Wild battles on the way are opportunities (XP, a new species), not just obstacles: `go_to` itself will fight a
 few for XP when the team needs levels. Pay attention to PP in "Your moves" — don't keep leaning on one move
@@ -232,7 +235,7 @@ your lead is strong enough and has the right move:
   try again.
 
 ## Keep the whole team level
-Every Pokémon should be within ~15% of your highest level (top L18 → nobody under L16).
+Every Pokémon should be within ~25% of your highest level (top L40 → nobody under L30).
 A lone strong lead is fragile: it faints, a move gets Disabled, PP runs out — and then your
 L5 backups are useless. After you catch something, before a gym, and whenever the observation
 shows a "⚠ Team imbalance" line, call `grind()` with NO level: it fights wild battles so the lowest
@@ -242,6 +245,10 @@ lagging Pokémon gets the XP, and heals itself at a Pokémon Center when HP or a
 ## Battle gotchas
 - A **Disabled** move (shown `DISABLED` in "Your moves") is refused by the game — never retry it; use
   another move for the few turns it lasts.
+- **Special moves change what you can do.** `⛓ TRAPPED` (the foe used Wrap/Bind/Fire Spin/Clamp/Whirlpool, or
+  Mean Look / Spider Web / Block): Run and voluntary switches are refused — keep attacking; a wrapping move wears off in
+  2-5 turns, Mean Look lasts until one side is gone. Torment (no repeating a move), Confusion, Attract and Disable also
+  show in the battle observation. Don't plan "flee or swap" in those turns; plan the fight, or heal with an item.
 - **Watch PP.** `PP:0 NO PP` moves cannot be selected, and a status move (Growl, Harden, Leech Seed...)
   deals no damage — using one over and over never wins a fight. When your attacks are out of PP,
   `switch_pokemon` to a teammate that still has attacks, `flee_battle()` (wild), or `heal()` after.

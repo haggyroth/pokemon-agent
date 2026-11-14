@@ -1,58 +1,76 @@
-"""Level-up move-learn policy: which of the current 4 moves (if any) to forget when
-the game offers a new one. Pure/testable. Two hard rules from real runs:
+"""Level-up move-learn policy: which of the current 4 moves (if any) to forget when the game offers a new one.
+Pure/testable. Each move gets a VALUE — damaging moves by base power (×1.5 with same-type attack bonus, discounted
+for two-turn moves), status moves by how useful they actually are (sleep/paralysis/recovery/set-up ≫ Growl) — and the
+new move is learned when it is clearly better than the least valuable move that may be forgotten.
 
-  1. NEVER cripple the moveset — always keep at least one damaging move (the agent
-     let Sleep Powder overwrite Tackle, leaving Bulbasaur with only weak Grass moves).
-  2. Don't stack status — a Pokémon rarely wants two "inflict a status" moves, so a
-     new status move is declined when the lead already has a non-damaging move.
+Hard rules (from real runs):
+  1. NEVER cripple the moveset: always keep at least two damaging moves (one if that is all we have).
+  2. HM moves (Cut, Surf, …) can't be forgotten in the game's own delete screen, so they are never chosen.
 
-`choose_move_to_forget` returns the slot index (0-3) to forget, or None to DECLINE
-(keep the current moveset). The battle handler executes the decision.
+`choose_move_to_forget` returns the slot index (0-3) to forget, or None to DECLINE.
 """
-from knowledge.leafgreen_data import (
-    MOVE_POWER, MOVE_POWER_DEFAULT, STATUS_MOVES,
-)
+from knowledge.leafgreen_data import MOVE_POWER, MOVE_POWER_DEFAULT, MOVE_TYPE, STATUS_MOVES
+
+HM_MOVES = frozenset({"Cut", "Fly", "Surf", "Strength", "Flash", "Rock Smash", "Waterfall", "Dive"})
+MARGIN = 5                       # the new move must beat the forgotten one by this much
+_TWO_TURN = frozenset({"Solar Beam", "SolarBeam", "Hyper Beam", "Sky Attack", "Skull Bash", "Razor Wind",
+                       "Dig", "Fly", "Bounce", "Dive"})
+
+_STATUS_VALUE = {
+    # put to sleep / paralyse / disable the foe
+    **dict.fromkeys(("Sleep Powder", "Spore", "Hypnosis", "Lovely Kiss", "Sing", "Grass Whistle"), 45),
+    **dict.fromkeys(("Thunder Wave", "Stun Spore", "Glare"), 40),
+    **dict.fromkeys(("Toxic", "Poison Powder", "Poison Gas", "Will-O-Wisp", "Confuse Ray", "Supersonic"), 25),
+    "Leech Seed": 30,
+    # recovery / set-up
+    **dict.fromkeys(("Recover", "Softboiled", "Soft-Boiled", "Rest", "Synthesis", "Moonlight", "Morning Sun",
+                     "Milk Drink"), 40),
+    **dict.fromkeys(("Swords Dance", "Growth", "Dragon Dance", "Calm Mind", "Bulk Up", "Agility", "Amnesia"), 35),
+    **dict.fromkeys(("Double Team", "Minimize", "Reflect", "Light Screen", "Substitute", "Protect", "Detect",
+                     "Endure", "Mean Look", "Spider Web", "Focus Energy"), 20),
+    # minor stat nudges
+    **dict.fromkeys(("Growl", "Tail Whip", "Leer", "String Shot", "Sand-Attack", "Smokescreen", "Screech",
+                     "Harden", "Withdraw", "Defense Curl", "Flash", "Sweet Scent", "Kinesis", "Charm",
+                     "FeatherDance", "Feather Dance", "Scary Face", "Splash", "Teleport", "Metal Sound",
+                     "Cotton Spore"), 5),
+}
 
 
-def _power(name: str) -> int:
-    """Damage-ranking power of a move: 0 for status/utility (non-damaging) moves,
-    else its base power. Moves in STATUS_MOVES (incl. Leech Seed) count as 0."""
-    if not name or name in STATUS_MOVES:
-        return 0
-    return MOVE_POWER.get(name, MOVE_POWER_DEFAULT)
+def _is_damaging(name: str) -> bool:
+    return bool(name) and name not in STATUS_MOVES and MOVE_POWER.get(name, MOVE_POWER_DEFAULT) > 0
 
 
-def choose_move_to_forget(current_names: list[str], new_name: str) -> int | None:
-    """Given the lead's 4 current move names and the offered new move name, return the
-    slot (0-3) to forget, or None to decline. Never returns a slot that would drop the
-    last damaging move."""
+def move_value(name: str, own_types=()) -> float:
+    """How much a move is worth to this Pokémon: 0 for an empty slot, attack power (×1.5 for the user's own
+    type, ×0.65 for two-turn moves) for damaging moves, a utility score for status moves."""
+    if not name:
+        return 0.0
+    if not _is_damaging(name):
+        return float(_STATUS_VALUE.get(name, 12))
+    v = float(MOVE_POWER.get(name, MOVE_POWER_DEFAULT))
+    if MOVE_TYPE.get(name) in own_types:
+        v *= 1.5
+    if name in _TWO_TURN:
+        v *= 0.65
+    return v
+
+
+def choose_move_to_forget(current_names: list[str], new_name: str, own_types=()) -> int | None:
+    """Slot (0-3) to forget so `new_name` can be learned, or None to decline (keep the current moves)."""
     if len(current_names) != 4:
         return None
-    powers = [_power(n) for n in current_names]
-    dmg_slots = [i for i, p in enumerate(powers) if p > 0]
-    status_slots = [i for i, p in enumerate(powers) if p == 0]
-    new_pow = _power(new_name)
-    new_is_status = new_pow == 0
-
-    if new_is_status:
-        # Don't stack status: if we already carry a non-damaging move, decline.
-        if status_slots:
-            return None
-        # All four are damaging — a status move is only worth a slot if we still keep
-        # at least TWO damaging moves afterward. Forget the weakest.
-        if len(dmg_slots) >= 3:
-            return min(dmg_slots, key=lambda i: powers[i])
-        return None
-
-    # New move IS damaging. Prefer forgetting a non-damaging move (keep all damage and
-    # gain the new attack).
-    if status_slots:
-        # Forget the weakest non-damaging move (they're all 0-power; pick the first
-        # for determinism — typically a stat move like Growl over Leech Seed).
-        return status_slots[0]
-    # All four are damaging: forget the weakest, but only if the new move is an
-    # upgrade over it (and we always keep the other three damaging moves).
-    weakest = min(range(4), key=lambda i: powers[i])
-    if new_pow > powers[weakest]:
-        return weakest
+    new_v = move_value(new_name, own_types)
+    new_dmg = _is_damaging(new_name)
+    dmg_now = sum(1 for n in current_names if _is_damaging(n))
+    # Candidates: any slot that is not an HM move, cheapest first.
+    order = sorted((i for i, n in enumerate(current_names) if n not in HM_MOVES),
+                   key=lambda i: (move_value(current_names[i], own_types), i))
+    for i in order:
+        gone = current_names[i]
+        dmg_after = dmg_now - (1 if _is_damaging(gone) else 0) + (1 if new_dmg else 0)
+        if dmg_after < min(2, dmg_now + (1 if new_dmg else 0)):
+            continue                                   # would leave too few attacks
+        if new_v > move_value(gone, own_types) + MARGIN:
+            return i
+        return None                                    # the cheapest allowed slot isn't worth replacing
     return None

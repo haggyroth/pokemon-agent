@@ -5,6 +5,23 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed — training, level-up moves, trapped awareness, Pokédex (watched-run observations)
+- feat(training): balance-mode `grind()` puts the TRAINEE in slot 1 (via `reorder_party`) so it fights alone and keeps
+  all the XP — swapping a trainee in after a strong lead was sent out gave the lead half of every fight, which is why
+  hours of grinding never caught the rest of the party up. The ace is put back in front afterwards, even after a
+  time-limit abort (retried). Live: Bulbasaur L19 stayed L19 while Pikachu/Caterpie levelled.
+- tune: the "lagging" threshold is looser — within ~25% of the top level (ratio 0.75, was 0.85): top L40 → nobody under L30.
+- fix(moves): the level-up driver could only forget move SLOT 0 and declined everything else — the reason Venusaur kept
+  refusing SolarBeam / Razor Leaf. It now steers the KNOWN MOVES summary to any slot (cursor read from 0x0203B16D, verified live
+  for all four slots) and `knowledge/movelearn.py` scores moves by VALUE (power ×1.5 same-type, two-turn discount; sleep/
+  paralysis/recovery/set-up ≫ Growl) — a clearly better move replaces the cheapest forgettable one, HM moves are never
+  forgotten, at least two attacks are always kept.
+- feat(battle): trapped awareness — `reader.read_battle_volatiles` decodes gBattleMons.status2 (Wrap/Bind/Fire Spin/Clamp/
+  Whirlpool, Mean Look/Spider Web/Block, Torment, Confusion, Attract, Recharge). The observation shows `⛓ TRAPPED` etc.,
+  and `flee_battle` / voluntary `switch_pokemon` refuse early with an explanation. Prompt gains a "special moves" note.
+- feat(dex): Pokédex counts read from SaveBlock2 (`read_pokedex`, `read_dex_owned`); a SECONDARY objective in the
+  readiness block and system prompt; the catch policy accepts a brand-new species even with a full party (it goes to the PC box).
+
 ### Fixed — viewer stutter between 1× and ~50× on macOS
 - fix(viewer): emulation pacing and presentation are decoupled. The window used to be presented after EVERY
   emulated frame; on macOS `display.flip()` blocks on the display refresh while the window is visible (→ ~1×) but

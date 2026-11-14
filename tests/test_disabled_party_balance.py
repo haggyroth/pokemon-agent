@@ -20,10 +20,11 @@ def mon(species, level, hp=20, max_hp=20):
 
 
 # ── team balance ────────────────────────────────────────────────────────────────
-def test_min_level_is_85_percent_rounded_up():
-    assert min_level_for(18) == 16
-    assert min_level_for(13) == 12
-    assert min_level_for(5) == 5
+def test_min_level_is_75_percent_rounded_up():
+    assert min_level_for(18) == 14
+    assert min_level_for(13) == 10
+    assert min_level_for(40) == 30
+    assert min_level_for(5) == 4
 
 
 def test_lagging_mons_lowest_first_and_ignores_fainted():

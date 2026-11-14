@@ -264,6 +264,26 @@ class BattleMixin:
         usable = [(MOVE_POWER.get(n, 0), n) for n, q in zip(names, pp) if n and q > 0]
         return self._use_move(max(usable)[1])
 
+    def _battle_trapped(self) -> bool:
+        """Is the ACTIVE battler held (Wrap/Bind/Fire Spin/Clamp/Whirlpool for 2-5 turns, or Mean Look / Spider
+        Web / Block until it leaves)? Then neither Run nor a voluntary switch is allowed."""
+        fn = getattr(self.reader, "is_trapped", None)
+        try:
+            return bool(fn and fn(0))
+        except Exception:
+            return False
+
+    def _trapped_message(self, what: str) -> str:
+        v = {}
+        try:
+            v = self.reader.read_battle_volatiles(0)
+        except Exception:
+            pass
+        why = ("a trapping move (Wrap/Bind/Fire Spin/Clamp/Whirlpool — it wears off after 2-5 turns)"
+               if v.get("wrapped") else "Mean Look / Spider Web / Block (it holds you until the foe is gone)")
+        return (f"You can't {what} — you're trapped by {why}. Keep attacking (or heal with an item); the game "
+                "will refuse Run and voluntary switches until it ends. Once it does, flee/switch normally.")
+
     def _flee_battle(self) -> str:
         """Run from a WILD battle. Drives the action menu to RUN (writes the action
         cursor, like use_move does for the move cursor) and confirms escape by the
@@ -276,6 +296,8 @@ class BattleMixin:
             return "Not in a battle — nothing to flee."
         if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
             return "Can't run from a trainer battle — win it or switch Pokémon."
+        if self._battle_trapped():
+            return self._trapped_message("run")
         idle = getattr(self.mgba, "wait_until_idle", None)
         for _ in range(20):
             if self.reader.detect_context() != GameContext.IN_BATTLE:
@@ -727,6 +749,8 @@ class BattleMixin:
         party = self.reader.read_party()
         if len(party) < 2:
             return "You only have one Pokémon — nothing to switch to. Catch a team first."
+        if not forced and self._battle_trapped():
+            return self._trapped_message("switch")
         slot = self._resolve_party_target(target, party)
         if slot is None:
             roster = ", ".join(f"{i+1}:{p.species_name}" for i, p in enumerate(party) if p.species_name)

@@ -164,7 +164,7 @@ TOOLS = [
                        "heals itself at a Pokémon Center when HP or attack PP runs low, then walks "
                        "back — one call does a lot of work). Two modes: grind(level=13) raises your "
                        "LEAD to L13 (e.g. before Brock so Bulbasaur has Vine Whip); grind() with NO "
-                       "level BALANCES the team — every Pokémon should be within ~15% of your highest "
+                       "level BALANCES the team — every Pokémon should be within ~25% of your highest "
                        "(top L18 → nobody under L16), because weak backups can't carry a gym, a "
                        "dungeon or a forced switch. In balance mode the lowest lagging Pokémon is "
                        "sent in first for the XP and a strong teammate finishes tough fights. "
