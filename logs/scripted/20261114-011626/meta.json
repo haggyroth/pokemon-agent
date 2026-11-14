@@ -1,0 +1,31 @@
+{
+  "kind": "scripted",
+  "goal": "badges:2",
+  "max_steps": 400,
+  "state": "",
+  "result": {
+    "reason": "goal",
+    "passed": true,
+    "steps": 35,
+    "reward": 43.5,
+    "llm_calls": 70,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "final_map": [
+      3,
+      43
+    ],
+    "final_pos": [
+      10,
+      39
+    ],
+    "badges": 2,
+    "milestones": [
+      "beat_brock",
+      "beat_misty"
+    ],
+    "stuck_ratio": 0.2,
+    "goal_desc": "badges:2",
+    "total_tokens": 0
+  }
+}

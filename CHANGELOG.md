@@ -5,6 +5,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — zero-token end-to-end runs (#185 item 5)
+- feat: `tools/scripted_run.py` + `agent/scripted_policy.py`: a rule-based stand-in for the LLM (a fake
+  OpenAI client) drives the REAL run loop — observations, rewards, ltm, logging, checkpoints, watchdog —
+  with no model calls. From the real save it beats Brock AND Misty (Viridian → Pewter → Route 3 →
+  Mt. Moon → Cerulean) in ~3 min of wall time. It found the next gap: **after Misty the way on is blocked
+  until the SS Anne ticket from Bill** (Slowbro/Lass block Cerulean's south exit, a policeman the east).
+- fix: `challenge_leader` had a Leader position only for Brock; it returned "I don't have this gym's Leader
+  position" in Cerulean. All 8 gyms now have approach tiles from the decomp (Pewter + Cerulean verified;
+  the puzzle gyms — Vermilion, Fuchsia, Saffron, Cinnabar, Viridian — unverified).
+
 ### Added — catch policy (#185 item 4)
 - feat: `knowledge/catch_policy.py` weighs a catch's grinding debt (levels under the ~15% balance floor)
   against what it adds (strong evolution line, a new type). go_to only stops for worthwhile species, and

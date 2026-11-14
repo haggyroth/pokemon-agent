@@ -7,8 +7,20 @@
 # to the tile just below the Leader: walk_to it and the Leader's line of sight
 # starts the battle. Positions verified against the pokefirered decomp.
 # (Populate more gyms as the agent reaches them.)
+# Every Leader faces DOWN, so the approach tile is (leader x, leader y + 1) — coordinates from the decomp
+# map.json object_events (tools: see data/maps/<Town>_Gym/map.json). Verified live: Pewter, Cerulean.
+# The rest are from the decomp only; several gyms have a PUZZLE between the door and the Leader
+# (Vermilion trash-can switches, Fuchsia invisible walls, Saffron teleport pads, Cinnabar quiz doors,
+# Viridian spinners) that walk_to alone may not cross.
 GYM_LEADER_APPROACH: dict[tuple[int, int], tuple[int, int]] = {
-    (6, 2): (6, 6),   # Pewter Gym — Brock at (6,5); approach from directly below
+    (6, 2): (6, 6),      # Pewter Gym — Brock at (6,5)
+    (7, 5): (8, 7),      # Cerulean Gym — Misty at (8,6)
+    (9, 6): (5, 3),      # Vermilion Gym — Lt. Surge at (5,2)            (unverified; trash-can puzzle)
+    (10, 16): (6, 5),    # Celadon Gym — Erika at (6,4)                  (unverified)
+    (11, 3): (7, 14),    # Fuchsia Gym — Koga at (7,13)                  (unverified; invisible walls)
+    (14, 3): (14, 12),   # Saffron Gym — Sabrina at (14,11)              (unverified; teleport pads)
+    (12, 0): (5, 5),     # Cinnabar Gym — Blaine at (5,4)                (unverified; quiz doors)
+    (5, 1): (2, 3),      # Viridian Gym — Giovanni at (2,2)              (unverified; spinner tiles)
 }
 
 # Gym-interior (map_bank, map_id) → Leader name. Lets the obs tell a gym you've

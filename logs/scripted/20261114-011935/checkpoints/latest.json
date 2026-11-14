@@ -1,0 +1,22 @@
+{
+  "path": "/Users/kylec/Projects/pokemon-agent/tools/../logs/scripted/20261114-011935/checkpoints/ckpt_00295_OVERWORLD.ss1",
+  "step": 295,
+  "tag": "ckpt_00295_OVERWORLD",
+  "time": "2026-11-14 01:25:27",
+  "meta": {
+    "map": [
+      3,
+      22
+    ],
+    "badges": 2,
+    "party": [
+      [
+        "Ivysaur",
+        26,
+        77,
+        77
+      ]
+    ],
+    "llm_calls": 590
+  }
+}

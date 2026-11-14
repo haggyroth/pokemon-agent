@@ -1,0 +1,22 @@
+{
+  "path": "/Users/kylec/Projects/pokemon-agent/tools/../logs/scripted/20261114-011626/checkpoints/badge2_00035.ss1",
+  "step": 35,
+  "tag": "badge2_00035",
+  "time": "2026-11-14 01:19:28",
+  "meta": {
+    "map": [
+      7,
+      5
+    ],
+    "badges": 2,
+    "party": [
+      [
+        "Ivysaur",
+        24,
+        49,
+        72
+      ]
+    ],
+    "llm_calls": 70
+  }
+}
