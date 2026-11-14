@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import (MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
+from config import (MODEL_NAME, TEMPERATURE, MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
                     USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
                     LLM_BASE_URL, MAX_WALL_SECONDS)
 from game.memory_reader import LeafGreenReader
@@ -48,6 +48,16 @@ def _log_exception(exc: Exception) -> None:
             traceback.print_exc(file=f)
     except Exception:
         pass  # logging must never mask the original error
+
+
+def _party_brief(s: GameState) -> list:
+    """Compact party snapshot for the run log: [species, level, hp, max_hp]."""
+    out = []
+    for p in s.party:
+        out.append([getattr(p, "species_name", getattr(p, "species", "?")),
+                    getattr(p, "level", 0), getattr(p, "current_hp", 0),
+                    getattr(p, "max_hp", 0)])
+    return out
 
 
 def _run_summary(reward, client, steps: int) -> str:
@@ -484,6 +494,16 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 "sustain dungeons (Mt. Moon) or the Elite Four. Build to 3-4+: in "
                 "tall grass, weaken a wild Pokémon with use_move, then catch(). "
                 "(Travel stops on NEW species so you can catch them.)")
+        # Team-balance nudge: every Pokémon within ~15% of the top level.
+        if (not in_battle and state.context == GameContext.OVERWORLD and len(state.party) >= 2):
+            from knowledge.party import lagging_mons
+            _lag = lagging_mons(state.party)
+            if _lag:
+                _top = max(p.level for p in state.party)
+                obs_parts.append(
+                    "⚠ Team imbalance: " + ", ".join(f"{p.species_name} L{p.level}" for _, p in _lag)
+                    + f" trail your top L{_top} by >15% — call train_party() (heal() first if hurt) so "
+                    "the backups can actually fight.")
         # Under-levelled-for-Brock nudge: no badges yet and lead below the
         # ~L13 Vine Whip breakpoint → grind before challenging the gym.
         if (not in_battle and ltm.data["badges_earned"] == 0
@@ -494,19 +514,26 @@ def build_observation(*, state: GameState, diff: StateDiff, in_battle: bool,
                 f"for Vine Whip). Stand in tall grass and call grind(13) to level "
                 f"up before the Pewter Gym")
         if in_battle:
-            move_names = [m for m in lead.move_names if m]
+            # Moves/PP of the ACTIVE battler (gBattleMons[0]) — party[0] is not necessarily the one
+            # fighting after a switch — with a Disabled move's PP zeroed so it is never suggested.
+            _ids, a_names, a_pp, d_slot, d_turns = reader.read_active_battle_usable_pp()
+            if any(a_names):
+                move_names, pp_view = list(a_names), a_pp
+            else:
+                move_names, pp_view, d_slot, d_turns = list(lead.move_names), lead.pp, None, 0
             lead_types = POKEMON_TYPES.get((lead.species_name or "").upper().strip(), ())
             enemy = reader.read_enemy_lead()
             bsummary = battle_summary(move_names, run.current_enemy,
-                                      lead.hp_percent, lead.pp,
+                                      lead.hp_percent, pp_view,
                                       attacker_types=lead_types,
-                                      opponent_status=enemy.status if enemy else "")
+                                      opponent_status=enemy.status if enemy else "",
+                                      disabled_slot=d_slot, disabled_turns=d_turns)
             obs_parts.append(bsummary)
             from agent.lm_studio_client import AgentClient as _AC
             from knowledge.battle import battle_idle_nudge
             _nudge = battle_idle_nudge(
                 stm.action_history,
-                _AC._best_damaging_move(lead.move_names, lead.pp, lead_types,
+                _AC._best_damaging_move(move_names, pp_view, lead_types,
                                         POKEMON_TYPES.get((enemy.species_name or "").upper().strip(), ())
                                         if enemy else ()))
             if _nudge:
@@ -711,7 +738,7 @@ def _handle_blackout(run: _RunState, state: GameState, mgba, reader: LeafGreenRe
 
 def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str = "",
                 max_steps: int = 0, max_wall_s: float = MAX_WALL_SECONDS,
-                verbose: bool = True) -> EpisodeResult:
+                verbose: bool = True, run_log=None) -> EpisodeResult:
     """Drive the decision loop until the goal is met, a cap is hit, or the run is
     interrupted / exceeds the error budget. Returns an EpisodeResult scorecard.
 
@@ -728,8 +755,20 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
 
     run = _RunState()
     wall_deadline = time.time() + max_wall_s if max_wall_s else 0.0
+    from memory.run_log import NullRunLog
+    rlog = run_log or NullRunLog()
+    client.run_log = rlog
+    _s0 = reader.read_state()
+    rlog.event("start", map=[_s0.map_bank, _s0.map_id], pos=[_s0.player_x, _s0.player_y],
+               badges=_s0.badges, party=_party_brief(_s0), goal=goal_desc)
 
     def _result(reason: str, passed: bool, s: Optional[GameState] = None) -> EpisodeResult:
+        res = _result_inner(reason, passed, s)
+        rlog.event("end", **res.to_dict())
+        rlog.write_meta(result=res.to_dict())
+        return res
+
+    def _result_inner(reason: str, passed: bool, s: Optional[GameState] = None) -> EpisodeResult:
         if s is None:
             s = reader.read_state()
         return EpisodeResult(
@@ -913,6 +952,12 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             mgba.tick()
 
             run.step_count += 1
+            rlog.event("tick", step=run.step_count, ctx=state.context.name,
+                       map=[state.map_bank, state.map_id],
+                       pos=[state.player_x, state.player_y], badges=state.badges,
+                       party=_party_brief(state), obs=obs, reasoning=(reasoning or "")[:1500],
+                       actions=actions, reward=round(reward.total, 2),
+                       llm_calls=client.llm_calls, tokens=client.total_tokens)
             if max_steps and run.step_count >= max_steps:
                 if verbose:
                     console.print(f"[green]Reached max_steps={max_steps} — stopping. "
@@ -970,7 +1015,17 @@ def main():
     rt = build_runtime(verbose=True)
     if rt is None:
         sys.exit(1)
-    result = run_episode(rt, max_steps=MAX_STEPS, verbose=True)
+    from memory.run_log import RunLog
+    rlog = RunLog(PROGRESS_PATH.parent / "runs")
+    rlog.write_meta(model=MODEL_NAME, backend=MGBA_BACKEND, max_steps=MAX_STEPS,
+                    max_llm_calls=MAX_LLM_CALLS, token_budget=TOKEN_BUDGET,
+                    start_from_save=START_FROM_SAVE, use_vision=USE_VISION,
+                    temperature=TEMPERATURE, started=time.strftime("%Y-%m-%d %H:%M:%S"))
+    console.print(f"[cyan]Run log: {rlog.dir}[/]")
+    try:
+        result = run_episode(rt, max_steps=MAX_STEPS, verbose=True, run_log=rlog)
+    finally:
+        rlog.close()
     # run_episode already printed the stop line. Propagate any non-goal stop (a
     # budget cap, interruption, or the error budget) as a non-zero exit so a
     # wrapping shell/CI notices the run didn't actually finish; 0 means the goal

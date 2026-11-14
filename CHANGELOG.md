@@ -5,6 +5,33 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — run logging + fixes from the first watched 500-call run (gemma4:31b-cloud)
+- feat(logging): every `python main.py` run writes `logs/runs/<timestamp>/run.jsonl` (+ `meta.json`):
+  one line per decision tick (observation, state, reasoning, actions), per LLM call (tokens,
+  reasoning, requested tools) and per tool call (args, result, seconds, map/pos/HP afterwards).
+- feat: `train_party()` keeps the whole team within ~15% of the top level — works the grass like
+  `grind`, sends the lowest lagging mon in first, lets a strong teammate finish tough fights (XP is
+  shared with every participant), pauses when the trainee is hurt. Observation gets a
+  "Team imbalance" warning; `challenge_leader()` warns once about a lopsided team.
+- feat: Disable handling — `gDisableStructs` (0x02023E0C, found live) is read, the move shows as
+  `DISABLED (n turns)` and is never suggested/used; the move-menu refusal fallback backs out after two
+  refused commits instead of looping forever.
+- feat: `use_move('Struggle')` / automatic Struggle when every move is out of PP or Disabled.
+
+### Fixed
+- fix(switch): the party-screen row for a switch target is now taken from the party as read AFTER
+  the screen settles (the game physically reorders gPlayerParty to battle order) instead of applying
+  gBattlePartyCurrentOrder on top — forced switches to the 2nd-slot mon failed every time. Cursor
+  movement is lag-tolerant (waits for two identical reads).
+- fix(battle): `advance_dialog` in a battle drives the text to the next decision (it used to answer
+  "a battle started" and press nothing: 191 wasted calls through a gym trainer's send-outs); after a
+  KO `use_move` settles the win/send-out text itself.
+- fix(battle): the opponent is read from the live battler (gBattleMons[1]), not gEnemyParty[0] — the
+  second mon of a trainer showed as the fainted first one.
+- fix(move-learn): level-ups are tracked per species, so a party reorder (Pikachu L5 -> Ivysaur L18 in
+  slot 0) no longer arms the driver on a stale offer ('declined Sleep Powder' x8). The state diff pairs
+  mons by identity, so reordering no longer reports phantom level-ups.
+
 ### Added (work in progress — see the WIP PR; partly unverified)
 - feat: `fly_to(town)` (party sub-menu -> region map; live-verified to all 11 towns) and Flash via
   `use_hm('Flash')` (verified in the real Rock Tunnel: lights the cave, flag set, control returns).

@@ -15,6 +15,19 @@ class BattleMixin:
             waiter()
         self.mgba.hold(button, 20)
 
+    def _active_moves_view(self):
+        """(move_ids, names, pp, disabled_slot, disabled_turns) for the ACTIVE battler, with a
+        Disabled move's PP zeroed (so ranking/validation skip it). Tolerates readers that predate
+        the Disable fields."""
+        ids, names, pp = self.reader.read_active_battle_moves()
+        read_dis = getattr(self.reader, "read_disabled_move", None)
+        dmove, turns = read_dis(0) if read_dis else (0, 0)
+        slot = ids.index(dmove) if dmove and dmove in ids else None
+        eff = list(pp)
+        if slot is not None:
+            eff[slot] = 0
+        return ids, names, eff, slot, turns
+
     def _battle_truly_over(self) -> bool:
         """Distinguish a real battle end from a transient non-IN_BATTLE state — a Gym
         Leader's fainted Pokémon being replaced by its next one briefly reads as a
@@ -54,8 +67,9 @@ class BattleMixin:
         # order differs, so the cursor could land on an EMPTY slot (a caught Pidgey with
         # two moves). Out of battle, fall back to the lead so name errors still read sanely.
         in_battle = self.reader.detect_context() == GameContext.IN_BATTLE
+        dslot, dturns = None, 0
         if in_battle:
-            _ids, move_names, pp = self.reader.read_active_battle_moves()
+            _ids, move_names, pp, dslot, dturns = self._active_moves_view()
             # During the battle intro / a send-out animation gBattleMons[0] can still be
             # unpopulated (all blank) even though cb2 already says IN_BATTLE; that made a
             # perfectly valid move read as "not a known move". Give it a moment to fill.
@@ -63,16 +77,29 @@ class BattleMixin:
                 if any(move_names):
                     break
                 self.mgba.tick(30)
-                _ids, move_names, pp = self.reader.read_active_battle_moves()
+                _ids, move_names, pp, dslot, dturns = self._active_moves_view()
         else:
             move_names, pp = party[0].move_names, party[0].pp
         names = [n.lower() for n in move_names]
         key = name.lower().strip()
+        usable = [m for m, q in zip(move_names, pp) if m and q > 0]
+        if in_battle and (key == "struggle" or not usable):
+            # Every move is out of PP (or Disabled): the game ignores the move menu and uses
+            # Struggle by itself on FIGHT. There is no "Struggle" slot to select — the old reply
+            # was "'Struggle' is not a known move", which stranded the model for 30+ calls.
+            if usable:
+                return (f"Struggle is only forced when EVERY move is out of PP/Disabled; you can still "
+                        f"use: {', '.join(usable)}.")
+            return self._struggle()
         if not key or key not in names:   # `not key` guards an empty name matching an empty slot
             known = ", ".join(m for m in move_names if m)
             return f"'{name}' is not a known move. Known moves: {known}."
         slot = names.index(key)
         move_label = move_names[slot]
+        if slot == dslot:
+            alt = ", ".join(m for m, q in zip(move_names, pp) if m and q > 0)
+            return (f"{move_label} is DISABLED ({dturns} more turn(s)) — the game refuses it, so "
+                    f"pressing it again does nothing. Use a different move: {alt or 'none left'}.")
         if pp[slot] == 0:
             return f"{move_label} has no PP left — choose another move."
         # Remember who's giving the order so we can tell if it fainted mid-turn (#68):
@@ -90,6 +117,7 @@ class BattleMixin:
 
         forced_msg = ("Your Pokémon fainted — the game is forcing a replacement. Call "
                       "switch_pokemon('<name or slot>'). Healthy: {}.")
+        refused = 0
         for _ in range(20):
             if forced_party_screen(self.mgba, self.reader):
                 return forced_msg.format(_healthy_roster(self.reader))
@@ -118,6 +146,19 @@ class BattleMixin:
             pp_before = self.reader.read_active_battle_moves()[2][slot]
             self.mgba.write8(Addr.MOVE_CURSOR, slot)
             self.mgba.hold("A", 20)       # A edge → commits gMoveSelectionCursor
+            # A committed move leaves the move menu at once. If it is STILL up after settling,
+            # the game refused the choice (Disabled, Taunted, Torment, ...): never loop on it.
+            if hasattr(self.mgba, "wait_until_idle"):
+                self.mgba.wait_until_idle()
+            self.mgba.tick(20)
+            if (self.mgba.read32(Addr.BATTLE_CTRL_FUNC) == Addr.CTRL_CHOOSE_MOVE
+                    and self.reader.read_active_battle_moves()[2][slot] == pp_before):
+                refused += 1
+                if refused >= 2:
+                    self._battle_press("B")          # back out to the action menu
+                    alt = ", ".join(m for m, q in zip(move_names, pp) if m and q > 0 and m != move_label)
+                    return (f"The game refused {move_label} (it is disabled or otherwise blocked) — it "
+                            f"will not work this turn. Use a different move: {alt or 'none'}.")
             # Let the turn resolve — advance result text until OUR move's PP drops,
             # the battle truly ends, or the next action menu appears.
             for _ in range(24):
@@ -152,6 +193,38 @@ class BattleMixin:
         if forced_party_screen(self.mgba, self.reader):
             return forced_msg.format(_healthy_roster(self.reader))
         return f"Could not use {name} — the battle menu did not respond as expected."
+
+    def _struggle(self) -> str:
+        """All moves are out of PP / Disabled: FIGHT -> the game auto-uses Struggle. Press A at the
+        action menu (cursor on FIGHT) and let the turn play out; confirm by either side's HP moving
+        or the battle ending. Struggle's recoil hurts, so the caller should heal() afterwards."""
+        from game.constants import Addr
+        from game.state import GameContext
+        from game.menu import _healthy_roster, forced_party_screen
+        foe0 = self.reader.read_enemy_lead()
+        foe_hp0 = foe0.current_hp if foe0 else None
+        my_hp0 = self.reader.read_active_battle_hp()
+        for _ in range(30):
+            if forced_party_screen(self.mgba, self.reader):
+                return ("Used Struggle, but your Pokémon fainted — the game is forcing a replacement. "
+                        f"Call switch_pokemon('<name or slot>'). Healthy: {_healthy_roster(self.reader)}.")
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                if self._battle_truly_over():
+                    self._settle_evolution()
+                    self._advance_to_control(tries=30)
+                    return "Used Struggle (battle ended)."
+                self._battle_advance()
+                continue
+            if self.mgba.read32(Addr.BATTLE_CTRL_FUNC) == Addr.CTRL_CHOOSE_MOVE:
+                self._battle_press("B")              # never sit in the move menu
+                continue
+            foe = self.reader.read_enemy_lead()
+            if (foe and foe_hp0 is not None and foe.current_hp != foe_hp0) \
+                    or self.reader.read_active_battle_hp() != my_hp0:
+                return (f"Used Struggle (no PP / Disabled moves).{self._turn_summary()} "
+                        "Heal at a Pokémon Center soon — it restores PP.")
+            self._battle_advance()
+        return "Struggle did not resolve — call advance_dialog, then use_move again."
 
     def _flee_battle(self) -> str:
         """Run from a WILD battle. Drives the action menu to RUN (writes the action
@@ -237,6 +310,45 @@ class BattleMixin:
         # Point it at FIGHT first; harmless when no action menu is up.
         self.mgba.write8(Addr.ACTION_CURSOR, 0)
         self._battle_press("A")
+
+    def _battle_settle(self, max_steps: int = 60) -> str:
+        """Drive battle text forward to the next DECISION point and say what it is. This is what
+        advance_dialog does in a battle: the model used to call it ~190 times through a gym
+        trainer's faint/send-out/win text because it just answered "a battle started" and pressed
+        nothing. Stops at: the action/move menu (your turn), a forced replacement screen, a pending
+        move-learn, or the battle's true end (then clears post-battle text to the field)."""
+        from game.constants import Addr
+        from game.menu import _healthy_roster, forced_party_screen
+        from game.state import GameContext
+        idle = getattr(self.mgba, "wait_until_idle", None)
+        for _ in range(max_steps):
+            if forced_party_screen(self.mgba, self.reader):
+                return ("Your Pokémon fainted — the game is forcing a replacement. Call "
+                        f"switch_pokemon('<name or slot>'). Healthy: {_healthy_roster(self.reader)}.")
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                if self._battle_truly_over():
+                    self._settle_evolution()
+                    self._advance_to_control(tries=30)
+                    return "Battle is over — back on the field."
+                self._battle_advance()           # transient (send-out / fade)
+                continue
+            if idle:
+                idle()
+            learn = self._maybe_drive_learn()
+            if learn:
+                return learn
+            foe = self.reader.read_enemy_lead()
+            foe_down = bool(foe and foe.max_hp and foe.current_hp == 0)
+            # The controller value reads CHOOSE_ACTION even while the victory / next-send-out text
+            # plays (it goes stale), so with the foe down it proves nothing: keep advancing until a
+            # live foe is out again or the battle ends.
+            if not foe_down and self.mgba.read32(Addr.BATTLE_CTRL_FUNC) in (
+                    Addr.CTRL_CHOOSE_ACTION, Addr.CTRL_CHOOSE_ACTION_ALT, Addr.CTRL_CHOOSE_MOVE):
+                who = (f" Opponent: {foe.species_name} {foe.current_hp}/{foe.max_hp}."
+                       if foe and foe.max_hp and foe.current_hp > 0 else "")
+                return f"Battle text finished — it's your turn.{who} Call use_move / switch_pokemon / catch."
+            self._battle_advance()
+        return "Battle text is still running — call advance_dialog again."
 
     def _battle_yesno_live(self) -> bool:
         """True iff the battle's Yes/No box (the post-catch nickname prompt) is taking input.
@@ -418,10 +530,30 @@ class BattleMixin:
         diverge (#120). Returns the display slot whose party id == field_slot; falls back
         to identity if none matches (e.g. read glitch)."""
         from game.constants import Addr
-        for s in range(6):
+
+        def order_pid(s: int) -> int:
             b = self.mgba.read8(Addr.BATTLE_PARTY_ORDER + (s >> 1))
-            pid = (b & 0xF) if (s & 1) else (b >> 4)
-            if pid == field_slot:
+            return (b & 0xF) if (s & 1) else (b >> 4)
+
+        # Two layouts occur and a blind remap breaks one of them (live repro: a forced switch
+        # after a faint targeted the FAINTED mon's slot and failed forever): right after a
+        # voluntary switch gPlayerParty is still in field order and the menu follows
+        # gBattlePartyCurrentOrder, but once the game has physically swapped gPlayerParty the
+        # menu is simply in party order and remapping again double-counts. Decide which one is
+        # live by checking which layout puts the ACTIVE battler's species in menu slot 0 (the
+        # cursor's starting point, and where the active mon always sits).
+        try:
+            party = self.reader.read_party()
+            active = self.mgba.read16(Addr.BATTLE_MON0_SPECIES)
+            phys_ok = bool(party) and party[0].species_id == active
+            p0 = order_pid(0)
+            map_ok = 0 <= p0 < len(party) and party[p0].species_id == active
+            if phys_ok and not (map_ok and p0 != 0):
+                return field_slot
+        except Exception:
+            pass
+        for s in range(6):
+            if order_pid(s) == field_slot:
                 return s
         return field_slot
 
@@ -468,10 +600,43 @@ class BattleMixin:
                 bits.append(f"yours {mine}/{mx}")
             if not bits:
                 return ""
+            if foe and foe.max_hp and foe.current_hp == 0:
+                # The foe is down: the win text / the trainer's next send-out still has to play.
+                # Drive it to the next decision point NOW rather than leaving the model to guess
+                # (it spent ~190 calls pressing advance_dialog on this exact screen).
+                return f" [{'; '.join(bits)}] {self._battle_settle()}"
             return (f" [{'; '.join(bits)}] Still in battle — call use_move again "
                     f"(do NOT press A or wait).")
         except Exception:
             return ""
+
+    def _party_cursor_to(self, disp_slot: int, tries: int = 14) -> bool:
+        """Move the party-menu cursor to a display slot and confirm it STAYED there. The cursor
+        variable lags the input by a frame or two and the first press after the screen opens is
+        often swallowed, so a fixed tick between taps made the old loop press twice (overshooting)
+        or act on a stale read (live: switches to slot 2 'randomly' failed). Wait for two
+        identical reads before trusting the cursor, and tap once per settled state."""
+        from game.constants import Addr
+        idle = getattr(self.mgba, "wait_until_idle", None)
+
+        def settled() -> int:
+            prev, cur = -1, self.mgba.read8(Addr.PARTY_FIELD_SLOT)
+            for _ in range(8):
+                if cur == prev:
+                    break
+                self.mgba.tick(8)
+                prev, cur = cur, self.mgba.read8(Addr.PARTY_FIELD_SLOT)
+            return cur
+
+        for _ in range(tries):
+            cur = settled()
+            if cur == disp_slot:
+                return True
+            self.mgba.tap("Down" if cur < disp_slot else "Up")
+            if idle:
+                idle()
+            self.mgba.tick(14)
+        return settled() == disp_slot
 
     def _switch_pokemon(self, target: str) -> str:
         """Switch the active Pokémon in battle to another party member (by species name
@@ -505,21 +670,31 @@ class BattleMixin:
         if idle:
             idle()
         self.mgba.tick(30)                        # let the party screen settle
-        # The in-battle party menu lists mons in BATTLE order (gBattlePartyCurrentOrder),
-        # which is remapped after each switch — so the target's field slot is NOT its
-        # on-screen slot once you've already switched this battle. Translate field slot →
-        # display slot; without this the cursor lands on the active mon and the game
-        # rejects it as "already in battle" (why a 2nd switch used to silently fail, #120).
-        disp_slot = self._battle_display_slot(slot)
-        for _ in range(12):                       # move the cursor to the target's display slot
+        # The in-battle party screen lists mons in BATTLE order: once it has finished loading,
+        # the game physically reorders gPlayerParty into that order (UpdatePartyToBattleOrder
+        # in pokefirered party_menu.c — active mon first, the rest ascending), and restores it
+        # on exit. So the ground truth for "which row is the target" is the party AS READ NOW,
+        # after the screen settled — not the pre-open field order, and not gBattlePartyCurrentOrder
+        # (applying that on top of the physical reorder double-counted and sent the cursor to the
+        # FAINTED mon's row: live, every forced switch to the slot-2 mon failed). Match on a
+        # signature, verify the cursor row's signature, and retry if the rows moved under us.
+        def sig(q):
+            return (q.species_id, q.level, q.max_hp)
+        target_sig = sig(mon)
+        landed = False
+        for _ in range(3):
+            rows = self.reader.read_party()
+            disp_slot = next((i for i, q in enumerate(rows) if sig(q) == target_sig), None)
+            if disp_slot is None:
+                disp_slot = self._battle_display_slot(slot)
+            if not self._party_cursor_to(disp_slot):
+                continue
+            rows = self.reader.read_party()
             cur = self.mgba.read8(Addr.PARTY_FIELD_SLOT)
-            if cur == disp_slot:
+            if cur < len(rows) and sig(rows[cur]) == target_sig:
+                landed = True
                 break
-            self.mgba.tap("Down" if cur < disp_slot else "Up")
-            if idle:
-                idle()
-            self.mgba.tick(8)
-        if self.mgba.read8(Addr.PARTY_FIELD_SLOT) != disp_slot:
+        if not landed:
             self._exit_battle_menus()
             return f"Couldn't select {mon.species_name} in the party menu — try again."
         # Select the slot → SHIFT (default) → confirm. Self-verifying: press A until the
@@ -743,11 +918,11 @@ class BattleMixin:
                 break
             # Pick from the ACTIVE battler's moves (gBattleMons[0]), not the lead — the
             # mon fighting may be a switched-in / sent-out teammate with a different set.
-            _ids, names, pp = self.reader.read_active_battle_moves()
+            _ids, names, pp, _dslot, _dturns = self._active_moves_view()
             atk, dfn = self._battle_types()
             mv = self._best_damaging_move(names, pp, atk, dfn)
             if mv:
                 self._use_move(mv)
             else:
-                self._battle_press("A")   # no PP → Struggle / advance
+                self._struggle()          # no usable move (all PP 0 / Disabled) → forced Struggle
         self._settle_evolution()   # let a level-up evolution play out (A, never B)

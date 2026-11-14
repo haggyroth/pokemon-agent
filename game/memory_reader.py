@@ -202,6 +202,27 @@ class LeafGreenReader:
         names = [MOVE_NAMES.get(m, f"move_{m}") if m else "" for m in ids]
         return ids, names, pp
 
+    def read_disabled_move(self, battler: int = 0) -> tuple[int, int]:
+        """(move_id, turns_left) of the move Disable has locked for a battler, or (0, 0). The game
+        refuses a disabled move at the FIGHT menu ("The move is disabled!") and leaves the menu
+        up — a skill that just re-pressed A on it looped forever."""
+        base = Addr.DISABLE_STRUCTS + Addr.DISABLE_STRUCT_SIZE * battler
+        move = self.client.read16(base + 4)
+        if not move:
+            return 0, 0
+        return move, self.client.read8(base + 0xB) & 0xF
+
+    def read_active_battle_usable_pp(self) -> tuple[list[int], list[str], list[int], int | None, int]:
+        """Active battler's (move_ids, names, pp, disabled_slot, disabled_turns) where `pp` has the
+        DISABLED slot zeroed — so every consumer that ranks/validates moves by PP skips it for free."""
+        ids, names, pp = self.read_active_battle_moves()
+        dmove, turns = self.read_disabled_move(0)
+        slot = ids.index(dmove) if dmove and dmove in ids else None
+        eff = list(pp)
+        if slot is not None:
+            eff[slot] = 0
+        return ids, names, eff, slot, turns
+
     def read_active_battle_species(self) -> int:
         """Species of the active player battler (gBattleMons[0].species)."""
         return self.client.read16(Addr.BATTLE_MON0_SPECIES)
@@ -218,7 +239,25 @@ class LeafGreenReader:
         raw = self.client.read_range(Addr.ENEMY_PARTY, 100)
         if len(raw) < 100 or raw[0x54] == 0:
             return None
-        return self._decode_mon(raw, 0)
+        mon = self._decode_mon(raw, 0)
+        # gEnemyParty[0] is only the trainer's FIRST mon: when a later one is out (Brock's Onix
+        # after Geodude) it still showed the fainted Geodude — "Opponent: GEODUDE ... HP 0" for the
+        # whole second fight, and 'foe fainted' while a healthy foe was swinging. The live battler
+        # (gBattleMons[1]) is the truth for who is out and how much HP it has.
+        try:
+            from dataclasses import replace
+            bm = Addr.BATTLE_MON0_SPECIES + 0x58
+            sp, lvl = self.client.read16(bm), self.client.read8(bm + 0x2A)
+            mx = self.client.read16(bm + 0x2C)
+            if sp and lvl and mx:
+                hp = self.client.read16(bm + 0x28)
+                if sp != mon.species_id:
+                    mon = replace(mon, species_id=sp, species_name=SPECIES_NAMES.get(sp, f"#{sp}"),
+                                  move_ids=[0] * 4, move_names=[""] * 4, pp=[0] * 4)
+                mon = replace(mon, current_hp=hp, max_hp=mx, level=lvl)
+        except Exception:
+            pass
+        return mon
 
     def read_key_item_count(self) -> int:
         """Number of occupied key-item slots in the bag. Reward key_item when
@@ -453,8 +492,26 @@ class LeafGreenReader:
                                 after.context  != GameContext.IN_BATTLE)
         d.context_changed    = before.context != after.context
 
-        for i in range(min(len(before.party), len(after.party))):
-            b, a = before.party[i], after.party[i]
+        # Pair each mon with ITSELF, not with whatever now sits in the same slot: a switch (and the
+        # battle party screen's physical reorder) permutes gPlayerParty, which read as "Slot 0
+        # leveled up 18→5; Slot 1 leveled up 5→18" and fed the model nonsense. Prefer the same slot
+        # when it is the same species, else the first unclaimed earlier mon of that species.
+        claimed: set[int] = set()
+        pairs: list[tuple[int, int]] = []
+        for i, a in enumerate(after.party):
+            j = None
+            if i < len(before.party) and before.party[i].species_id == a.species_id and i not in claimed:
+                j = i
+            else:
+                j = next((k for k, bq in enumerate(before.party)
+                          if k not in claimed and bq.species_id == a.species_id), None)
+            if j is None and i < len(before.party) and i not in claimed:
+                j = i                      # unknown species (decryption gave 0): fall back to the slot
+            if j is not None:
+                claimed.add(j)
+                pairs.append((j, i))
+        for j, i in pairs:
+            b, a = before.party[j], after.party[i]
             if b.current_hp != a.current_hp:
                 d.hp_changed.append(i)
                 if a.current_hp < b.current_hp:

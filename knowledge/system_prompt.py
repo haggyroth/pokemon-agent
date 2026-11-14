@@ -206,6 +206,20 @@ your lead is strong enough and has the right move:
 - After a loss, `load_state` (or recover from the blackout) and either grind more or
   try again.
 
+## Keep the whole team level
+Every Pokémon should be within ~15% of your highest level (top L18 → nobody under L16).
+A lone strong lead is fragile: it faints, a move gets Disabled, PP runs out — and then your
+L5 backups are useless. After you catch something, before a gym, and whenever the observation
+shows a "⚠ Team imbalance" line, call `train_party()` (it works the grass like `grind` but
+gives the XP to the lowest lagging Pokémon). `heal()` first if the weak ones are hurt.
+
+## Battle gotchas
+- A **Disabled** move (shown `DISABLED` in "Your moves") is refused by the game — never retry it; use
+  another move for the few turns it lasts.
+- When every move is out of PP, `use_move('Struggle')` — it is automatic (and recoils); `heal()` after.
+- After a KO the win text / the trainer's next Pokémon play out: `advance_dialog()` carries you to
+  your next decision. Never mash `press_button` in a battle.
+
 ## Gen III Rule (critical)
 Damage category = move TYPE, not per-move:
 - Physical (uses Atk vs Def): Normal/Fighting/Flying/Poison/Ground/Rock/Bug/**Ghost**/Steel

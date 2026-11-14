@@ -373,6 +373,144 @@ class OverworldMixin:
             avoid.add(goal_map)
         return False
 
+    def _grass_step(self, st: dict, again: str) -> str | None:
+        """One overworld step of a grass-grinding loop: pace on a patch to trigger encounters, or
+        route back onto grass / relocate to a grassy route. Returns an abort message when grass
+        can't be reached, else None. `st` carries {"stuck", "reloc"} between calls."""
+        px, py = self.reader.read_player_pos()
+        if self.tilemap.is_tall_grass(px, py):
+            self._wander_step()           # on grass — pace back and forth to trigger encounters
+            st["stuck"] = 0
+            return None
+        # Off grass — route back onto the patch (walk_to is ledge-aware).
+        target = self._nearest_grass()
+        if target is not None:
+            self._walk_to(*target)
+        st["stuck"] += 1
+        # Can't reach any grass on this map — try a deterministic relocation first.
+        if st["stuck"] >= 25:
+            if st["reloc"] < 2 and self._relocate_to_grass(exclude_current=True):
+                st["reloc"] += 1
+                st["stuck"] = 0
+                return None
+            return ("Couldn't reach tall grass to grind. go_to a grassy route yourself, "
+                    f"then call {again} again.")
+        return None
+
+    # ── Party balancing ─────────────────────────────────────────────────────────
+    def _lagging_mons(self, party=None) -> list:
+        """Alive party members more than ~15% below the top level (knowledge.party), lowest first."""
+        from knowledge.party import lagging_mons
+        return lagging_mons(party if party is not None else self.reader.read_party())
+
+    def _train_fight(self, trainee_sig: tuple) -> None:
+        """Fight one WILD battle so the lagging Pokémon (trainee_sig = species_id, max_hp at battle
+        start) earns the experience: bring it in first, let it fight while it is safe, and hand the
+        kill to the strongest teammate when the foe is too tough or the trainee's HP drops (a mon
+        that has been sent out in the battle shares the XP, so even a swap-out still pays)."""
+        from game.state import GameContext
+
+        def find(party, sig):
+            return next((i for i, q in enumerate(party) if (q.species_id, q.max_hp) == sig), None)
+
+        potions_used: list = []
+        switched_in = tagged_out = False
+        for _ in range(30):
+            if self._send_next_mon():
+                continue
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                break
+            if self._maybe_drive_learn():
+                continue
+            party = self.reader.read_party()
+            t = find(party, trainee_sig)
+            foe = self.reader.read_enemy_lead()
+            active = self.reader.read_active_battle_species()
+            if t is not None and party[t].current_hp > 0:
+                tm = party[t]
+                if active != tm.species_id and not switched_in:
+                    switched_in = True
+                    self._switch_pokemon(str(t + 1))
+                    continue
+                too_tough = bool(foe and foe.level > tm.level + 4)
+                hurt = tm.max_hp and tm.current_hp / tm.max_hp < 0.45
+                if active == tm.species_id and (too_tough or hurt) and not tagged_out:
+                    tagged_out = True       # it has participated — now let a strong mon finish
+                    others = [(q.level, i) for i, q in enumerate(party)
+                              if i != t and q.current_hp > 0 and q.max_hp
+                              and q.current_hp / q.max_hp >= 0.4]
+                    if others:
+                        self._switch_pokemon(str(max(others)[1] + 1))
+                        continue
+            if self._maybe_heal_mid_fight(potions_used):
+                continue
+            _ids, names, pp, _d, _t = self._active_moves_view()
+            atk, dfn = self._battle_types()
+            mv = self._best_damaging_move(names, pp, atk, dfn)
+            if mv:
+                self._use_move(mv)
+            else:
+                self._struggle()
+        self._settle_evolution()
+
+    def _train_party(self) -> str:
+        """Level up the Pokémon that lag the team (more than ~15% under the top level). Works the
+        grass like grind(), but each wild fight is fought so the lowest lagging mon gets the XP
+        (see _train_fight). Stops when everyone is within ~15%, when the trainee's HP gets low,
+        or when grass can't be reached. Evolutions are completed automatically."""
+        from game.constants import Addr
+        from game.state import GameContext
+        party = self.reader.read_party()
+        if len(party) < 2:
+            return "You only have one Pokémon — nothing to balance. Catch a team first."
+        if not self._lagging_mons(party):
+            lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
+            return f"Party is balanced (all within ~15% of L{max(p.level for p in party)}): {lv}."
+        if self._nearest_grass() is None and not self._relocate_to_grass():
+            return ("No tall grass reachable from here — go_to a route with grass "
+                    "(Route 1/2, Viridian Forest), then call train_party() again.")
+        start = {(p.species_id, p.max_hp): p.level for p in party}
+        battles = 0
+        st = {"stuck": 0, "reloc": 0}
+        for _ in range(500):
+            party = self.reader.read_party()
+            lag = self._lagging_mons(party)
+            if not lag:
+                break
+            # The trainee: the lowest lagging mon that is healthy enough to fight.
+            ok = [(i, p) for i, p in lag if p.max_hp and p.current_hp / p.max_hp >= self._GRIND_HP_FLOOR]
+            if not ok:
+                names = ", ".join(f"{p.species_name} L{p.level}" for _, p in lag)
+                return (f"Training paused — the lagging Pokémon ({names}) are too hurt. "
+                        "Call heal(), then train_party() again.")
+            ti, trainee = ok[0]
+            ctx = self.reader.detect_context()
+            if ctx == GameContext.IN_BATTLE:
+                if self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER:
+                    self._auto_fight()           # never experiment in a trainer battle
+                else:
+                    self._train_fight((trainee.species_id, trainee.max_hp))
+                battles += 1
+                st["stuck"] = 0
+            elif ctx == GameContext.OVERWORLD:
+                abort = self._grass_step(st, "train_party()")
+                if abort:
+                    return abort
+            else:
+                self.mgba.tap("A")
+                self.mgba.tick()
+        party = self.reader.read_party()
+        lv = ", ".join(f"{p.species_name} L{p.level}" for p in party if p.species_name)
+        gains = []
+        for p in party:
+            before = start.get((p.species_id, p.max_hp))
+            if before is not None and p.level > before:
+                gains.append(f"{p.species_name} L{before}→L{p.level}")
+        done = not self._lagging_mons(party)
+        head = "Party balanced" if done else "Training progress"
+        return (f"{head} after {battles} battles ({'; '.join(gains) or 'no level-ups yet'}). Team: {lv}."
+                + ("" if done else " Call train_party() again to continue."))
+
     _GRIND_HP_FLOOR = 0.35
 
     def _grind(self, target_level: int) -> str:
@@ -399,8 +537,7 @@ class OverworldMixin:
                     f"grind({target_level}) again.")
 
         battles = 0
-        stuck_steps = 0      # overworld steps that couldn't reach grass
-        relocations = 0      # deterministic grass-route relocations spent
+        st = {"stuck": 0, "reloc": 0}   # overworld bookkeeping shared with train_party
         for _ in range(400):
             party = self.reader.read_party()
             if not party:
@@ -416,29 +553,11 @@ class OverworldMixin:
             if ctx == GameContext.IN_BATTLE:
                 self._auto_fight()
                 battles += 1
-                stuck_steps = 0
+                st["stuck"] = 0
             elif ctx == GameContext.OVERWORLD:
-                px, py = self.reader.read_player_pos()
-                if self.tilemap.is_tall_grass(px, py):
-                    # On grass — pace back and forth to trigger encounters.
-                    self._wander_step()
-                    stuck_steps = 0
-                else:
-                    # Off grass — route back onto the patch (walk_to is ledge-aware,
-                    # so downhill-ledge patches like Route 1's are reachable now).
-                    target = self._nearest_grass()
-                    if target is not None:
-                        self._walk_to(*target)
-                    stuck_steps += 1
-                    # Can't reach any grass on this map (walled off / none) — try a
-                    # deterministic relocation to another grass route before giving up.
-                    if stuck_steps >= 25:
-                        if relocations < 2 and self._relocate_to_grass(exclude_current=True):
-                            relocations += 1
-                            stuck_steps = 0
-                        else:
-                            return ("Couldn't reach tall grass to grind. go_to a grassy "
-                                    f"route yourself, then call grind({target_level}) again.")
+                abort = self._grass_step(st, f"grind({target_level})")
+                if abort:
+                    return abort
             else:
                 self.mgba.tap("A")        # advance a dialog/transition
                 self.mgba.tick()
