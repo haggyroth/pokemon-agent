@@ -74,3 +74,20 @@ def test_pewter_scenario_no_longer_xfail():
     # #59 is fixed and a full LLM run reached Pewter (XPASS), so the scenario is a
     # normal (probabilistic) pass now — not an expected failure.
     assert by_name("reach_pewter").xfail == ""
+
+
+def test_party_balanced_goal_and_new_scenarios(tmp_path, monkeypatch):
+    from game.state import PokemonStatus
+    l = _ltm(tmp_path, monkeypatch)
+
+    def mon(level, hp=10):
+        return PokemonStatus(slot=0, level=level, current_hp=hp, max_hp=10, status="healthy")
+    g = goals.party_balanced()
+    st = _state()
+    st.party = [mon(19), mon(5)]
+    assert g(st, l) is False
+    st.party = [mon(19), mon(17)]
+    assert g(st, l) is True
+    st.party = [mon(30)]
+    assert g(st, l) is False                      # a lone Pokémon is not a balanced party
+    assert by_name("catch_a_pokemon") and by_name("balance_party")

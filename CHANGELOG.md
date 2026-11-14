@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — live regression tests + eval scenarios (#185 item 3)
+- test: `tests/live/` replays watched-run bugs on the real ROM (zero-PP grind, watchdog vs the old status
+  spam, catch nickname vetting/naming, broke-free ball, Disabled move). Skipped automatically without the
+  binding/ROM/fixtures (CI). Fixtures live in gitignored `saves/live/`; `tests/live/README.md` documents
+  them and the staging tricks (`harness.py`: `patch_mon`, `wild_battle`, ...).
+- eval: `party_balanced` goal; scenarios `catch_a_pokemon` and `balance_party`.
+- fix: when a tool hits its hard time limit while still making progress (long `grind`), the message now
+  says so and to call it again, instead of claiming it "isn't working".
+
 ### Added — checkpoints + resume (#185 item 2)
 - feat: the run saves an emulator state every `CHECKPOINT_EVERY` decision ticks (default 20, ~19 KB each, newest
   5 kept) and a permanent one per new badge, under `logs/runs/<ts>/checkpoints/` with a `latest.json`.

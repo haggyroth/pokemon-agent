@@ -313,9 +313,12 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                          f"({st.player_x},{st.player_y}).")
             except Exception:
                 pass
-            return (f"{name} was stopped: {e.reason}.{where} Whatever it was doing isn't working — read "
-                    "the observation (close_menus / advance_dialog if a menu or text box is stuck) and "
-                    "try a different approach.")
+            if e.stalled:
+                return (f"{name} was stopped: {e.reason}.{where} Whatever it was doing isn't working — "
+                        "read the observation (close_menus / advance_dialog if a menu or text box is "
+                        "stuck) and try a different approach.")
+            return (f"{name} hit its time limit ({e.reason}) while still making progress.{where} Nothing "
+                    f"was lost — call {name} again to continue, or do something else first.")
         finally:
             setter(None)
 
