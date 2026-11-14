@@ -93,14 +93,14 @@ class OverworldMixin:
         from knowledge.leafgreen_data import MOVE_POWER
         return any(n and MOVE_POWER.get(n, 0) > 0 for n in (mon.move_names or []))
 
-    def _heal(self) -> str:
+    def _heal(self, force: bool = False) -> str:
         """Heal the whole party at a Pokémon Center. Travels to the nearest one if
         not already inside, walks to Nurse Joy, and advances the heal dialogue
         until the party is at full HP. Resumable: if a wild battle/dialog interrupts
         the trip, it stops and reports so the caller can resume."""
         from game.state import GameContext
         from knowledge.map_graph import MAP_KIND
-        if not self._party_needs_heal():
+        if not force and not self._party_needs_heal():
             return "Party is already at full HP and PP — no need to heal."
         # Get inside a Pokémon Center first (resumable travel).
         if MAP_KIND.get(self.reader.read_current_map()) != "pokecenter":
@@ -116,8 +116,10 @@ class OverworldMixin:
         self.mgba.tap("Up")            # face the nurse across the counter
         # Advance greeting → YES/NO (YES is default) → heal → closing. A-mash and
         # watch for full HP; nudge Up before confirming so the cursor sits on YES.
-        for _ in range(40):
-            if not self._party_needs_heal():
+        for i in range(40):
+            # force=True (first visit to a town) still talks to Nurse Joy — that is what sets the respawn
+            # point — so keep pressing A for the greeting → YES → heal → closing text before returning.
+            if not self._party_needs_heal() and (not force or i >= 16):
                 # Advance the nurse's closing dialogue AND wait out the heal fade until
                 # we're back in real OVERWORLD control. A fixed few A-taps left the
                 # player standing on the counter tile still flagged IN_MENU, where
@@ -364,7 +366,9 @@ class OverworldMixin:
         (which it tends to ignore). Returns True if we end up somewhere with grass."""
         from knowledge.map_graph import nearest_grass
         bank, mid = self.reader.read_current_map()
-        avoid: set = set()
+        # Routes whose way in already beat us twice are off the list for the whole session.
+        losses = self.__dict__.get("_trainer_losses", {})
+        avoid: set = {m for m, n in losses.items() if n >= 2}
         for _attempt in range(3):
             found = nearest_grass((bank, mid), exclude_current=exclude_current, avoid=avoid)
             if found is None:
@@ -379,12 +383,23 @@ class OverworldMixin:
             # go_to is resumable and stops early (battle/dialog/guard shuffles). Keep
             # calling it until we land there; if the route is story-gated (e.g. Route 3
             # before Brock) it never arrives, so skip that route and try the next-nearest.
+            lost = False
             for _ in range(6):
                 out = self._go_to(name)
                 if self.reader.read_current_map() == goal_map:
                     break
                 if out.startswith("Blocked") or "gated" in out:
                     break
+                if "Lost a trainer" in out or "Lost to a trainer" in out:
+                    # A mandatory trainer (a rival) on the way beat us. Don't loop walking back into
+                    # it: heal once, then try a different grass route.
+                    lost = True
+                    self._heal()
+                    break
+            if lost:
+                avoid.add(goal_map)
+                bank, mid = self.reader.read_current_map()
+                continue
             if self.reader.read_current_map() == goal_map and self._nearest_grass() is not None:
                 return True
             avoid.add(goal_map)
@@ -503,7 +518,48 @@ class OverworldMixin:
             return "Healed, but no tall grass is reachable from here — go_to a grassy route, then grind() again."
         return None
 
-    def _grind(self, target_level: int = 0) -> str:
+    def _grind_try_catch(self) -> str | None:
+        """Inside a grind/train loop: if this WILD foe is worth a ball (knowledge.catch_policy), weaken it
+        gently (never the killing blow: below ~60% HP use the weakest attack, stop at ~35%), then throw
+        balls with an autopilot nickname. Returns a note when it caught something, else None (the caller
+        then just fights the battle normally)."""
+        from game.state import GameContext
+        from knowledge.catch_policy import evaluate
+        from knowledge.leafgreen_data import MOVE_POWER
+        from knowledge.nicknames import auto_name
+        party = self.reader.read_party()
+        foe = self.reader.read_enemy_lead()
+        if (not foe or not foe.species_id or not foe.max_hp or (foe.species_name or "").startswith("#")
+                or len(party) >= 6 or self._ball_count() <= 0):
+            return None
+        if not evaluate(party, foe.species_id, foe.level).catch:
+            return None
+        species = foe.species_name
+        for _ in range(12):
+            if self.reader.detect_context() != GameContext.IN_BATTLE:
+                return None
+            foe = self.reader.read_enemy_lead()
+            if not foe or foe.current_hp <= 0:
+                return None
+            frac = foe.current_hp / foe.max_hp
+            if frac <= 0.35:
+                break
+            _ids, names, pp, _d, _t = self._active_moves_view()
+            usable = [(MOVE_POWER.get(n, 0), n) for n, q in zip(names, pp) if n and q > 0 and MOVE_POWER.get(n, 0) > 0]
+            if not usable:
+                return None
+            _pw, mv = (min(usable) if frac <= 0.6 else max(usable))
+            self._use_move(mv)
+        taken = [p.nickname for p in party]
+        for _ in range(4):
+            if self.reader.detect_context() != GameContext.IN_BATTLE or self._ball_count() <= 0:
+                break
+            out = self._catch(auto_name(species, taken))
+            if "Gotcha" in out:
+                return f"{species} ({out.split('Named it')[-1].strip(' .') if 'Named it' in out else 'unnamed'})"
+        return None
+
+    def _grind(self, target_level: int = 0, catch: bool = True) -> str:
         """Level up by fighting wild Pokémon in tall grass; every fight is auto-fought (the LLM drives
         none of them) with the best damaging move, and the loop heals itself at a Pokémon Center when
         HP or attack PP runs low, then walks back to grass.
@@ -542,6 +598,7 @@ class OverworldMixin:
         start = {p.species_id: p.level for p in party}      # keyed by species: max HP changes on level-up
         start_lead = party[0].level
         battles = heals = 0
+        caught: list = []
         st = {"stuck": 0, "reloc": 0}
         for _ in range(1500 if balance else 600):
             party = self.reader.read_party()
@@ -554,6 +611,14 @@ class OverworldMixin:
                 break
             ctx = self.reader.detect_context()
             if ctx == GameContext.IN_BATTLE:
+                wild = not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER)
+                if catch and wild:
+                    got = self._grind_try_catch()
+                    if got:
+                        caught.append(got)
+                        battles += 1
+                        st["stuck"] = 0
+                        continue
                 if balance and not (self.mgba.read32(Addr.BATTLE_TYPE_FLAGS) & Addr.BATTLE_TYPE_TRAINER):
                     ok = [p for _, p in lag if healthy_enough(p, self._GRIND_HP_FLOOR)]
                     if ok:
@@ -604,6 +669,8 @@ class OverworldMixin:
             if before is not None and p.level > before:
                 gains.append(f"{p.species_name} L{before}→L{p.level}")
         extra = f", {heals} automatic heal(s)" if heals else ""
+        if caught:
+            extra += f", caught {len(caught)}: {'; '.join(caught)}"
         if balance:
             done = not self._lagging_mons(party)
             head = "Party balanced" if done else "Training progress"
