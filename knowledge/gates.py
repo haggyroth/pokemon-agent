@@ -20,7 +20,16 @@ class Req:
     alt_flag: int | None = None   # satisfied if this system flag is set (e.g. already visited)
 
 
+SS_TICKET = 265
+_SS_HINT = ("Cerulean's exits stay blocked (a Slowbro + Lass south, a policeman east) until you have the "
+            "SS Anne ticket — call get_ss_ticket() (Bill's Sea Cottage, Route 25).")
+
 MAP_GATES: dict[tuple[int, int], list[Req]] = {
+    (9, 6): [Req("hm", "Cut", "Vermilion Gym's door is blocked by a Cut tree: get HM01 Cut from the captain "
+                 "of the S.S. Anne (board at Vermilion's harbor with the SS Ticket), teach it "
+                 "(teach_move) to a Pokémon, then use_hm('Cut') on the tree.")],
+    (3, 23): [Req("key_item", SS_TICKET, _SS_HINT)],     # Route 5 (Cerulean's south exit)
+    (3, 27): [Req("key_item", SS_TICKET, _SS_HINT)],     # Route 9 (Cerulean's east exit)
     (1, 94): [Req("key_item", SILPH_SCOPE,
                   "Pokémon Tower 7F is blocked by ghosts until you have the Silph Scope "
                   "(Celadon Rocket Hideout B4F, beat Giovanni's grunts there).")],
@@ -39,7 +48,7 @@ MAP_GATES: dict[tuple[int, int], list[Req]] = {
     (3, 38): [Req("hm", "Surf", "Route 20 is open water — you need Surf.")],
     (1, 83): [Req("hm", "Surf", "Seafoam Islands needs Surf (and Strength for its boulders).")],
     (1, 39): [Req("hm", "Strength", "Victory Road's boulders need Strength (HM04, Safari Zone).")],
-    (3, 41): [Req("badges", 8, "Route 23's checkpoints only let you through with all 8 badges.")],
+    (3, 42): [Req("badges", 8, "Route 23's checkpoints only let you through with all 8 badges.")],
 }
 
 

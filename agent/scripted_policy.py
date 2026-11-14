@@ -82,6 +82,12 @@ class ScriptedPolicy:
         lead = party[0]
         if lead.level < gym["lead_level"]:
             return "grind", {"level": gym["lead_level"]}
+        # Past Misty the story needs Bill's SS Anne ticket before Cerulean's exits open. Walking out of
+        # Cerulean's north side triggers the mandatory rival fight, so go in healthy.
+        if gym["leader"] == "Lt. Surge" and not self.c._has_ss_ticket():
+            if any(p.current_hp < 0.9 * p.max_hp for p in party):
+                return "heal", {}
+            return "get_ss_ticket", {}
         cur = self.r.read_current_map()
         from knowledge.leafgreen_data import GYM_MAP_LEADER
         if GYM_MAP_LEADER.get(cur) == gym["leader"]:

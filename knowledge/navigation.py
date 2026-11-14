@@ -37,10 +37,14 @@ MAP_NAMES: dict[tuple[int, int], str] = {
     (3, 37): "Route 19",
     (3, 38): "Route 20",
     (3, 39): "Route 21",
-    (3, 40): "Route 22",
-    (3, 41): "Route 23",
-    (3, 42): "Route 24",
-    (3, 43): "Route 25",
+    # NB: FRLG splits Route 21 into North (3,39) / South (3,40), so every id after it is one higher than
+    # the Kanto route number (audited against the decomp's map_groups.json).
+    (3, 40): "Route 21 South",
+    (3, 41): "Route 22",
+    (3, 42): "Route 23",
+    (3, 43): "Route 24",
+    (3, 44): "Route 25",
+    (30, 0): "Bill's Sea Cottage",   # Route 25 — the SS Anne ticket quest
     # Group 1 — Dungeons
     (1, 0):  "Viridian Forest",
     (1, 1):  "Mt. Moon 1F",
@@ -382,10 +386,11 @@ MAP_IMAGES: dict[tuple[int, int], str] = {
     (3, 37): "route-19-gba-map.png",
     (3, 38): "route-20-gba-map.png",
     (3, 39): "route-21-gba-map.png",
-    (3, 40): "route-22-gba-map.png",
-    (3, 41): "route-23-gba-map.png",
-    (3, 42): "route-24-gba-map.png",
-    (3, 43): "route-25-gba-map.png",
+    (3, 40): "route-21-gba-map.png",
+    (3, 41): "route-22-gba-map.png",
+    (3, 42): "route-23-gba-map.png",
+    (3, 43): "route-24-gba-map.png",
+    (3, 44): "route-25-gba-map.png",
     # Group 1 — Dungeons
     (1, 0):  "viridian-forest-gba-map.png",
     (1, 1):  "mt-moon-1f-gba-map.png",

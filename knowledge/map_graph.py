@@ -637,6 +637,13 @@ def _matches(node, goal) -> bool:
     return node == goal or (len(goal) == 2 and node[:2] == goal)
 
 
+# SaffronCity_Connection (3,11) is the dummy "shell" map that lets Routes 5/6/7/8 link up around Saffron on
+# paper; on foot it is walled off (the city is entered only through the gatehouses, whose guards want Tea).
+# Routing through it sent Cerulean→Vermilion into Saffron's wall ("reached the South edge but could not
+# cross") instead of the Underground Path (Route 5 → tunnel → Route 6).
+UNWALKABLE_MAPS = frozenset({(3, 11)})
+
+
 def _search(start, conn, warp, accept, warps=True, avoid_edges=()):
     """BFS. accept(node) -> truthy ends the search; returns (node, steps) or None.
     avoid_edges: set of (from_node, kind, arg) the runtime has learned are blocked."""
@@ -651,7 +658,7 @@ def _search(start, conn, warp, accept, warps=True, avoid_edges=()):
             if (cur, step[0], step[1]) in avoid_edges:
                 continue
             nb = step[2]
-            if nb in seen:
+            if nb in seen or tuple(nb[:2]) in UNWALKABLE_MAPS:
                 continue
             seen.add(nb)
             if accept(nb, step):
@@ -714,7 +721,7 @@ def nearest_of_kind(start, kind):
 # invoked somewhere with no reachable grass (e.g. the model called grind() while
 # standing in a city). Routes + Viridian Forest; the runtime grass check filters
 # any that turn out to be all-water, so this stays a superset, not a hand audit.
-GRASS_MAPS: frozenset = frozenset({(1, 0), *((3, i) for i in range(19, 44))})
+GRASS_MAPS: frozenset = frozenset({(1, 0), *((3, i) for i in range(19, 45))})
 
 
 def nearest_grass(start, exclude_current: bool = False, avoid=()):

@@ -11,10 +11,10 @@ def mon(level, hp=30, max_hp=30, moves=("Tackle",), pp=(30,)):
                          species_id=1, species_name="Bulbasaur", move_names=list(moves), pp=list(pp))
 
 
-def policy(ctx, party, gyms_beaten=(), cur_map=(3, 1), needs_heal=False):
+def policy(ctx, party, gyms_beaten=(), cur_map=(3, 1), needs_heal=False, ticket=True):
     reader = SimpleNamespace(detect_context=lambda: ctx, read_party=lambda: party,
                              read_current_map=lambda: cur_map)
-    client = SimpleNamespace(_party_needs_heal=lambda: needs_heal)
+    client = SimpleNamespace(_party_needs_heal=lambda: needs_heal, _has_ss_ticket=lambda: ticket)
     rt = SimpleNamespace(client=client, reader=reader, mgba=SimpleNamespace(),
                          ltm=SimpleNamespace(data={"gyms_beaten": list(gyms_beaten)}))
     return ScriptedPolicy(rt)
@@ -60,3 +60,12 @@ def test_ready_lead_goes_to_the_gym_then_challenges():
 def test_next_gym_advances_after_a_badge():
     p = policy(GameContext.OVERWORLD, [mon(15)], gyms_beaten=["Brock"])
     assert p.decide() == ("grind", {"level": 21})        # Misty wants a stronger lead
+
+
+def test_after_misty_it_fetches_the_ss_ticket_first():
+    p = policy(GameContext.OVERWORLD, [mon(30)], gyms_beaten=["Brock", "Misty"], ticket=False)
+    assert p.decide() == ("get_ss_ticket", {})
+    hurt = policy(GameContext.OVERWORLD, [mon(30, hp=20)], gyms_beaten=["Brock", "Misty"], ticket=False)
+    assert hurt.decide() == ("heal", {})            # the rival fight is on the way: go in healthy
+    p = policy(GameContext.OVERWORLD, [mon(30)], gyms_beaten=["Brock", "Misty"], ticket=True)
+    assert p.decide() == ("go_to", {"destination": "Gym"})

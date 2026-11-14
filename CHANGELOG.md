@@ -5,6 +5,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — Bill's SS-ticket quest + routing fixes (#185 item 5b)
+- feat: `get_ss_ticket()` (agent/skills/quests.py): travels to Bill's Sea Cottage (Route 25, past Nugget
+  Bridge — trainers auto-fought, resumable), talks to Bill-as-Clefairy (YES), runs his teleporter computer, and
+  takes the SS Ticket from human Bill. Idempotent; verified live (~35 s). Cerulean's south/east exits are now a
+  gated map (`knowledge/gates.py`) with a hint pointing at it; the Vermilion Gym is gated on Cut.
+- fix(data): four map names were off by one (FRLG splits Route 21): `(3,43)` is Route 24 and `(3,44)` Route 25
+  (not 25 / unnamed), and the Route 23 badge gate sat on Route 22. Added "Bill's Sea Cottage" (30,0).
+- fix(nav): routing no longer goes through `SaffronCity_Connection` (3,11), a walled-off shell map — it sent
+  Cerulean→Vermilion into Saffron's wall instead of the Underground Path.
+- fix(nav): directional / arrow warps. When a warp tile doesn't fire, go_to now steps onto it from each side (and
+  presses each direction while standing on an exit mat) before declaring the edge dead — the Underground Path
+  stairs and a gym door mat after a fight both needed this.
+- fix(budget): `get_ss_ticket` gets a larger frame budget (Nugget Bridge + the cutscene).
+
 ### Added — zero-token end-to-end runs (#185 item 5)
 - feat: `tools/scripted_run.py` + `agent/scripted_policy.py`: a rule-based stand-in for the LLM (a fake
   OpenAI client) drives the REAL run loop — observations, rewards, ltm, logging, checkpoints, watchdog —
