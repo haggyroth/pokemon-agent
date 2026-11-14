@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed — viewer stutter between 1× and ~50× on macOS
+- fix(viewer): emulation pacing and presentation are decoupled. The window used to be presented after EVERY
+  emulated frame; on macOS `display.flip()` blocks on the display refresh while the window is visible (→ ~1×) but
+  returns instantly when it is occluded or in Mission Control (→ ~50×) — hence the stutter and the speed-up in
+  Mission Control. Now `VIEWER_FPS` paces frames against a running deadline (0 = uncapped, 60 = real time, 120 =
+  2×), and the window is presented at most 60×/s, stamped after `flip()`. `flush_viewer()` shows the newest frame
+  before each LLM wait so the window never freezes on a stale frame. Measured on this Mac with the window open:
+  uncapped ≈ 41×.
+
 ### Changed — play like a trainer, not a travel agent
 - feat: `knowledge/readiness.py` assesses the party's actual state — MUST heal (lead < 60% HP, anyone < 50%, a
   faint, attack PP nearly/completely gone) and SHOULD restock / catch (team < 4) / train (lagging members) /

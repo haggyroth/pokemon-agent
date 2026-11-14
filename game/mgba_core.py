@@ -64,6 +64,12 @@ class NativeMGBAClient:
             from game.viewer import PygameViewer
             self._viewer = PygameViewer(self._vw, self._vh)
 
+    def flush_viewer(self) -> None:
+        """Show the newest emulated frame in the window (the viewer only presents ~60×/s while frames fly by)."""
+        v = self._viewer
+        if v is not None:
+            v.flush(ffi.buffer(self._video, self._video_bytes))
+
     def framebuffer(self) -> bytes:
         """Latest frame as RGBX bytes (width*height*4)."""
         return bytes(ffi.buffer(self._video, self._video_bytes))

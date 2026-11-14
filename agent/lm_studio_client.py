@@ -195,6 +195,9 @@ class AgentClient(PartyMixin, QuestMixin, NavMixin, OverworldMixin, BattleMixin,
         # stale screenshot). After MAX_TOOL_ROUNDS we return control so the main
         # loop re-observes (fresh screenshot + observation).
         for _round in range(self.MAX_TOOL_ROUNDS):
+            flush = getattr(getattr(self, "mgba", None), "flush_viewer", None)
+            if flush:
+                flush()           # the window only presents ~60×/s: show the latest frame before we wait on the LLM
             try:
                 resp = self.llm.chat.completions.create(
                     model=MODEL_NAME, messages=self.messages,
