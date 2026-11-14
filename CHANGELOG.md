@@ -5,6 +5,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added — checkpoints + resume (#185 item 2)
+- feat: the run saves an emulator state every `CHECKPOINT_EVERY` decision ticks (default 20, ~19 KB each, newest
+  5 kept) and a permanent one per new badge, under `logs/runs/<ts>/checkpoints/` with a `latest.json`.
+  `RESUME=latest` (or `RESUME=<path.ss1>`) continues a cancelled/stuck run from its last checkpoint.
+
 ### Added — skill watchdog (#185 item 1)
 - feat: every tool call runs under a frame budget (`agent/budgets.py`, `game/watchdog.py`): a hard cap
   (default ≈25 game-minutes) and a no-progress detector (map/position/party growth/money/foe HP unchanged

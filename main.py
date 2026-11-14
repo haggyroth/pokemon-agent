@@ -1,5 +1,5 @@
 from datetime import datetime
-from config import (MODEL_NAME, TEMPERATURE, MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
+from config import (RESUME, CHECKPOINT_EVERY, MODEL_NAME, TEMPERATURE, MGBA_BACKEND, START_FROM_SAVE, START_FROM_STATE, MAX_STEPS,
                     USE_VISION, PROGRESS_PATH, MAX_LLM_CALLS, TOKEN_BUDGET,
                     LLM_BASE_URL, MAX_WALL_SECONDS)
 from game.memory_reader import LeafGreenReader
@@ -22,7 +22,7 @@ from rich.console import Console
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 from pathlib import Path
-import time, sys, traceback
+import os, time, sys, traceback
 
 console = Console()
 
@@ -768,6 +768,10 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
     from memory.run_log import NullRunLog
     rlog = run_log or NullRunLog()
     client.run_log = rlog
+    ckpt = None
+    if getattr(rlog, "dir", None) and CHECKPOINT_EVERY > 0 and hasattr(mgba, "save_state_file"):
+        from memory.checkpoints import CheckpointManager
+        ckpt = CheckpointManager(rlog.dir / "checkpoints", mgba.save_state_file, CHECKPOINT_EVERY)
     _s0 = reader.read_state()
     rlog.event("start", map=[_s0.map_bank, _s0.map_id], pos=[_s0.player_x, _s0.player_y],
                badges=_s0.badges, party=_party_brief(_s0), goal=goal_desc)
@@ -968,6 +972,10 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
                        party=_party_brief(state), obs=obs, reasoning=(reasoning or "")[:1500],
                        actions=actions, reward=round(reward.total, 2),
                        llm_calls=client.llm_calls, tokens=client.total_tokens)
+            if ckpt:
+                ckpt.maybe(run.step_count, state.badges, state.context.name,
+                           meta={"map": [state.map_bank, state.map_id], "badges": state.badges,
+                                 "party": _party_brief(state), "llm_calls": client.llm_calls})
             if max_steps and run.step_count >= max_steps:
                 if verbose:
                     console.print(f"[green]Reached max_steps={max_steps} — stopping. "
@@ -1021,8 +1029,29 @@ def run_episode(rt: AgentRuntime, *, goal: Optional[Goal] = None, goal_desc: str
             time.sleep(1.0)
 
 
+def _resume_state() -> str:
+    """Resolve RESUME ('latest' or a path) to a checkpoint file, or '' for a normal start."""
+    if not RESUME:
+        return ""
+    if RESUME.lower() != "latest":
+        path = os.path.expanduser(RESUME)
+        if not os.path.exists(path):
+            console.print(f"[red]RESUME={RESUME}: no such checkpoint — starting normally.[/]")
+            return ""
+        return path
+    from memory.checkpoints import find_latest
+    info = find_latest(PROGRESS_PATH.parent / "runs")
+    if not info:
+        console.print("[yellow]RESUME=latest: no checkpoint found under logs/runs — starting normally.[/]")
+        return ""
+    console.print(f"[cyan]Resuming from checkpoint {info['tag']} (step {info['step']}, saved "
+                  f"{info['time']}): {info.get('meta', {})}[/]")
+    return info["path"]
+
+
 def main():
-    rt = build_runtime(verbose=True)
+    resume = _resume_state()
+    rt = build_runtime(verbose=True, **({"start_state": resume} if resume else {}))
     if rt is None:
         sys.exit(1)
     from memory.run_log import RunLog
