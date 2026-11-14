@@ -9,6 +9,7 @@ from agent.history import trim_messages, strip_control_tokens
 from game.memory_reader import LeafGreenReader
 from game.mgba_client import MGBAClient
 from memory.long_term import LongTermMemory
+from memory.run_log import NullRunLog
 from knowledge.leafgreen_data import MILESTONES
 from knowledge.navigation import get_map_image_path, MAP_NAMES
 from config import (LLM_BASE_URL, LLM_API_KEY, MODEL_NAME, TEMPERATURE, MAX_TOKENS,
@@ -47,6 +48,8 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
     @property
     def total_tokens(self) -> int:
         return self.total_prompt_tokens + self.total_completion_tokens
+
+    run_log = NullRunLog()   # class default; main.run_episode swaps in a real RunLog
 
     MAX_HISTORY = 20  # keep last ~10 user/assistant turns (text only for old turns)
     MAX_TOOL_ROUNDS = 6  # cap model tool-call rounds per decision step, then re-observe
@@ -217,6 +220,13 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
             reasoning, clean_content = self._extract_response(msg)
             last_reasoning = reasoning or clean_content
 
+            self.run_log.event(
+                "llm", n=self.llm_calls, round=_round,
+                prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+                completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
+                reasoning=(reasoning or "")[:1500], content=(clean_content or "")[:500],
+                tool_calls=[[tc.function.name, tc.function.arguments]
+                            for tc in (msg.tool_calls or [])])
             history_entry: dict = {"role": "assistant", "content": clean_content}
             if msg.tool_calls:
                 history_entry["tool_calls"] = [tc.model_dump() for tc in msg.tool_calls]
@@ -232,10 +242,13 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                 # and every subsequent API request would 400 (tool_calls without
                 # matching tool responses). Instead, turn any failure into a tool
                 # response the model can see and recover from.
+                _t0 = time.time()
                 try:
                     result = self._execute(tc.function.name, tc.function.arguments)
                 except Exception as e:
                     result = f"Tool {tc.function.name} failed: {e}"
+                self._log_tool(tc.function.name, tc.function.arguments, result,
+                               time.time() - _t0)
                 console.log(f"[cyan]{tc.function.name}[/] → {str(result)[:80]}")
                 self.messages.append({
                     "role": "tool", "tool_call_id": tc.id, "content": str(result)
@@ -250,6 +263,19 @@ class AgentClient(NavMixin, OverworldMixin, BattleMixin, MoveLearnMixin, Evoluti
                     actions.append(tc.function.name)
 
         return last_reasoning, actions
+
+    def _log_tool(self, name: str, args_json: str, result, secs: float) -> None:
+        """Run-log one tool execution with a cheap post-call state snapshot."""
+        snap = {}
+        try:
+            st = self.reader.read_state()
+            snap = {"ctx": st.context.name, "map": [st.map_bank, st.map_id],
+                    "pos": [st.player_x, st.player_y],
+                    "hp": [[p.current_hp, p.max_hp] for p in st.party]}
+        except Exception:
+            pass
+        self.run_log.event("tool", name=name, args=args_json, secs=round(secs, 2),
+                           result=str(result)[:800], **snap)
 
     def _execute(self, name: str, args_json: str) -> str:
         args = json.loads(args_json) if args_json else {}
